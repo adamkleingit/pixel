@@ -56,3 +56,22 @@ describe('ScreenshareProvider isEnabled', () => {
     expect(screen.getByTestId('probe').textContent).toBe('idle')
   })
 })
+
+describe('mouse tool toggle', () => {
+  it('is on by default (no passthrough) and toggles off', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const tool = screen.getByRole('button', { name: 'Mouse tool' })
+    // Default: mouse tool on → pressed; the page is inert / rectangles draw.
+    expect(tool.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(tool)
+    // Off → passthrough (no tool).
+    expect(tool.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(tool)
+    expect(tool.getAttribute('aria-pressed')).toBe('true')
+  })
+})

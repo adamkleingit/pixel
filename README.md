@@ -70,7 +70,7 @@ SDK (`ScreenshareProvider` `config` prop):
   config={{
     sink: httpSink('http://localhost:41789'),
     language: 'english',        // transcription hint; defaults to browser locale in the example
-    passthrough: false,        // initial mode: false = page inert, true = clicks pass through
+    passthrough: false,        // initial tool: false = mouse tool on (inert + draw), true = no tool (clicks pass through)
     stopDelayMs: 500,          // keep recording this long after Stop
     bar: {
       always: true,            // show the bar even when idle (with a Record button). Default false
@@ -82,8 +82,8 @@ SDK (`ScreenshareProvider` `config` prop):
 ```
 
 **Floating bar** — always-on (`bar.always`) shows a Record button while idle and the
-full controls (pause/resume, stop, cancel, the live `pass` toggle) while recording.
-A **−/＋** button minimizes/expands it. Positions:
+full controls (pause/resume, stop, cancel, the live **mouse-tool** toggle) while
+recording. A **−/＋** button minimizes/expands it. Positions:
 
 | | left | center | right |
 |---|---|---|---|
@@ -94,7 +94,9 @@ A **−/＋** button minimizes/expands it. Positions:
 `center-left` / `center-right` lay the bar out **vertically**. Opacity defaults to
 30% and animates to 100% on hover.
 
-The mode (`passthrough`) is also togglable live from the bar and via
+The **mouse tool** (on by default) makes the page inert and lets you draw
+rectangles; toggling it off is passthrough (clicks reach the page). Toggle it
+live from the bar, with the **`M`** key while recording, or via
 `useScreenshare().setPassthrough(...)`; pausing always makes the page live.
 
 Server (env vars):

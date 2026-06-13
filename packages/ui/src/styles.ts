@@ -152,11 +152,11 @@ const CSS = `
   background: rgba(168, 85, 247, 0.5);
   color: #fff;
 }
-/* pass-through toggle: dim when off, lit + filled when on */
-.screenshare-rec .screenshare-rec-pass {
+/* mouse-tool toggle: lit when the tool is on (active), dim when off */
+.screenshare-rec .screenshare-rec-tool {
   opacity: 0.45;
 }
-.screenshare-rec .screenshare-rec-pass.active {
+.screenshare-rec .screenshare-rec-tool.active {
   opacity: 1;
 }
 @keyframes screenshare-pulse {

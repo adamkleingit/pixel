@@ -17,6 +17,17 @@ import type { Recording, ScreenshareConfig, ScreenshareState } from './types'
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
 
+/** Keyboard shortcut (KeyboardEvent.code) that toggles the mouse tool while recording. */
+const MOUSE_TOOL_KEY = 'KeyM'
+
+/** True when focus is in a text field — keystrokes there must not trigger shortcuts. */
+function isEditableTarget(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+
 export interface ScreenshareProviderProps {
   children: React.ReactNode
   config?: ScreenshareConfig
@@ -318,10 +329,21 @@ export function ScreenshareProvider({
       setDragRect(null)
     }
 
+    // `M` toggles the mouse tool (block + draw ⇄ passthrough) live. Handled here
+    // (not in installKeyboard) so it's scoped to an active recording and so it
+    // beats the block-mode key swallower below, which lets `M` through.
+    const onToolKey = (e: KeyboardEvent) => {
+      if (isOwnUI(e) || e.code !== MOUSE_TOOL_KEY || e.repeat || isEditableTarget()) return
+      e.preventDefault()
+      e.stopPropagation()
+      setPassthrough((p) => !p)
+    }
+
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerdown', onDown, true)
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onCancel, true)
+    window.addEventListener('keydown', onToolKey, true)
 
     // Block-mode-only: swallow the page's click/typing so the app doesn't react.
     const swallow = (e: Event) => {
@@ -331,8 +353,8 @@ export function ScreenshareProvider({
     }
     const swallowKey = (e: KeyboardEvent) => {
       if (isOwnUI(e)) return
-      // Let our shortcuts through (handled by installKeyboard).
-      if (e.code === activationKey || e.code === 'Escape') return
+      // Let our shortcuts through (Space/Esc via installKeyboard, M via onToolKey).
+      if (e.code === activationKey || e.code === 'Escape' || e.code === MOUSE_TOOL_KEY) return
       e.preventDefault()
       e.stopPropagation()
     }
@@ -351,6 +373,7 @@ export function ScreenshareProvider({
       window.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('pointerup', onUp, true)
       window.removeEventListener('pointercancel', onCancel, true)
+      window.removeEventListener('keydown', onToolKey, true)
       for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
       for (const t of pageKeyEvents) window.removeEventListener(t, swallowKey as EventListener, true)
       setDragRect(null)

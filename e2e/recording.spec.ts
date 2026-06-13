@@ -58,6 +58,26 @@ test.beforeEach(async () => {
   await rm(SCREENSHARE_DIR, { recursive: true, force: true })
 })
 
+test('the M shortcut toggles the mouse tool while recording', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+
+  const tool = page.getByRole('button', { name: 'Mouse tool' })
+  // Mouse tool is on by default (page inert, rectangles draw).
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'false') // → passthrough / no tool
+
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
+  // Discard — this test is about the toggle, not persistence.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/)
+})
+
 test('records a session and persists every artifact to the dropbox', async ({ page }) => {
   await recordSession(page)
 

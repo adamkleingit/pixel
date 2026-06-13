@@ -1,0 +1,5 @@
+node_modules
+.screenshare/
+dist
+*.log
+.DS_Store

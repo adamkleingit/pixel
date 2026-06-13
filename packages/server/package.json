@@ -1,6 +1,6 @@
 {
   "name": "@getpixel/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone Node ingest for Pixel recordings: dropbox writer + Whisper transcription + correlation.",
   "license": "MIT",
   "repository": {

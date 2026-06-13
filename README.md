@@ -26,17 +26,28 @@ Then add the provider and overlay to your app:
 ```tsx
 import { ScreenshareProvider, Overlay, httpSink } from '@getpixel/ui'
 
+// Pixel is a dev-time tool — gate it on your bundler's dev flag so it never
+// ships to production. Vite: import.meta.env.DEV. Webpack/CRA/Next:
+// process.env.NODE_ENV !== 'production'.
+const enabled = import.meta.env.DEV
+
 export function Root() {
   return (
     <ScreenshareProvider
+      isEnabled={enabled}
       config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}
     >
       <YourApp />
-      <Overlay />
+      {enabled && <Overlay />}
     </ScreenshareProvider>
   )
 }
 ```
+
+`isEnabled={false}` makes the provider completely inert — no styles, no keyboard
+shortcuts, no event capture, and `start()` does nothing — so Pixel adds nothing
+to a production build. Render `<Overlay />` behind the same flag so the floating
+bar is dev-only too.
 
 And then install the skill from the local pixel installation:
 

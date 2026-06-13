@@ -226,6 +226,9 @@ function Shell({
   )
 }
 
+// Pixel is a dev-time tool — only enable it outside production builds.
+const PIXEL_ENABLED = import.meta.env.DEV
+
 export function App() {
   const [serverUp, setServerUp] = useState<boolean | null>(null)
   const [language, setLanguage] = useState(defaultLanguage)
@@ -238,6 +241,7 @@ export function App() {
 
   return (
     <ScreenshareProvider
+      isEnabled={PIXEL_ENABLED}
       config={{
         sink: httpSink(SERVER_URL),
         language,
@@ -251,7 +255,7 @@ export function App() {
       onCancel={() => console.log('[example] cancelled')}
     >
       <Shell language={language} setLanguage={setLanguage} />
-      <Overlay />
+      {PIXEL_ENABLED && <Overlay />}
       {serverUp === false && (
         <div
           style={{

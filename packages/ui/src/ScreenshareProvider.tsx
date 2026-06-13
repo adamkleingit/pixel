@@ -20,6 +20,13 @@ const DRAG_THRESHOLD = 6
 export interface ScreenshareProviderProps {
   children: React.ReactNode
   config?: ScreenshareConfig
+  /**
+   * Master switch. When `false`, the provider is fully inert — no styles, no
+   * keyboard shortcuts, no event capture, and `start()` is a no-op — so Pixel
+   * adds nothing in production. Gate it on your bundler's dev flag (see README).
+   * Default `true`.
+   */
+  isEnabled?: boolean
   /** Fires once with the finished recording when recording stops. */
   onComplete?: (rec: Recording) => void
   /** Fires after the recording is successfully persisted by the configured sink. */
@@ -43,6 +50,7 @@ function rectFrom(x0: number, y0: number, x1: number, y1: number): RectShape {
 export function ScreenshareProvider({
   children,
   config = {},
+  isEnabled = true,
   onComplete,
   onSaved,
   onCancel,
@@ -71,6 +79,8 @@ export function ScreenshareProvider({
   // the double-tap listener always see current values.
   const configRef = useRef(config)
   configRef.current = config
+  const enabledRef = useRef(isEnabled)
+  enabledRef.current = isEnabled
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
   const onSavedRef = useRef(onSaved)
@@ -78,7 +88,9 @@ export function ScreenshareProvider({
   const onCancelRef = useRef(onCancel)
   onCancelRef.current = onCancel
 
-  useEffect(() => injectStyles(), [])
+  useEffect(() => {
+    if (isEnabled) injectStyles()
+  }, [isEnabled])
 
   // Full-viewport screenshot (with coordinate grid) on start and resume.
   const captureFrame = useCallback(async (reason: 'start' | 'resume') => {
@@ -125,7 +137,7 @@ export function ScreenshareProvider({
   }, [saveRecording])
 
   const start = useCallback(async () => {
-    if (recorderRef.current) return
+    if (!enabledRef.current || recorderRef.current) return
     const cfg = configRef.current
     const recorder = new Recorder({ pointerHz: cfg.pointerHz })
     recorderRef.current = recorder
@@ -208,7 +220,7 @@ export function ScreenshareProvider({
 
   // Keyboard: double-tap to start/stop, single tap to pause/resume, Esc to cancel.
   useEffect(() => {
-    if (config.activation?.enabled === false) return
+    if (!isEnabled || config.activation?.enabled === false) return
     return installKeyboard(config.activation, {
       onDouble: () => {
         if (stateRef.current === 'idle') void start()
@@ -222,7 +234,7 @@ export function ScreenshareProvider({
         if (stateRef.current !== 'idle') cancel()
       },
     })
-  }, [config.activation, start, stop, pause, resume, cancel])
+  }, [isEnabled, config.activation, start, stop, pause, resume, cancel])
 
   // While recording (not paused), capture pointer movement, clicks, and drag
   // rectangles. In block mode (default) we also stop page clicks/typing from

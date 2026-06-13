@@ -1,5 +1,9 @@
 node_modules
 .screenshare/
 dist
+packages/server/skill
 *.log
 .DS_Store
+
+# transient README copies created at pack/publish time (source of truth is root README.md)
+packages/*/README.md

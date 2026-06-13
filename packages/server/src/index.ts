@@ -1,11 +1,52 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import cors from 'cors'
 import express from 'express'
 import multer from 'multer'
 import { Store } from './store.js'
 import { transcribeRecording } from './transcribe.js'
 import { correlateRecording } from './correlate.js'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Locate the SKILL.md bundled with THIS package version. Published layout puts it
+ * at `<pkg>/skill` (sibling of `dist`); in the dev repo it also lives at the
+ * monorepo root `skills/`. Checking the bundled copy first guarantees the skill
+ * we install matches the installed @getpixel/server version.
+ */
+function resolveBundledSkill(): string {
+  const candidates = [
+    join(HERE, '..', 'skill'), // published & post-build: dist/ or src/ → ../skill
+    join(HERE, '..', '..', '..', 'skills', 'pixel'), // dev monorepo root
+  ]
+  const found = candidates.find((c) => existsSync(join(c, 'SKILL.md')))
+  if (!found) throw new Error('bundled pixel skill not found')
+  return found
+}
+
+/**
+ * `pixel-server install-skill [--global]` — copy the bundled skill into the
+ * Claude skills dir (project `.claude/skills` by default, `~/.claude/skills` with
+ * `--global`) so it always matches the installed package version.
+ */
+function installSkill(): void {
+  const global = process.argv.includes('--global')
+  const base = global
+    ? join(homedir(), '.claude', 'skills')
+    : join(process.cwd(), '.claude', 'skills')
+  const dest = join(base, 'pixel')
+  mkdirSync(dest, { recursive: true })
+  cpSync(resolveBundledSkill(), dest, { recursive: true })
+  console.log(`Installed pixel skill → ${dest}`)
+}
+
+if (process.argv[2] === 'install-skill') {
+  installSkill()
+  process.exit(0)
+}
 
 const TRANSCRIBE = process.env.SCREENSHARE_TRANSCRIBE !== '0'
 
@@ -81,7 +122,7 @@ app.post('/recordings', upload.any(), async (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`@pixel/server listening on http://localhost:${PORT}`)
+  console.log(`@getpixel/server listening on http://localhost:${PORT}`)
   console.log(`  recordings → ${join(ROOT, 'inbox')}`)
   console.log(`  transcription: ${TRANSCRIBE ? 'on' : 'off (SCREENSHARE_TRANSCRIBE=0)'}`)
 })

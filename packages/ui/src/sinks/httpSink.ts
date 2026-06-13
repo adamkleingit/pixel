@@ -3,7 +3,7 @@ import type { Recording, RecordingSink } from '../types'
 export const DEFAULT_SERVER_URL = 'http://localhost:41789'
 
 /**
- * Sends a finished recording to `@pixel/server` as multipart/form-data:
+ * Sends a finished recording to `@getpixel/server` as multipart/form-data:
  * a `meta` JSON field (startedAt, durationMs, events) plus an `audio` file part.
  */
 export function httpSink(baseUrl: string = DEFAULT_SERVER_URL): RecordingSink {

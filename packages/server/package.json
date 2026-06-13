@@ -1,23 +1,35 @@
 {
-  "name": "@pixel/server",
-  "version": "0.1.0",
+  "name": "@getpixel/server",
+  "version": "0.1.1",
   "description": "Standalone Node ingest for Pixel recordings: dropbox writer + Whisper transcription + correlation.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamkleingit/pixel.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/adamkleingit/pixel#readme",
+  "bugs": {
+    "url": "https://github.com/adamkleingit/pixel/issues"
+  },
   "type": "module",
   "bin": {
     "pixel-server": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skill"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/bundle-skill.mjs",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "cp ../../README.md README.md",
+    "postpack": "rm -f README.md"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",

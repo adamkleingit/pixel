@@ -1,44 +1,25 @@
-# Pixel
+# Pixel - the missing visual layer of coding agents
 
-This repo currently contains **Screenshare** — a host-agnostic toolkit for
-recording a short product/usage session (**audio + mouse movements/clicks,
-drag-selected regions, all timestamped**) and dropping the result on disk for a
-coding agent to act on. No dependency on any product. _(Later this repo will
-merge with the broader Pixel refactor.)_
+Pixel allows you to capture a screen recording, with **audio, mouse movements/clicks, drag-selected regions**   
+It seamlessly integrates with your existing coding agent  
 
-See [SPEC.md](./SPEC.md) for the full design.
+## Getting Started with your agent
+Simply copy-paste this into your existing coding agent:
 
-## Packages
+```
+Install and setup Pixel by following this guide:  
+https://github.com/adamkleingit/pixel#installation
+```
 
-- **`@pixel/ui`** — in-page React SDK: an overlay you mount once,
-  double-tap **Space** to start/stop. It records:
-  - **audio** (mic) + **pointer movement** + **clicks** on one timeline;
-  - on each **click**, a purple radar blip and the **DOM ancestor chain** of the
-    clicked element (tag · id · classes · text), outermost → innermost;
-  - on a **drag**, a **rectangle** (`x,y,width,height` + start/end timestamps) and
-    a **screenshot of the region** — expanded by 100px of context with the drawn
-    rectangle on top (DOM rasterization, no screen-share permission);
-  - a **full-viewport screenshot with a coordinate grid** (every 50px) at start
-    and on each resume, for spatial context.
-  - Two modes: **block** (default — page is inert; clicks/typing recorded but the
-    app doesn't react) or **passthrough** (page stays interactive). Pausing always
-    makes the page live.
-- **`@pixel/server`** — standalone Node server (runnable as `npx @pixel/server`)
-  that receives a recording, writes it to a `.screenshare/inbox/<id>/` dropbox on
-  disk, **transcribes the audio with Whisper** (Transformers.js + a bundled
-  ffmpeg, fully local) into `transcript.json`, and merges everything into a
-  time-ordered `timeline.json`.
-- **`examples/basic`** (`@pixel/example`) — a Vite React app that consumes
-  `@pixel/ui` as a published (built) package.
 
-## Use it in your app
+## Installation
 
 ```bash
-npm i @pixel/ui
+npm i @getpixel/ui @getpixel/server
 ```
 
 ```tsx
-import { ScreenshareProvider, Overlay, httpSink } from '@pixel/ui'
+import { ScreenshareProvider, Overlay, httpSink } from '@getpixel/ui'
 
 export function Root() {
   return (
@@ -52,67 +33,17 @@ export function Root() {
 }
 ```
 
-Run the ingest server alongside your app (writes the dropbox + transcribes):
+Install the skill
 
 ```bash
-npx @pixel/server          # http://localhost:41789 → writes .screenshare/inbox/<id>/
+npx @getpixel/server install-skill --global # → ~/.claude/skills/pixel
 ```
 
-## On-disk recording layout
-
-```
-.screenshare/inbox/<id>/
-  meta.json         id, startedAt, durationMs, counts
-  events.json       pointer / click (+ target chain) / rect events, on one t-clock
-  audio.webm        mic audio (omitted if mic denied)
-  transcript.json   Whisper output: { text, segments:[{start,end,text}], language }
-  timeline.json     merged brief: { frames[], beats[] } (speech/silence beats)
-  snaps/
-    frame-*.png     full-viewport screenshots w/ coordinate grid (start/resume)
-    snap-*.png      region screenshots (100px padding + drawn rectangle)
-```
-
-## Develop this repo
-
-```bash
-git clone https://github.com/adamkleingit/pixel
-cd pixel
-npm install
-npm run build            # build @pixel/ui + @pixel/server
-
-# terminal 1 — the server (writes ./.screenshare/inbox/<id>/)
-npm run server          # http://localhost:41789
-
-# terminal 2 — the example app (consumes @pixel/ui as a built package)
-npm run example         # http://localhost:5180
-```
-
-Open the example, **double-tap Space** to start recording (allow the mic), move
-the mouse and click around (each click pulses a purple radar blip), then
-**double-tap Space** again to stop. The recording is POSTed to the server and
-saved under `screenshare/.screenshare/inbox/`.
-
-Recordings save to `screenshare/.screenshare/inbox/<id>/`. The first recording
-with audio downloads the Whisper model (~150 MB) once; transcription then runs in
-the background and writes `transcript.json`.
-
-## Hand recordings to your coding agent (Claude Code skill)
-
-A recording is a hands-free brief. The included **`screenshare-watch`** skill
-([skills/screenshare-watch](skills/screenshare-watch/SKILL.md)) teaches Claude
-Code to claim a new recording from the dropbox, read its `timeline.json` (what
-you said + what you clicked/selected), act on it, and move it to `done/`.
-
-Install it into Claude Code:
-
-```bash
-npx skills add https://github.com/adamkleingit/pixel/tree/main/skills/screenshare-watch
-```
-
-Then tell Claude Code: **"check for screenshare recordings"** (or "watch
-screenshare"). The skill installs/runs `@pixel/server` for the dropbox and is
-otherwise agent-agnostic — it only reads files — so the same dropbox works with
-any coding agent.
+## Running
+1. Send **"pixel"** (or "start pixel") to your coding agent
+2. Start recording by double-tapping **Space** inside your app
+3. Describe your changes. Single **Space** to pause/resume, double **Space** to finish, **Esc** to cancel
+4. Your agent will do the rest
 
 ### Configuration
 
@@ -122,7 +53,7 @@ SDK (`ScreenshareProvider` `config` prop):
 <ScreenshareProvider
   config={{
     sink: httpSink('http://localhost:41789'),
-    language: 'hebrew',        // transcription hint; defaults to browser locale in the example
+    language: 'english',        // transcription hint; defaults to browser locale in the example
     passthrough: false,        // initial mode: false = page inert, true = clicks pass through
     stopDelayMs: 500,          // keep recording this long after Stop
     bar: {
@@ -155,6 +86,72 @@ Server (env vars):
 - `SCREENSHARE_DIR` (default: `.screenshare/` at the workspace root)
 - `SCREENSHARE_TRANSCRIBE` (`0` to disable transcription)
 - `SCREENSHARE_WHISPER_MODEL` (default `Xenova/whisper-base`)
-- `SCREENSHARE_WHISPER_LANG` — spoken language, e.g. `hebrew`. **Unset → Whisper
+- `SCREENSHARE_WHISPER_LANG` — spoken language, e.g. `english`. **Unset → Whisper
   defaults to English**, so set this if you narrate in another language.
 - `SCREENSHARE_WHISPER_TASK` — `transcribe` (default) or `translate` (→ English).
+
+
+## Packages
+
+- **`@getpixel/ui`** — in-page React SDK: an overlay you mount once,
+  double-tap **Space** to start/stop. It records:
+  - **audio** (mic) + **pointer movement** + **clicks** on one timeline;
+  - on each **click**, a purple radar blip and the **DOM ancestor chain** of the
+    clicked element (tag · id · classes · text), outermost → innermost;
+  - on a **drag**, a **rectangle** (`x,y,width,height` + start/end timestamps) and
+    a **screenshot of the region** — expanded by 100px of context with the drawn
+    rectangle on top (DOM rasterization, no screen-share permission);
+  - a **full-viewport screenshot with a coordinate grid** (every 50px) at start
+    and on each resume, for spatial context.
+  - Two modes: **block** (default — page is inert; clicks/typing recorded but the
+    app doesn't react) or **passthrough** (page stays interactive). Pausing always
+    makes the page live.
+- **`@getpixel/server`** — standalone Node server (runnable as `npx @getpixel/server`)
+  that receives a recording, writes it to a `.screenshare/inbox/<id>/` dropbox on
+  disk, **transcribes the audio with Whisper** (Transformers.js + a bundled
+  ffmpeg, fully local) into `transcript.json`, and merges everything into a
+  time-ordered `timeline.json`.
+- **`examples/basic`** (`@getpixel/example`) — a Vite React app that consumes
+  `@getpixel/ui` as a published (built) package.
+
+## On-disk recording layout
+
+```
+.screenshare/inbox/<id>/
+  meta.json         id, startedAt, durationMs, counts
+  events.json       pointer / click (+ target chain) / rect events, on one t-clock
+  audio.webm        mic audio (omitted if mic denied)
+  transcript.json   Whisper output: { text, segments:[{start,end,text}], language }
+  timeline.json     merged brief: { frames[], beats[] } (speech/silence beats)
+  snaps/
+    frame-*.png     full-viewport screenshots w/ coordinate grid (start/resume)
+    snap-*.png      region screenshots (100px padding + drawn rectangle)
+```
+
+## Inline Figma-style editing of the user interface  
+(coming soon)  
+
+## Develop this repo
+
+```bash
+git clone https://github.com/adamkleingit/pixel
+cd pixel
+npm install
+npm run build            # build @getpixel/ui + @getpixel/server
+
+# terminal 1 — the server (writes ./.screenshare/inbox/<id>/)
+npm run server          # http://localhost:41789
+
+# terminal 2 — the example app (consumes @getpixel/ui as a built package)
+npm run example         # http://localhost:5180
+```
+
+Open the example, **double-tap Space** to start recording (allow the mic), move
+the mouse and click around (each click pulses a purple radar blip), then
+**double-tap Space** again to stop. The recording is POSTed to the server and
+saved under `screenshare/.screenshare/inbox/`.
+
+Recordings save to `screenshare/.screenshare/inbox/<id>/`. The first recording
+with audio downloads the Whisper model (~150 MB) once; transcription then runs in
+the background and writes `transcript.json`.
+

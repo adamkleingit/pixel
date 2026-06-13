@@ -2,6 +2,7 @@
   "name": "pixel",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -11,9 +12,15 @@
     "server": "npm run dev -w @getpixel/server",
     "example": "npm run dev -w @getpixel/example",
     "dev": "npm-run-all --parallel server example",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "release": "npm run build && npm publish -w @getpixel/ui -w @getpixel/server --access public"
   },
   "devDependencies": {
-    "npm-run-all": "^4.1.5"
+    "@playwright/test": "^1.60.0",
+    "jsdom": "^29.1.1",
+    "npm-run-all": "^4.1.5",
+    "vitest": "^4.1.8"
   }
 }

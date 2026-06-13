@@ -7,3 +7,9 @@ packages/server/skill
 
 # transient README copies created at pack/publish time (source of truth is root README.md)
 packages/*/README.md
+
+# e2e (Playwright) artifacts
+e2e/.artifacts/
+test-results/
+playwright-report/
+.playwright/

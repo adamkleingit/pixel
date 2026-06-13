@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -123,6 +123,27 @@ export const whisperTranscriber: Transcriber = {
       createdAt: Date.now(),
     }
   },
+}
+
+/**
+ * A deterministic transcriber that ignores the audio and returns a transcript
+ * read from a JSON file. Used for tests (set `SCREENSHARE_TRANSCRIBE_MOCK` to
+ * the fixture path) so the pipeline runs without loading Whisper or ffmpeg. The
+ * fixture supplies at least `text` + `segments`; other fields are defaulted.
+ */
+export function fileTranscriber(jsonPath: string): Transcriber {
+  return {
+    async transcribe(_audioPath: string, callOpts?: TranscribeOptions): Promise<Transcript> {
+      const raw = JSON.parse(readFileSync(jsonPath, 'utf8')) as Partial<Transcript>
+      return {
+        model: raw.model ?? 'mock',
+        language: raw.language ?? callOpts?.language,
+        text: raw.text ?? '',
+        segments: raw.segments ?? [],
+        createdAt: Date.now(),
+      }
+    },
+  }
 }
 
 /**

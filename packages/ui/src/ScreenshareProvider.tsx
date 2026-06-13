@@ -55,8 +55,13 @@ export function ScreenshareProvider({
   // Interaction mode is SDK-owned runtime state (initial from config) so it can be
   // toggled live — including mid-recording — from the floating bar.
   const [passthrough, setPassthrough] = useState(config.passthrough === true)
+  // Save status, so the overlay can surface a failure and offer a resend.
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const recorderRef = useRef<Recorder | null>(null)
+  // The recording awaiting a (re)send after a failed save, if any.
+  const pendingRef = useRef<Recording | null>(null)
 
   // Live state mirror so stable callbacks and the key listener read current state.
   const stateRef = useRef(state)
@@ -86,11 +91,47 @@ export function ScreenshareProvider({
     recorder.frame(reason, name, res.width, res.height)
   }, [])
 
+  /**
+   * Send a finished recording to the configured sink. On failure it keeps the
+   * recording around (pendingRef) and exposes a message so the overlay can offer
+   * a resend — recordings are never silently lost when the server is down.
+   */
+  const saveRecording = useCallback(async (recording: Recording) => {
+    const sink = configRef.current.sink
+    if (!sink) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const result = await sink.save(recording)
+      recording.id = result.id
+      pendingRef.current = null
+      setLastRecording({ ...recording })
+      onSavedRef.current?.(result)
+    } catch (err) {
+      pendingRef.current = recording
+      setSaveError(
+        "Couldn't send the recording — is the Pixel server running? Click resend to try again.",
+      )
+      console.error('[screenshare] failed to save recording:', err)
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  /** Re-attempt sending the recording that last failed to save. */
+  const resend = useCallback(() => {
+    const rec = pendingRef.current
+    if (rec) void saveRecording(rec)
+  }, [saveRecording])
+
   const start = useCallback(async () => {
     if (recorderRef.current) return
     const cfg = configRef.current
     const recorder = new Recorder({ pointerHz: cfg.pointerHz })
     recorderRef.current = recorder
+    // A new recording supersedes any prior failed-save state.
+    pendingRef.current = null
+    setSaveError(null)
     setState('recording')
     await recorder.start({ audio: cfg.audio !== false })
     void captureFrame('start')
@@ -124,17 +165,8 @@ export function ScreenshareProvider({
     setLastRecording(recording)
     onCompleteRef.current?.(recording)
 
-    const sink = configRef.current.sink
-    if (sink) {
-      try {
-        const result = await sink.save(recording)
-        recording.id = result.id
-        onSavedRef.current?.(result)
-      } catch (err) {
-        console.error('[screenshare] failed to save recording:', err)
-      }
-    }
-  }, [])
+    await saveRecording(recording)
+  }, [saveRecording])
 
   const pause = useCallback(() => {
     if (stateRef.current !== 'recording') return
@@ -335,13 +367,16 @@ export function ScreenshareProvider({
       setPassthrough,
       bar,
       lastRecording,
+      saveError,
+      saving,
+      resend,
       blips,
       removeBlip,
       dragRect,
       rectFlashes,
       removeRectFlash,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, blips, removeBlip, dragRect, rectFlashes, removeRectFlash],
+    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

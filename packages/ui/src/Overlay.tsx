@@ -175,6 +175,25 @@ function RecBar() {
   )
 }
 
+/** Failure toast shown when a recording couldn't be sent — offers a resend. */
+function SaveError() {
+  const { saveError, saving, resend } = useScreenshareContext()
+  if (!saveError) return null
+  return (
+    <div className="screenshare-save-error" role="alert">
+      <span className="screenshare-save-error-msg">{saveError}</span>
+      <button
+        type="button"
+        className="screenshare-save-error-btn"
+        onClick={resend}
+        disabled={saving}
+      >
+        {saving ? 'Resending…' : 'Resend'}
+      </button>
+    </div>
+  )
+}
+
 /**
  * The single overlay surface mounted by the host. Renders the floating control
  * bar, click radar blips, and drag rectangles. Only the control bar receives
@@ -191,6 +210,7 @@ export function Overlay({ className }: OverlayProps) {
   return createPortal(
     <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
       {(active || bar.always) && <RecBar />}
+      <SaveError />
       {rectFlashes.map((r) => (
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
       ))}

@@ -184,6 +184,42 @@ const CSS = `
   from { opacity: 1; }
   to   { opacity: 0; }
 }
+
+.screenshare-save-error {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 460px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  background: rgba(70, 10, 10, 0.96);
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #fee2e2;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+}
+.screenshare-save-error-msg { flex: 1; }
+.screenshare-save-error-btn {
+  flex: none;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 12px;
+  background: #ef4444;
+  color: #fff;
+  font: 600 13px ui-sans-serif, system-ui;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.screenshare-save-error-btn:hover { background: #dc2626; }
+.screenshare-save-error-btn:disabled { opacity: 0.6; cursor: default; }
 `
 
 export function injectStyles(): void {

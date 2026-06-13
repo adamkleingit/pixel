@@ -34,6 +34,12 @@ export interface ScreenshareContextValue {
   /** Resolved floating-bar appearance config. */
   bar: ResolvedBarConfig
   lastRecording: Recording | null
+  /** Human-readable message when the last save to the sink failed; null otherwise. */
+  saveError: string | null
+  /** True while a save (or resend) is in flight. */
+  saving: boolean
+  /** Re-attempt sending the last recording that failed to save. No-op if none. */
+  resend: () => void
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void

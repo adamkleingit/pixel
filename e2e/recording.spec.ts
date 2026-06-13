@@ -53,8 +53,8 @@ async function recordSession(page: Page): Promise<void> {
   await expect(status).not.toHaveClass(/recording/, { timeout: 15_000 })
 }
 
-test.beforeAll(async () => {
-  // Start each run from a clean dropbox so we read exactly one recording.
+test.beforeEach(async () => {
+  // Start each test from a clean dropbox so we read exactly one recording.
   await rm(SCREENSHARE_DIR, { recursive: true, force: true })
 })
 
@@ -130,4 +130,42 @@ test('records a session and persists every artifact to the dropbox', async ({ pa
     b.items.map((i) => i.type),
   )
   expect(itemKinds.filter((k: string) => k === 'click').length).toBeGreaterThanOrEqual(2)
+})
+
+test('surfaces an error when the upload fails, then resends successfully', async ({ page }) => {
+  // Fail only the first POST /recordings (as if the server were down); let the
+  // resend through so the recording is recovered, not lost.
+  let attempts = 0
+  await page.route('**/recordings', async (route) => {
+    attempts++
+    if (attempts === 1) await route.abort('failed')
+    else await route.continue()
+  })
+
+  await recordSession(page)
+
+  // The failed save surfaces a resend prompt that names the server, and nothing
+  // has been persisted yet.
+  const banner = page.locator('.screenshare-save-error')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText(/pixel server/i)
+  const resend = page.getByRole('button', { name: 'Resend' })
+  await expect(resend).toBeVisible()
+  expect(existsSync(INBOX_DIR)).toBe(false)
+  expect(attempts).toBe(1)
+
+  // Resend → the second POST goes through, the recording lands, banner clears.
+  await resend.click()
+  const id = await waitForReadyRecording()
+  expect(attempts).toBe(2)
+  await expect(banner).toBeHidden()
+
+  // The recovered recording is complete (audio + events + timeline).
+  const dir = join(INBOX_DIR, id)
+  const meta = await readJson(join(dir, 'meta.json'))
+  expect(meta.hasAudio).toBe(true)
+  expect(meta.eventCount).toBeGreaterThan(0)
+  expect((await stat(join(dir, 'audio.webm'))).size).toBeGreaterThan(0)
+  const timeline = await readJson(join(dir, 'timeline.json'))
+  expect(timeline.hasTranscript).toBe(true)
 })

@@ -15,11 +15,11 @@ https://github.com/adamkleingit/pixel#installation
 ## Installation
 
 ```bash
-npm i @pixel/ui @pixel/server
+npm i @getpixel/ui @getpixel/server
 ```
 
 ```tsx
-import { ScreenshareProvider, Overlay, httpSink } from '@pixel/ui'
+import { ScreenshareProvider, Overlay, httpSink } from '@getpixel/ui'
 
 export function Root() {
   return (
@@ -36,7 +36,7 @@ export function Root() {
 Install the skill
 
 ```bash
-npx @pixel/server install-skill --global # → ~/.claude/skills/pixel
+npx @getpixel/server install-skill --global # → ~/.claude/skills/pixel
 ```
 
 ## Running
@@ -93,7 +93,7 @@ Server (env vars):
 
 ## Packages
 
-- **`@pixel/ui`** — in-page React SDK: an overlay you mount once,
+- **`@getpixel/ui`** — in-page React SDK: an overlay you mount once,
   double-tap **Space** to start/stop. It records:
   - **audio** (mic) + **pointer movement** + **clicks** on one timeline;
   - on each **click**, a purple radar blip and the **DOM ancestor chain** of the
@@ -106,13 +106,13 @@ Server (env vars):
   - Two modes: **block** (default — page is inert; clicks/typing recorded but the
     app doesn't react) or **passthrough** (page stays interactive). Pausing always
     makes the page live.
-- **`@pixel/server`** — standalone Node server (runnable as `npx @pixel/server`)
+- **`@getpixel/server`** — standalone Node server (runnable as `npx @getpixel/server`)
   that receives a recording, writes it to a `.screenshare/inbox/<id>/` dropbox on
   disk, **transcribes the audio with Whisper** (Transformers.js + a bundled
   ffmpeg, fully local) into `transcript.json`, and merges everything into a
   time-ordered `timeline.json`.
-- **`examples/basic`** (`@pixel/example`) — a Vite React app that consumes
-  `@pixel/ui` as a published (built) package.
+- **`examples/basic`** (`@getpixel/example`) — a Vite React app that consumes
+  `@getpixel/ui` as a published (built) package.
 
 ## On-disk recording layout
 
@@ -137,12 +137,12 @@ Server (env vars):
 git clone https://github.com/adamkleingit/pixel
 cd pixel
 npm install
-npm run build            # build @pixel/ui + @pixel/server
+npm run build            # build @getpixel/ui + @getpixel/server
 
 # terminal 1 — the server (writes ./.screenshare/inbox/<id>/)
 npm run server          # http://localhost:41789
 
-# terminal 2 — the example app (consumes @pixel/ui as a built package)
+# terminal 2 — the example app (consumes @getpixel/ui as a built package)
 npm run example         # http://localhost:5180
 ```
 

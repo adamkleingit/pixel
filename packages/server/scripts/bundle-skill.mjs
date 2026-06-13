@@ -1,5 +1,5 @@
 // Copy the canonical skill into the server package so it ships in the published
-// tarball. This guarantees `npx @pixel/server install-skill` writes the SKILL.md
+// tarball. This guarantees `npx @getpixel/server install-skill` writes the SKILL.md
 // that matches the installed package version (same source, same build).
 import { cpSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'

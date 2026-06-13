@@ -32,12 +32,12 @@ brief (step 4), do the work (step 5), and keep listening. **Looping is the defau
 
 ## 1. Make sure the ingest server is running
 
-Recordings only land on disk if `@pixel/server` is running (it writes the dropbox
+Recordings only land on disk if `@getpixel/server` is running (it writes the dropbox
 and transcribes audio). If nothing is recording or no `.screenshare/` exists yet,
 start it (it stays up; run it in the background):
 
 ```bash
-npx @pixel/server        # http://localhost:41789 → writes .screenshare/inbox/<id>/
+npx @getpixel/server        # http://localhost:41789 → writes .screenshare/inbox/<id>/
 ```
 
 Set `SCREENSHARE_DIR` to control where it writes, and `SCREENSHARE_WHISPER_LANG`
@@ -48,8 +48,8 @@ Set `SCREENSHARE_DIR` to control where it writes, and `SCREENSHARE_WHISPER_LANG`
 > install and set it up first — then come back here, run the server, and continue
 > listening for file changes.
 >
-> This skill ships **inside** `@pixel/server`. To (re)install the copy that matches
-> your installed package version, run `npx @pixel/server install-skill` (writes
+> This skill ships **inside** `@getpixel/server`. To (re)install the copy that matches
+> your installed package version, run `npx @getpixel/server install-skill` (writes
 > `.claude/skills/pixel/`; add `--global` for `~/.claude/skills`). That
 > keeps the skill and the server in lockstep on the same version.
 
@@ -65,7 +65,7 @@ Look for the `.screenshare/` directory (default at the project root). It contain
 ```
 
 If you can't find it, ask the user for the path (it's wherever they ran
-`@pixel/server`, honoring `SCREENSHARE_DIR`).
+`@getpixel/server`, honoring `SCREENSHARE_DIR`).
 
 A recording directory contains:
 - `timeline.json` — **read this first.** The merged, time-ordered brief. Its

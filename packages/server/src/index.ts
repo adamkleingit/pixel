@@ -15,7 +15,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
  * Locate the SKILL.md bundled with THIS package version. Published layout puts it
  * at `<pkg>/skill` (sibling of `dist`); in the dev repo it also lives at the
  * monorepo root `skills/`. Checking the bundled copy first guarantees the skill
- * we install matches the installed @pixel/server version.
+ * we install matches the installed @getpixel/server version.
  */
 function resolveBundledSkill(): string {
   const candidates = [
@@ -122,7 +122,7 @@ app.post('/recordings', upload.any(), async (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`@pixel/server listening on http://localhost:${PORT}`)
+  console.log(`@getpixel/server listening on http://localhost:${PORT}`)
   console.log(`  recordings → ${join(ROOT, 'inbox')}`)
   console.log(`  transcription: ${TRANSCRIBE ? 'on' : 'off (SCREENSHARE_TRANSCRIBE=0)'}`)
 })

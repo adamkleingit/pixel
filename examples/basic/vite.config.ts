@@ -9,7 +9,7 @@ const workspaceRoot = resolve(dir, '../..')
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Consume @pixel/ui as a built (blackbox) package via its package exports —
+    // Consume @getpixel/ui as a built (blackbox) package via its package exports —
     // no source alias. Dedupe React so the SDK and app share one copy.
     dedupe: ['react', 'react-dom'],
   },

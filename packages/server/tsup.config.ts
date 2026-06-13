@@ -7,6 +7,6 @@ export default defineConfig({
   platform: 'node',
   clean: true,
   sourcemap: true,
-  // Runnable as `npx @pixel/server` / `pixel-server`.
+  // Runnable as `npx @getpixel/server` / `pixel-server`.
   banner: { js: '#!/usr/bin/env node' },
 })

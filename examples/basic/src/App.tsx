@@ -5,7 +5,7 @@ import {
   httpSink,
   useScreenshare,
   type Recording,
-} from '@pixel/ui'
+} from '@getpixel/ui'
 
 const SERVER_URL = 'http://localhost:41789'
 

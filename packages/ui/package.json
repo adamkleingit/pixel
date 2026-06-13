@@ -1,5 +1,5 @@
 {
-  "name": "@pixel/ui",
+  "name": "@getpixel/ui",
   "version": "0.1.0",
   "description": "In-page React SDK for recording a point-and-narrate session (audio + clicks + drag regions).",
   "license": "MIT",
@@ -23,7 +23,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "cp ../../README.md README.md",
+    "postpack": "rm -f README.md"
   },
   "dependencies": {
     "fix-webm-duration": "^1.0.5",

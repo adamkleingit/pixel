@@ -1,5 +1,5 @@
 {
-  "name": "@pixel/example",
+  "name": "@getpixel/example",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@pixel/ui": "*",
+    "@getpixel/ui": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

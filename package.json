@@ -7,9 +7,9 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w @pixel/ui && npm run build -w @pixel/server",
-    "server": "npm run dev -w @pixel/server",
-    "example": "npm run dev -w @pixel/example",
+    "build": "npm run build -w @getpixel/ui && npm run build -w @getpixel/server",
+    "server": "npm run dev -w @getpixel/server",
+    "example": "npm run dev -w @getpixel/example",
     "dev": "npm-run-all --parallel server example"
   },
   "devDependencies": {

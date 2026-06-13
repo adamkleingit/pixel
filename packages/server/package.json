@@ -1,5 +1,5 @@
 {
-  "name": "@pixel/server",
+  "name": "@getpixel/server",
   "version": "0.1.0",
   "description": "Standalone Node ingest for Pixel recordings: dropbox writer + Whisper transcription + correlation.",
   "license": "MIT",
@@ -18,7 +18,9 @@
     "build": "tsup && node scripts/bundle-skill.mjs",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "cp ../../README.md README.md",
+    "postpack": "rm -f README.md"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",

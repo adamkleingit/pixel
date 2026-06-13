@@ -16,8 +16,8 @@ says "a host" it means any app embedding the SDK; Pixel appears only as an
 occasional illustrative example.
 
 The project is three pieces (§3):
-- **`@pixel/ui`** — the in-page React SDK (overlay, capture, draw tools).
-- **`@pixel/server`** — a standalone Node process that receives a finished
+- **`@getpixel/ui`** — the in-page React SDK (overlay, capture, draw tools).
+- **`@getpixel/server`** — a standalone Node process that receives a finished
   recording and writes it to the on-disk dropbox (§8); later it also transcribes
   and correlates.
 - **the agent integration** — *for now, files*: the server writes the dropbox, the
@@ -30,7 +30,7 @@ The project is three pieces (§3):
 ## 1. Goals and non-goals
 
 ### 1.1 Goals
-- **Drop-in, host-agnostic.** `npm i @pixel/ui`, wrap the app in one
+- **Drop-in, host-agnostic.** `npm i @getpixel/ui`, wrap the app in one
   provider, mount one overlay. Zero dependency on any particular product, agent,
   or design system. Works in any React DOM app.
 - **Point and draw instead of typing.** While recording, the cursor changes and a
@@ -118,7 +118,7 @@ screenshare/                         ← standalone, OUTSIDE any product repo
   SPEC.md                            ← this document
   package.json                       { private, workspaces: ["packages/*", "examples/*"] }
   packages/
-    ui/                              @pixel/ui — the in-page SDK
+    ui/                              @getpixel/ui — the in-page SDK
       package.json                   { peerDependencies: { react, react-dom } }
       src/
         index.tsx          public surface
@@ -136,11 +136,11 @@ screenshare/                         ← standalone, OUTSIDE any product repo
           strokes.ts       in-progress + fading-stroke render model
           blip.tsx         click "radar blip" animation
         sinks/
-          httpSink.ts      POST the Recording to @pixel/server
+          httpSink.ts      POST the Recording to @getpixel/server
         types.ts           Recording, ScreenshareEvent, Target, GestureEvent…
         plugins.ts         ToolPlugin + ElementResolver + RecordingSink contracts
   packages/
-    server/                          @pixel/server — standalone Node ingest
+    server/                          @getpixel/server — standalone Node ingest
       src/
         index.ts           HTTP server: POST /recordings, GET /recordings/:id/status
         store.ts           atomic dropbox writer (inbox/working/done)
@@ -152,7 +152,7 @@ screenshare/                         ← standalone, OUTSIDE any product repo
 The entire SDK public surface:
 
 ```ts
-// @pixel/ui
+// @getpixel/ui
 export function ScreenshareProvider(props: {
   children: React.ReactNode
   config?: ScreenshareConfig
@@ -507,7 +507,7 @@ interface SnapshotProvider {
 }
 ```
 
-**Pixel's adapter** (lives in `@pixel/canvas`, not in the library):
+**Pixel's adapter** (lives in `@getpixel/canvas`, not in the library):
 - An `ElementResolver` that reads `data-pixel-id` off the element and runs it
   through `pixelIdResolver` → `{ pixelId, source: { filePath, line, column } }`
   (inner-components.md §2.1). Now every click/drawing target the library emits is
@@ -581,7 +581,7 @@ The SDK is in-page; it cannot touch the filesystem. Persistence is a configured
 and exposes the returned status stream to the HUD via `sink.watch(id)`. Sink
 implementations:
 
-- **HTTP sink → `@pixel/server` (default).** The SDK `POST`s the recording
+- **HTTP sink → `@getpixel/server` (default).** The SDK `POST`s the recording
   (multipart: `events.json` + `audio.webm` + any snapshot PNGs) to the standalone
   server, which writes the dropbox and serves `GET /recordings/:id/status` (SSE)
   for status back. Agent-agnostic, works in any browser; **this is the Phase 1
@@ -594,7 +594,7 @@ implementations:
   Chromium-only, a permission prompt, and status read-back is polling.
 
 ### 8.4 The server — who runs, who transcribes
-**Yes, there is a standalone Node process: `@pixel/server`.** It is the
+**Yes, there is a standalone Node process: `@getpixel/server`.** It is the
 only thing outside the browser that touches a recording, and it is **not part of
 any agent or product** — it runs on its own (and a host like Pixel may *also*
 launch it alongside its agent, but that's optional). The browser does *not* stream
@@ -682,13 +682,13 @@ optional rather than required, for agents that can hold a live subscription.
 
 ## 9. Modules
 
-- **`@pixel/ui` (the SDK):** the entire in-page library in §3 — provider,
+- **`@getpixel/ui` (the SDK):** the entire in-page library in §3 — provider,
   overlay, state machine, audio capture + level meter, pointer/hover/click
   capture, shadow-piercing hit-testing, the built-in draw tools + blip/fade
   rendering, double-Space key handling, the `ToolPlugin` / `ElementResolver` /
   `RecordingSink` seams, the default `httpSink`, and the `Recording`/event types.
   **No imports from any host/product.**
-- **`@pixel/server` (the standalone Node ingest):** `POST /recordings`
+- **`@getpixel/server` (the standalone Node ingest):** `POST /recordings`
   (writes the atomic dropbox) and `GET /recordings/:id/status` (SSE). Later
   (Phase 2): the pluggable **`Transcriber`** (local default) and the
   **correlation pass**, writing `transcript.json` into `inbox/`. Audio stays on
@@ -707,7 +707,7 @@ product**:
 
 - A demo page of plain components (buttons, cards, a list) wrapped in
   `<ScreenshareProvider config={{ sink: httpSink(serverUrl) }}>` with `<Overlay/>`.
-- Records via double-Space, sends to `@pixel/server`, and shows the local
+- Records via double-Space, sends to `@getpixel/server`, and shows the local
   `Recording` (event count, duration, audio size) so you can see capture working
   without any agent.
 - Later it grows a stub `ElementResolver` (reads a `data-loc` attribute) and an
@@ -723,10 +723,10 @@ It is both the manual test harness and the package's living documentation.
 A later, separate effort — **not** an alternative to the in-page library but a
 *shell around it* (rationale in §2):
 - An Electron transparent, click-through, always-on-top window (Pixel already has
-  `@pixel/desktop`) provides a whole-screen **drawing + cursor** surface and a
+  `@getpixel/desktop`) provides a whole-screen **drawing + cursor** surface and a
   global pointer hook.
 - **Element targeting still requires an in-page agent**: the shell injects the
-  same `@pixel/ui` core into each web view it overlays; there it gets
+  same `@getpixel/ui` core into each web view it overlays; there it gets
   full DOM + pixel-id targeting. Over **non-web** surfaces (native apps, other
   browsers) it degrades to **coordinates + bleeps + drawings only**, optionally
   enriched by the OS Accessibility tree (coarse, no component identity).
@@ -761,7 +761,7 @@ Other deferred items:
 
 ### Phase 1 — capture UI + server + example (this build)
 The smallest end-to-end loop, **no LLM, no transcription, no targeting**:
-1. **`@pixel/ui` skeleton**: provider + overlay + pure state machine,
+1. **`@getpixel/ui` skeleton**: provider + overlay + pure state machine,
    `idle ⇄ recording`, driven by **double-Space to start and double-Space to
    stop** (input-focus guarded) and `start()/stop()` from `useScreenshare()`.
    A minimal REC indicator (dot + timer).
@@ -771,7 +771,7 @@ The smallest end-to-end loop, **no LLM, no transcription, no targeting**:
    — full inert-page capture comes with the tools in Phase 2.
 3. **Click radar blip**: each click spawns a **purple glowing radar blip** that
    expands and fades.
-4. **`httpSink` + `@pixel/server`**: on stop, POST the `Recording`
+4. **`httpSink` + `@getpixel/server`**: on stop, POST the `Recording`
    (events JSON + audio blob) to the server, which **writes it to disk** in the
    `inbox/<id>/` dropbox (atomic temp-dir → rename).
 5. **`examples/basic`**: a Vite React app mounting the SDK against the server.

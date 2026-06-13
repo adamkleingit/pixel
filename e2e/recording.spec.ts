@@ -114,6 +114,47 @@ test('rectangles only record with the mouse tool on; clicks record either way', 
   expect(clicks.length).toBeGreaterThanOrEqual(1) // the passthrough click was recorded
 })
 
+test('Cmd+drag draws a freehand stroke (recorded with a snapshot) when the tool is on', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+  await page.waitForTimeout(300)
+
+  // Cmd held + drag = freehand draw (not a rectangle).
+  await page.keyboard.down('Meta')
+  await page.mouse.move(200, 300)
+  await page.mouse.down()
+  await page.mouse.move(260, 340, { steps: 5 })
+  await page.mouse.move(320, 300, { steps: 5 })
+  await page.mouse.move(380, 360, { steps: 5 })
+  await page.mouse.up()
+  await page.keyboard.up('Meta')
+
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Space')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/, { timeout: 15_000 })
+
+  const id = await waitForReadyRecording()
+  const dir = join(INBOX_DIR, id)
+  const events = await readJson(join(dir, 'events.json'))
+  const draws = events.filter((e: { kind: string }) => e.kind === 'draw')
+  const rects = events.filter((e: { kind: string }) => e.kind === 'rect')
+  expect(draws).toHaveLength(1)
+  expect(rects).toHaveLength(0) // Cmd+drag is a stroke, not a rectangle
+  expect(draws[0].points.length).toBeGreaterThanOrEqual(2)
+
+  // The stroke's region screenshot is persisted and referenced.
+  expect(draws[0].snapshot).toBeTruthy()
+  expect((await stat(join(dir, 'snaps', draws[0].snapshot))).size).toBeGreaterThan(0)
+
+  // And it's surfaced in the correlated timeline as a draw item.
+  const timeline = await readJson(join(dir, 'timeline.json'))
+  const items = timeline.beats.flatMap((b: { items: { type: string }[] }) => b.items)
+  expect(items.some((i: { type: string }) => i.type === 'draw')).toBe(true)
+})
+
 test('records a session and persists every artifact to the dropbox', async ({ page }) => {
   await recordSession(page)
 

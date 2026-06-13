@@ -5,6 +5,18 @@ import { buildTimeline } from './correlate'
 const click = (t: number, target: any[] = []) => ({ kind: 'click', t, x: 0, y: 0, target })
 const pointer = (t: number) => ({ kind: 'pointer', t })
 const rect = (t: number) => ({ kind: 'rect', t, x: 1, y: 2, width: 3, height: 4, startT: t, endT: t })
+const draw = (t: number) => ({
+  kind: 'draw',
+  t,
+  x: 10,
+  y: 20,
+  width: 30,
+  height: 40,
+  startT: t,
+  endT: t,
+  points: [{ x: 10, y: 20 }, { x: 40, y: 60 }],
+  snapshot: `draw-${t}.png`,
+})
 const seg = (start: number, end: number, text: string) => ({ start, end, text })
 
 describe('buildTimeline', () => {
@@ -64,6 +76,13 @@ describe('buildTimeline', () => {
     expect(silence[1].items).toHaveLength(1)
     expect(silence[0].startMs).toBe(100)
     expect(silence[0].endMs).toBe(1000)
+  })
+
+  it('surfaces a draw event as a draw item carrying its region + snapshot', () => {
+    const tl = buildTimeline([draw(500)], [seg(0, 1, 'a')], 1000)
+    const item = tl.beats.find((b) => b.kind === 'speech')!.items[0]
+    expect(item.type).toBe('draw')
+    expect(item.rect).toMatchObject({ x: 10, y: 20, width: 30, height: 40, snapshot: 'draw-500.png' })
   })
 
   it('extracts frame events into frames[] instead of beats', () => {

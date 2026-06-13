@@ -9,6 +9,8 @@ export interface Rect {
 
 /** Padding (px) added around a drag rectangle so the agent sees surrounding context. */
 const RECT_PADDING = 100
+/** Padding (px) added around a freehand stroke's bounding box. */
+const STROKE_PADDING = 60
 /** Grid spacing (px) for the coordinate overlay on full-frame screenshots. */
 const GRID_STEP = 50
 
@@ -130,6 +132,54 @@ export async function captureRegion(rect: Rect): Promise<Blob | null> {
     rx,
     Math.max(11, ry - 3),
   )
+
+  return await toBlob(out)
+}
+
+/**
+ * Screenshot of a freehand stroke's region (bounding box + STROKE_PADDING) with
+ * the stroke drawn on top — so the agent sees the annotation in context.
+ * Best-effort; returns null on failure.
+ */
+export async function captureStroke(
+  points: { x: number; y: number }[],
+  bbox: Rect,
+): Promise<Blob | null> {
+  if (typeof document === 'undefined' || points.length < 2) return null
+  const full = await rasterizeBody()
+  if (!full) return null
+
+  // Region (document coords) around the stroke's bbox, expanded + clamped.
+  const docX = bbox.x + window.scrollX
+  const docY = bbox.y + window.scrollY
+  const sx = Math.max(0, docX - STROKE_PADDING)
+  const sy = Math.max(0, docY - STROKE_PADDING)
+  const ex = Math.min(full.width, docX + bbox.width + STROKE_PADDING)
+  const ey = Math.min(full.height, docY + bbox.height + STROKE_PADDING)
+  const w = Math.round(ex - sx)
+  const h = Math.round(ey - sy)
+  if (w < 1 || h < 1) return null
+
+  const out = document.createElement('canvas')
+  out.width = w
+  out.height = h
+  const ctx = out.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(full, sx, sy, w, h, 0, 0, w, h)
+
+  // Draw the stroke (relative to the cropped origin).
+  ctx.strokeStyle = 'rgba(168, 85, 247, 0.95)'
+  ctx.lineWidth = 3
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  points.forEach((p, i) => {
+    const x = p.x + window.scrollX - sx
+    const y = p.y + window.scrollY - sy
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+  })
+  ctx.stroke()
 
   return await toBlob(out)
 }

@@ -185,6 +185,29 @@ const CSS = `
   to   { opacity: 0; }
 }
 
+/* Freehand stroke (Cmd+drag). Full-viewport SVG; coords are client px. */
+.screenshare-stroke,
+.screenshare-stroke-flash {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.screenshare-stroke path,
+.screenshare-stroke-flash path {
+  fill: none;
+  stroke: rgba(168, 85, 247, 0.95);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.6));
+}
+.screenshare-stroke-flash {
+  animation: screenshare-rect-fade 1100ms ease-out forwards;
+}
+
 .screenshare-save-error {
   position: fixed;
   bottom: 16px;

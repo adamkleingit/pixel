@@ -112,9 +112,10 @@ time order:
 - `kind: "silence"` — clicks/rects with no narration nearby.
 
 Each item is a `click` (with `summary` like `div.card > button.btn "Upgrade"` and
-the innermost `element`) or a `rect` (with the selected region and a `snapshot`
-filename in `snaps/`). For rects, **view the PNG** — it shows exactly what the
-user selected. `pointerCount` summarizes mouse movement.
+the innermost `element`), a `rect` (a selected region), or a `draw` (a freehand
+Cmd+drag annotation). Both `rect` and `draw` carry a `snapshot` filename in
+`snaps/` — **view the PNG**: it shows exactly what the user boxed or sketched.
+`pointerCount` summarizes mouse movement.
 
 Treat the speech as the instruction and the clicked elements / selected regions
 as the *where*. Example beat → "make this tighter" + a click on

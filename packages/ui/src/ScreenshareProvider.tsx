@@ -5,14 +5,16 @@ import {
   type RectShape,
   type ResolvedBarConfig,
   type ScreenshareContextValue,
+  type StrokeFlash,
+  type StrokeShape,
 } from './context'
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
-import { captureFullFrame, captureRegion } from './capture/snapshot'
+import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
-import type { Recording, ScreenshareConfig, ScreenshareState } from './types'
+import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
@@ -48,6 +50,16 @@ export interface ScreenshareProviderProps {
 
 let nextBlipId = 1
 let nextFlashId = 1
+let nextStrokeId = 1
+
+/** Axis-aligned bounding box of a set of points. */
+function boundsOf(points: { x: number; y: number }[]): RectShape {
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
+}
 
 function rectFrom(x0: number, y0: number, x1: number, y1: number): RectShape {
   return {
@@ -71,6 +83,8 @@ export function ScreenshareProvider({
   const [blips, setBlips] = useState<BlipData[]>([])
   const [dragRect, setDragRect] = useState<RectShape | null>(null)
   const [rectFlashes, setRectFlashes] = useState<RectFlash[]>([])
+  const [drawStroke, setDrawStroke] = useState<StrokeShape | null>(null)
+  const [drawFlashes, setDrawFlashes] = useState<StrokeFlash[]>([])
   // Interaction mode is SDK-owned runtime state (initial from config) so it can be
   // toggled live — including mid-recording — from the floating bar.
   const [passthrough, setPassthrough] = useState(config.passthrough === true)
@@ -185,6 +199,8 @@ export function ScreenshareProvider({
     setBlips([])
     setRectFlashes([])
     setDragRect(null)
+    setDrawStroke(null)
+    setDrawFlashes([])
     setLastRecording(recording)
     onCompleteRef.current?.(recording)
 
@@ -196,6 +212,7 @@ export function ScreenshareProvider({
     recorderRef.current?.pause()
     setState('paused')
     setDragRect(null)
+    setDrawStroke(null)
   }, [])
 
   const resume = useCallback(() => {
@@ -213,6 +230,8 @@ export function ScreenshareProvider({
     setBlips([])
     setRectFlashes([])
     setDragRect(null)
+    setDrawStroke(null)
+    setDrawFlashes([])
     onCancelRef.current?.()
   }, [])
 
@@ -227,6 +246,10 @@ export function ScreenshareProvider({
 
   const removeRectFlash = useCallback((id: number) => {
     setRectFlashes((prev) => prev.filter((r) => r.id !== id))
+  }, [])
+
+  const removeDrawFlash = useCallback((id: number) => {
+    setDrawFlashes((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
   // Keyboard: double-tap to start/stop, single tap to pause/resume, Esc to cancel.
@@ -265,13 +288,23 @@ export function ScreenshareProvider({
       return t instanceof Element && !!t.closest('.screenshare-overlay')
     }
 
-    let drag: { x: number; y: number; startT: number; moved: boolean } | null = null
+    // A gesture in progress. `pen` (Cmd+drag, tool-on only) draws a freehand
+    // stroke; otherwise it's a click / rectangle.
+    let drag:
+      | { x: number; y: number; startT: number; moved: boolean; pen: boolean; points: StrokePoint[] }
+      | null = null
 
     const onMove = (e: PointerEvent) => {
       if (isOwnUI(e)) return
       if (block) e.preventDefault()
       recorderRef.current?.samplePointer(e.clientX, e.clientY)
       if (!drag) return
+      if (drag.pen) {
+        drag.moved = true
+        drag.points.push({ x: e.clientX, y: e.clientY })
+        setDrawStroke({ points: drag.points.slice() })
+        return
+      }
       const dx = e.clientX - drag.x
       const dy = e.clientY - drag.y
       if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
@@ -288,7 +321,16 @@ export function ScreenshareProvider({
       }
       const rec = recorderRef.current
       if (!rec) return
-      drag = { x: e.clientX, y: e.clientY, startT: rec.clock(), moved: false }
+      // Cmd+drag with the mouse tool on = freehand draw; otherwise click/rect.
+      const pen = block && e.metaKey
+      drag = {
+        x: e.clientX,
+        y: e.clientY,
+        startT: rec.clock(),
+        moved: false,
+        pen,
+        points: pen ? [{ x: e.clientX, y: e.clientY }] : [],
+      }
     }
 
     const onUp = (e: PointerEvent) => {
@@ -301,6 +343,22 @@ export function ScreenshareProvider({
       const d = drag
       drag = null
       if (!rec || !d) return
+
+      // Cmd+drag: record the freehand stroke, flash it, and snapshot its region.
+      if (d.pen) {
+        setDrawStroke(null)
+        if (d.points.length < 2) return // a tap, not a stroke
+        const b = boundsOf(d.points)
+        const ev = rec.draw({ startT: d.startT, points: d.points, ...b })
+        setDrawFlashes((prev) => [...prev, { id: nextStrokeId++, points: d.points }])
+        const name = `draw-${Math.round(d.startT)}.png`
+        ev.snapshot = name
+        void captureStroke(d.points, b).then((blob) => {
+          if (blob) rec.addSnapshot(name, blob)
+          else ev.snapshot = undefined
+        })
+        return
+      }
 
       if (!d.moved) {
         // A click: record the target element chain + show a radar blip.
@@ -416,8 +474,11 @@ export function ScreenshareProvider({
       dragRect,
       rectFlashes,
       removeRectFlash,
+      drawStroke,
+      drawFlashes,
+      removeDrawFlash,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash],
+    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawFlashes, removeDrawFlash],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

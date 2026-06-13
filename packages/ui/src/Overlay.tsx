@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
+import { DrawStroke, StrokeFlashView } from './draw/stroke'
 
 export interface OverlayProps {
   /** Extra class applied to the overlay root. */
@@ -241,8 +242,18 @@ function SaveError() {
  * pointer events; the rest passes through so the page stays interactive.
  */
 export function Overlay({ className }: OverlayProps) {
-  const { state, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, bar } =
-    useScreenshareContext()
+  const {
+    state,
+    blips,
+    removeBlip,
+    dragRect,
+    rectFlashes,
+    removeRectFlash,
+    drawStroke,
+    drawFlashes,
+    removeDrawFlash,
+    bar,
+  } = useScreenshareContext()
 
   if (typeof document === 'undefined') return null
 
@@ -256,6 +267,10 @@ export function Overlay({ className }: OverlayProps) {
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
       ))}
       {dragRect && <DragRect rect={dragRect} />}
+      {drawFlashes.map((s) => (
+        <StrokeFlashView key={s.id} flash={s} onDone={removeDrawFlash} />
+      ))}
+      {drawStroke && <DrawStroke stroke={drawStroke} />}
       {blips.map((b) => (
         <Blip key={b.id} data={b} onDone={removeBlip} />
       ))}

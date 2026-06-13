@@ -94,10 +94,12 @@ recording. A **−/＋** button minimizes/expands it. Positions:
 `center-left` / `center-right` lay the bar out **vertically**. Opacity defaults to
 30% and animates to 100% on hover.
 
-The **mouse tool** (on by default) makes the page inert and lets you draw
-rectangles; toggling it off is passthrough (clicks reach the page). Toggle it
-live from the bar, with the **`M`** key while recording, or via
-`useScreenshare().setPassthrough(...)`; pausing always makes the page live.
+The **mouse tool** (on by default) makes the page inert so you can annotate:
+**drag** to box a region, or **Cmd+drag** to sketch a freehand stroke — both are
+captured as screenshots for the agent. Toggling the tool off is passthrough
+(clicks reach the page and are still recorded, but rectangles/strokes are
+disabled). Toggle it live from the bar, with the **`M`** key while recording, or
+via `useScreenshare().setPassthrough(...)`; pausing always makes the page live.
 
 Server (env vars):
 - `SCREENSHARE_PORT` (default `41789`)
@@ -137,13 +139,14 @@ Server (env vars):
 ```
 .screenshare/inbox/<id>/
   meta.json         id, startedAt, durationMs, counts
-  events.json       pointer / click (+ target chain) / rect events, on one t-clock
+  events.json       pointer / click (+ target chain) / rect / draw events, on one t-clock
   audio.webm        mic audio (omitted if mic denied)
   transcript.json   Whisper output: { text, segments:[{start,end,text}], language }
   timeline.json     merged brief: { frames[], beats[] } (speech/silence beats)
   snaps/
     frame-*.png     full-viewport screenshots w/ coordinate grid (start/resume)
     snap-*.png      region screenshots (100px padding + drawn rectangle)
+    draw-*.png      freehand-stroke screenshots (Cmd+drag, stroke drawn on top)
 ```
 
 ## Inline Figma-style editing of the user interface  

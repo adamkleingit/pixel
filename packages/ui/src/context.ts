@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState } from './types'
+import type { BarPosition, Recording, ScreenshareState, StrokePoint } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -16,6 +16,15 @@ export interface RectShape {
 }
 
 export interface RectFlash extends RectShape {
+  id: number
+}
+
+/** A freehand stroke (Cmd+drag), as client-coord points. */
+export interface StrokeShape {
+  points: StrokePoint[]
+}
+
+export interface StrokeFlash extends StrokeShape {
   id: number
 }
 
@@ -48,6 +57,11 @@ export interface ScreenshareContextValue {
   /** Completed rectangles fading out. */
   rectFlashes: RectFlash[]
   removeRectFlash: (id: number) => void
+  /** The freehand stroke currently being drawn (Cmd+drag), if any. */
+  drawStroke: StrokeShape | null
+  /** Completed strokes fading out. */
+  drawFlashes: StrokeFlash[]
+  removeDrawFlash: (id: number) => void
 }
 
 export const ScreenshareContext = createContext<ScreenshareContextValue | null>(null)

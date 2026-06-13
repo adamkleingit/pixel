@@ -45,6 +45,28 @@ export interface RectEvent {
   snapshot?: string
 }
 
+/** A point in a freehand stroke, in client coordinates. */
+export interface StrokePoint {
+  x: number
+  y: number
+}
+
+/** A freehand annotation drawn with Cmd/Meta + drag while the mouse tool is on.
+ *  `t`/`startT`/`endT` are ms since recording start. `x/y/width/height` is the
+ *  stroke's bounding box; `snapshot` is the region screenshot (stroke baked in). */
+export interface DrawEvent {
+  kind: 'draw'
+  t: number
+  startT: number
+  endT: number
+  points: StrokePoint[]
+  x: number
+  y: number
+  width: number
+  height: number
+  snapshot?: string
+}
+
 /** A full-viewport screenshot taken at recording start or on resume. The PNG has
  *  a semi-transparent coordinate grid baked in for the agent's spatial context. */
 export interface FrameEvent {
@@ -56,7 +78,7 @@ export interface FrameEvent {
   height: number
 }
 
-export type ScreenshareEvent = PointerSample | ClickEvent | RectEvent | FrameEvent
+export type ScreenshareEvent = PointerSample | ClickEvent | RectEvent | DrawEvent | FrameEvent
 
 export interface AudioTrack {
   mime: string

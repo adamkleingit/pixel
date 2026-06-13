@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Standalone Node ingest for Pixel recordings: dropbox writer + Whisper transcription + correlation.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamkleingit/pixel.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/adamkleingit/pixel#readme",
+  "bugs": {
+    "url": "https://github.com/adamkleingit/pixel/issues"
+  },
   "type": "module",
   "bin": {
     "pixel-server": "./dist/index.js"

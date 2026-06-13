@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "In-page React SDK for recording a point-and-narrate session (audio + clicks + drag regions).",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamkleingit/pixel.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://github.com/adamkleingit/pixel#readme",
+  "bugs": {
+    "url": "https://github.com/adamkleingit/pixel/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

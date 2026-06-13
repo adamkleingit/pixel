@@ -655,7 +655,7 @@ is grounded in source with no DOM access on the Node side. This pass runs in the
 ingest process too (it owns the transcript); the agent skill consumes its output.
 
 ### 8.6 The agent skill (the watch loop)
-A `screenshare-watch` skill, run long-lived (or via `/loop`):
+A `pixel` skill, run long-lived (or via `/loop`):
 
 1. watch `inbox/` (fs events, fall back to poll).
 2. on a new recording: **atomic-claim** → `working/`, write `claim.json`, start
@@ -692,7 +692,7 @@ optional rather than required, for agents that can hold a live subscription.
   (writes the atomic dropbox) and `GET /recordings/:id/status` (SSE). Later
   (Phase 2): the pluggable **`Transcriber`** (local default) and the
   **correlation pass**, writing `transcript.json` into `inbox/`. Audio stays on
-  `127.0.0.1`. Ships the `screenshare-watch` skill (§8.6). Self-contained — no
+  `127.0.0.1`. Ships the `pixel` skill (§8.6). Self-contained — no
   product dependency.
 - **`examples/basic` (the example app):** a plain Vite React app, §9.1.
 - **Optional host adapters (live in the host repo, not here):** e.g. a Pixel
@@ -796,7 +796,7 @@ The smallest end-to-end loop, **no LLM, no transcription, no targeting**:
   floating Pause/Stop controls. *(Phase 1 still uses double-Space to toggle.)*
 - **Inert-page mode + drawing tools** (arrow, pen, ellipse) beyond the drag rect.
 - The **correlation pass** (§8.5) joining transcript segments ↔ events, and the
-  `screenshare-watch` skill (§8.6).
+  `pixel` skill (§8.6).
 - Optional **host adapters** (e.g. a Pixel pixel-id `ElementResolver` + Select
   tool) proving the seams.
 

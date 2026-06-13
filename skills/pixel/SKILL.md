@@ -1,11 +1,13 @@
 ---
-name: screenshare-watch
+name: pixel
 description: >
   Pick up Screenshare recordings (voice + clicks + selected regions) dropped on
-  disk and act on them as implementation briefs. Use when the user says "check
-  for recordings", "watch screenshare", "process my recording", or points you at
-  a .screenshare dropbox folder. Each recording is a spoken request grounded in
-  the elements the user clicked and the regions they selected.
+  disk and act on them as implementation briefs. Use when the user says "pixel",
+  "start pixel", "check for recordings", "watch screenshare", "process my
+  recording", or points you at a .screenshare dropbox folder. On "pixel" / "start
+  pixel", start the ingest server and watch for recordings (steps 1 → 6). Each
+  recording is a spoken request grounded in the elements the user clicked and the
+  regions they selected.
 ---
 
 # Screenshare watch
@@ -14,6 +16,19 @@ Screenshare records a short session — microphone audio (transcribed), mouse
 movements/clicks, and drag-selected regions (with screenshots) — and drops it
 into an on-disk **dropbox**. Your job is to claim a new recording, understand it
 as a brief, and carry it out in the current codebase.
+
+**"pixel" / "start pixel"** — start the ingest server (step 1), then **tell the
+user how to record** (verbatim):
+
+```
+1. Start recording by double-tapping **Space** inside your app
+2. Describe your changes. Single **Space** to pause/resume, double **Space** to finish, **Esc** to cancel
+3. I (your agent) will do the rest
+```
+
+Then **loop** (step 6): each time a recording lands, claim it (step 3), read the
+brief (step 4), do the work (step 5), and keep listening. **Looping is the default
+— keep watching until the user explicitly asks you to stop.**
 
 ## 1. Make sure the ingest server is running
 
@@ -27,6 +42,16 @@ npx @pixel/server        # http://localhost:41789 → writes .screenshare/inbox/
 
 Set `SCREENSHARE_DIR` to control where it writes, and `SCREENSHARE_WHISPER_LANG`
 (e.g. `hebrew`) if narration isn't English.
+
+> **If Pixel isn't installed or isn't configured correctly** (the command fails,
+> the package is missing, or the server won't start), follow the project README to
+> install and set it up first — then come back here, run the server, and continue
+> listening for file changes.
+>
+> This skill ships **inside** `@pixel/server`. To (re)install the copy that matches
+> your installed package version, run `npx @pixel/server install-skill` (writes
+> `.claude/skills/pixel/`; add `--global` for `~/.claude/skills`). That
+> keeps the skill and the server in lockstep on the same version.
 
 ## 2. Find the dropbox
 
@@ -102,7 +127,13 @@ mv "$DROP/working/$ID" "$DROP/done/$ID"
 If you couldn't complete it, write `"status": "error"` with a `message` and still
 move it to `done/` so it isn't reprocessed.
 
-## 6. Looping
+## 6. Looping (default)
 
-If asked to keep watching, repeat from step 3 (claim) whenever new recordings
-appear in `inbox/`. Otherwise process the latest one and stop.
+**Loop by default.** After finishing a recording, keep watching `inbox/` and
+repeat from step 3 (claim) whenever a new one appears. Process recordings as they
+land and stay running between them.
+
+**Stop only when the user explicitly asks** ("stop", "stop pixel", "stop
+watching"). At that point exit the loop and leave the server as-is (or stop it if
+they ask). Don't stop just because the inbox is momentarily empty — wait for the
+next recording.

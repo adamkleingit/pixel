@@ -10,7 +10,8 @@
     "build": "npm run build -w @getpixel/ui && npm run build -w @getpixel/server",
     "server": "npm run dev -w @getpixel/server",
     "example": "npm run dev -w @getpixel/example",
-    "dev": "npm-run-all --parallel server example"
+    "dev": "npm-run-all --parallel server example",
+    "release": "npm run build && npm publish -w @getpixel/ui -w @getpixel/server --access public"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

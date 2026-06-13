@@ -13,11 +13,16 @@ https://github.com/adamkleingit/pixel#installation
 
 
 ## Installation
+First install @getpixel/ui and @getpixel/server in your codebase, and add to your package.json  
 
+Using npm/yarn/bun:
 ```bash
-npm i @getpixel/ui @getpixel/server
+npm install @getpixel/ui @getpixel/server
+yarn add @getpixel/ui @getpixel/server
+bun install @getpixel/ui @getpixel/server
 ```
 
+Then add the provider and overlay to your app:
 ```tsx
 import { ScreenshareProvider, Overlay, httpSink } from '@getpixel/ui'
 
@@ -33,7 +38,7 @@ export function Root() {
 }
 ```
 
-Install the skill
+And then install the skill from the local pixel installation:
 
 ```bash
 npx @getpixel/server install-skill --global # → ~/.claude/skills/pixel

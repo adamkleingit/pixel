@@ -26,9 +26,11 @@ user how to record** (verbatim):
 3. I (your agent) will do the rest
 ```
 
-Then **loop** (step 6): each time a recording lands, claim it (step 3), read the
-brief (step 4), do the work (step 5), and keep listening. **Looping is the default
-— keep watching until the user explicitly asks you to stop.**
+Then enter the **watch loop** (step 6) and stay in it: first **drain** any
+recordings already waiting in the inbox, then **block** until the next one lands,
+claiming (step 3), reading (step 4), and doing the work (step 5) for each.
+**Looping is the default — keep watching until the user explicitly asks you to
+stop.**
 
 ## 1. Make sure the ingest server is running
 
@@ -80,23 +82,29 @@ A recording directory contains:
   screenshots. Region shots include **100px of padding** around the selection
   with the **user's rectangle drawn on top**, so you see the target in context.
 
-## 3. Claim a recording (atomic, multi-agent safe)
+## 3. Claim a recording
 
-Claim by renaming the directory — `mv` is atomic, so two agents can't grab the
-same one:
+Don't touch the dropbox directories yourself — let the server do it. Run:
 
 ```bash
-DROP=.screenshare
-ID=$(ls -t "$DROP/inbox" 2>/dev/null | head -1)   # oldest-first: use `ls -tr | head -1`
-[ -n "$ID" ] || { echo "no recordings"; exit 0; }
-mkdir -p "$DROP/working" "$DROP/done"
-mv "$DROP/inbox/$ID" "$DROP/working/$ID" || { echo "already claimed"; exit 0; }
-echo "claimed $ID"
+npx @getpixel/server watch
 ```
+
+It **blocks until a recording is ready** (fully uploaded *and* transcribed), then
+atomically claims it (oldest first, multi-agent safe) and prints one JSON line:
+
+```json
+{"id":"20260613-175521-404-oauonr","dir":"/abs/path/.screenshare/working/<id>"}
+```
+
+`dir` is where the recording now lives. Read your brief from `<dir>/timeline.json`
+(see step 4). Because it blocks, this is also your watch loop — see step 6 for how
+to run it.
 
 ## 4. Read the brief
 
-Read `working/$ID/timeline.json`. It's an array of **beats** in time order:
+Read `<dir>/timeline.json` (the `dir` from step 3). It's an array of **beats** in
+time order:
 
 - `kind: "speech"` — `text` is what the user said in that span, and `items` are
   the clicks/rects that happened during (or within 500ms of) it. This is the
@@ -115,25 +123,40 @@ as the *where*. Example beat → "make this tighter" + a click on
 ## 5. Do the work, then finish
 
 Implement the request in the current repo (edit code, run what's needed). When
-done, record a result and move the recording to `done/`:
+done, mark the recording finished — this writes `result.json` and moves it to
+`done/` so it isn't reprocessed:
 
 ```bash
-cat > "$DROP/working/$ID/result.json" <<EOF
-{ "status": "ok", "summary": "<one line>", "files": [<edited files>], "finishedAt": $(date +%s) }
-EOF
-mv "$DROP/working/$ID" "$DROP/done/$ID"
+npx @getpixel/server done <id> --status ok --summary "<one line>" --files a.ts,b.ts
 ```
 
-If you couldn't complete it, write `"status": "error"` with a `message` and still
-move it to `done/` so it isn't reprocessed.
+If you couldn't complete it, use `--status error --message "<why>"` instead; it
+still moves to `done/`.
 
-## 6. Looping (default)
+## 6. Watch loop (default)
 
-**Loop by default.** After finishing a recording, keep watching `inbox/` and
-repeat from step 3 (claim) whenever a new one appears. Process recordings as they
-land and stay running between them.
+You **cannot watch files passively.** When you end a turn, nothing wakes you — so
+"I'm now watching" followed by stopping means you miss every recording. The watch
+*is* a running `watch` command, not a state of mind.
+
+The instant the server is up, run `npx @getpixel/server watch` **in the
+background** (`run_in_background: true`). It blocks until a recording is ready,
+then claims and prints it (step 3) — and because it claims the **oldest** ready
+recording, it also drains any backlog that piled up before you started. The
+harness re-invokes you when it exits, so the user can still talk to you while it
+waits.
+
+The loop:
+
+1. Start `watch` in the background.
+2. When it exits, read the printed `{id, dir}`, process the recording (steps 4 →
+   5: read `<dir>/timeline.json`, do the work, `done <id> ...`).
+3. Start `watch` again and wait. Repeat forever.
+
+The running `watch` *is* the loop — never replace it with a passive "waiting"
+message and then stop.
 
 **Stop only when the user explicitly asks** ("stop", "stop pixel", "stop
-watching"). At that point exit the loop and leave the server as-is (or stop it if
-they ask). Don't stop just because the inbox is momentarily empty — wait for the
-next recording.
+watching"). Then kill the running `watch`, exit the loop, and leave the server
+as-is (or stop it if they ask). Don't stop just because the inbox is momentarily
+empty — `watch` keeps blocking until the next recording.

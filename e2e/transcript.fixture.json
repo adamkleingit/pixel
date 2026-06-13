@@ -1,0 +1,8 @@
+{
+  "language": "english",
+  "text": "This is a mocked transcript. The billing card needs an upgrade button.",
+  "segments": [
+    { "start": 0, "end": 2, "text": "This is a mocked transcript." },
+    { "start": 2, "end": 5, "text": "The billing card needs an upgrade button." }
+  ]
+}

@@ -78,6 +78,42 @@ test('the M shortcut toggles the mouse tool while recording', async ({ page }) =
   await expect(page.locator('.status')).not.toHaveClass(/recording/)
 })
 
+test('rectangles only record with the mouse tool on; clicks record either way', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+  await page.waitForTimeout(300)
+
+  // Tool ON (default): a drag past the threshold records a rectangle.
+  await page.mouse.move(200, 300)
+  await page.mouse.down()
+  await page.mouse.move(360, 430, { steps: 8 })
+  await page.mouse.up()
+
+  // Tool OFF (M): the same drag must NOT record a rectangle…
+  await page.keyboard.press('m')
+  await expect(page.getByRole('button', { name: 'Mouse tool' })).toHaveAttribute('aria-pressed', 'false')
+  await page.mouse.move(200, 520)
+  await page.mouse.down()
+  await page.mouse.move(360, 600, { steps: 8 })
+  await page.mouse.up()
+  // …but a click still records (and passes through to the app).
+  await page.getByRole('button', { name: 'Upgrade' }).click()
+
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Space')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/, { timeout: 15_000 })
+
+  const id = await waitForReadyRecording()
+  const events = await readJson(join(INBOX_DIR, id, 'events.json'))
+  const rects = events.filter((e: { kind: string }) => e.kind === 'rect')
+  const clicks = events.filter((e: { kind: string }) => e.kind === 'click')
+  expect(rects).toHaveLength(1) // only the tool-on drag
+  expect(clicks.length).toBeGreaterThanOrEqual(1) // the passthrough click was recorded
+})
+
 test('records a session and persists every artifact to the dropbox', async ({ page }) => {
   await recordSession(page)
 

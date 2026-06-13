@@ -276,7 +276,8 @@ export function ScreenshareProvider({
       const dy = e.clientY - drag.y
       if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
       drag.moved = true
-      setDragRect(rectFrom(drag.x, drag.y, e.clientX, e.clientY))
+      // Rectangles are a mouse-tool feature — only draw them when the tool is on.
+      if (block) setDragRect(rectFrom(drag.x, drag.y, e.clientX, e.clientY))
     }
 
     const onDown = (e: PointerEvent) => {
@@ -309,9 +310,14 @@ export function ScreenshareProvider({
         return
       }
 
-      // A drag: record the rectangle, flash it, and grab a region screenshot.
-      const r = rectFrom(d.x, d.y, e.clientX, e.clientY)
+      // A drag past the threshold. Rectangles only exist with the mouse tool on;
+      // when it's off (passthrough) the gesture is a normal app interaction, so
+      // record nothing and let the page handle it.
       setDragRect(null)
+      if (!block) return
+
+      // Tool on: record the rectangle, flash it, and grab a region screenshot.
+      const r = rectFrom(d.x, d.y, e.clientX, e.clientY)
       if (r.width < 2 || r.height < 2) return
       const ev = rec.rect({ startT: d.startT, ...r })
       setRectFlashes((prev) => [...prev, { id: nextFlashId++, ...r }])

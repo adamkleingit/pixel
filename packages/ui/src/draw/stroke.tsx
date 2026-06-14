@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import type { StrokeFlash, StrokeShape } from '../context'
+import type { StrokeShape } from '../context'
 
 /** An SVG path `d` from client-coord points. */
 function pathFrom(points: { x: number; y: number }[]): string {
@@ -8,36 +7,14 @@ function pathFrom(points: { x: number; y: number }[]): string {
 }
 
 /**
- * Full-viewport SVG (no viewBox) so 1 user unit = 1 client px — stroke points are
- * drawn directly in client coordinates. Sized to the viewport via CSS.
+ * A freehand stroke rendered into a full-viewport SVG (no viewBox, so 1 user
+ * unit = 1 client px). Used for both the live stroke and committed ones — they
+ * look the same and stay visible until the Cmd key is released.
  */
-function StrokeSvg({ d, className }: { d: string; className: string }) {
+export function DrawStroke({ stroke }: { stroke: StrokeShape }) {
   return (
-    <svg className={className}>
-      <path d={d} />
+    <svg className="screenshare-stroke">
+      <path d={pathFrom(stroke.points)} />
     </svg>
   )
-}
-
-/** The freehand stroke being actively drawn. */
-export function DrawStroke({ stroke }: { stroke: StrokeShape }) {
-  return <StrokeSvg className="screenshare-stroke" d={pathFrom(stroke.points)} />
-}
-
-/** A completed stroke that fades out and self-removes. */
-export function StrokeFlashView({
-  flash,
-  onDone,
-  lifetimeMs = 1100,
-}: {
-  flash: StrokeFlash
-  onDone: (id: number) => void
-  lifetimeMs?: number
-}) {
-  useEffect(() => {
-    const timer = window.setTimeout(() => onDone(flash.id), lifetimeMs)
-    return () => window.clearTimeout(timer)
-  }, [flash.id, lifetimeMs, onDone])
-
-  return <StrokeSvg className="screenshare-stroke-flash" d={pathFrom(flash.points)} />
 }

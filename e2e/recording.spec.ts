@@ -128,7 +128,12 @@ test('Cmd+drag draws a freehand stroke (recorded with a snapshot) when the tool 
   await page.mouse.move(320, 300, { steps: 5 })
   await page.mouse.move(380, 360, { steps: 5 })
   await page.mouse.up()
+
+  // The stroke stays on screen while Cmd is held, and clears when it's released.
+  const strokes = page.locator('.screenshare-stroke')
+  await expect(strokes).toHaveCount(1)
   await page.keyboard.up('Meta')
+  await expect(strokes).toHaveCount(0)
 
   await page.waitForTimeout(300)
   await page.keyboard.press('Space')

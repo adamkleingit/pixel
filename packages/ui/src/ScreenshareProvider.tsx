@@ -5,7 +5,7 @@ import {
   type RectShape,
   type ResolvedBarConfig,
   type ScreenshareContextValue,
-  type StrokeFlash,
+  type Stroke,
   type StrokeShape,
 } from './context'
 import { installKeyboard } from './capture/keys'
@@ -84,7 +84,7 @@ export function ScreenshareProvider({
   const [dragRect, setDragRect] = useState<RectShape | null>(null)
   const [rectFlashes, setRectFlashes] = useState<RectFlash[]>([])
   const [drawStroke, setDrawStroke] = useState<StrokeShape | null>(null)
-  const [drawFlashes, setDrawFlashes] = useState<StrokeFlash[]>([])
+  const [drawStrokes, setDrawStrokes] = useState<Stroke[]>([])
   // Interaction mode is SDK-owned runtime state (initial from config) so it can be
   // toggled live — including mid-recording — from the floating bar.
   const [passthrough, setPassthrough] = useState(config.passthrough === true)
@@ -200,7 +200,7 @@ export function ScreenshareProvider({
     setRectFlashes([])
     setDragRect(null)
     setDrawStroke(null)
-    setDrawFlashes([])
+    setDrawStrokes([])
     setLastRecording(recording)
     onCompleteRef.current?.(recording)
 
@@ -231,7 +231,7 @@ export function ScreenshareProvider({
     setRectFlashes([])
     setDragRect(null)
     setDrawStroke(null)
-    setDrawFlashes([])
+    setDrawStrokes([])
     onCancelRef.current?.()
   }, [])
 
@@ -246,10 +246,6 @@ export function ScreenshareProvider({
 
   const removeRectFlash = useCallback((id: number) => {
     setRectFlashes((prev) => prev.filter((r) => r.id !== id))
-  }, [])
-
-  const removeDrawFlash = useCallback((id: number) => {
-    setDrawFlashes((prev) => prev.filter((s) => s.id !== id))
   }, [])
 
   // Keyboard: double-tap to start/stop, single tap to pause/resume, Esc to cancel.
@@ -344,13 +340,14 @@ export function ScreenshareProvider({
       drag = null
       if (!rec || !d) return
 
-      // Cmd+drag: record the freehand stroke, flash it, and snapshot its region.
+      // Cmd+drag: record the freehand stroke, keep it visible (until Cmd is
+      // released, see onMetaUp), and snapshot its region.
       if (d.pen) {
         setDrawStroke(null)
         if (d.points.length < 2) return // a tap, not a stroke
         const b = boundsOf(d.points)
         const ev = rec.draw({ startT: d.startT, points: d.points, ...b })
-        setDrawFlashes((prev) => [...prev, { id: nextStrokeId++, points: d.points }])
+        setDrawStrokes((prev) => [...prev, { id: nextStrokeId++, points: d.points }])
         const name = `draw-${Math.round(d.startT)}.png`
         ev.snapshot = name
         void captureStroke(d.points, b).then((blob) => {
@@ -403,11 +400,20 @@ export function ScreenshareProvider({
       setPassthrough((p) => !p)
     }
 
+    // Strokes stay on screen while Cmd is held; releasing it (or losing focus,
+    // e.g. Cmd-Tab) wipes them. They're already recorded, so nothing is lost.
+    const clearStrokes = () => setDrawStrokes([])
+    const onMetaUp = (e: KeyboardEvent) => {
+      if (e.key === 'Meta') clearStrokes()
+    }
+
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerdown', onDown, true)
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onCancel, true)
     window.addEventListener('keydown', onToolKey, true)
+    window.addEventListener('keyup', onMetaUp, true)
+    window.addEventListener('blur', clearStrokes)
 
     // Block-mode-only: swallow the page's click/typing so the app doesn't react.
     const swallow = (e: Event) => {
@@ -438,6 +444,8 @@ export function ScreenshareProvider({
       window.removeEventListener('pointerup', onUp, true)
       window.removeEventListener('pointercancel', onCancel, true)
       window.removeEventListener('keydown', onToolKey, true)
+      window.removeEventListener('keyup', onMetaUp, true)
+      window.removeEventListener('blur', clearStrokes)
       for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
       for (const t of pageKeyEvents) window.removeEventListener(t, swallowKey as EventListener, true)
       setDragRect(null)
@@ -475,10 +483,9 @@ export function ScreenshareProvider({
       rectFlashes,
       removeRectFlash,
       drawStroke,
-      drawFlashes,
-      removeDrawFlash,
+      drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawFlashes, removeDrawFlash],
+    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

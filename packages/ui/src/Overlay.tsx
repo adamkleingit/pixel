@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
-import { DrawStroke, StrokeFlashView } from './draw/stroke'
+import { DrawStroke } from './draw/stroke'
 
 export interface OverlayProps {
   /** Extra class applied to the overlay root. */
@@ -250,8 +250,7 @@ export function Overlay({ className }: OverlayProps) {
     rectFlashes,
     removeRectFlash,
     drawStroke,
-    drawFlashes,
-    removeDrawFlash,
+    drawStrokes,
     bar,
   } = useScreenshareContext()
 
@@ -267,8 +266,8 @@ export function Overlay({ className }: OverlayProps) {
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
       ))}
       {dragRect && <DragRect rect={dragRect} />}
-      {drawFlashes.map((s) => (
-        <StrokeFlashView key={s.id} flash={s} onDone={removeDrawFlash} />
+      {drawStrokes.map((s) => (
+        <DrawStroke key={s.id} stroke={s} />
       ))}
       {drawStroke && <DrawStroke stroke={drawStroke} />}
       {blips.map((b) => (

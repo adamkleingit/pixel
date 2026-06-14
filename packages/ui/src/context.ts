@@ -24,7 +24,8 @@ export interface StrokeShape {
   points: StrokePoint[]
 }
 
-export interface StrokeFlash extends StrokeShape {
+/** A committed stroke (keyed for rendering). Visible until Cmd is released. */
+export interface Stroke extends StrokeShape {
   id: number
 }
 
@@ -59,9 +60,8 @@ export interface ScreenshareContextValue {
   removeRectFlash: (id: number) => void
   /** The freehand stroke currently being drawn (Cmd+drag), if any. */
   drawStroke: StrokeShape | null
-  /** Completed strokes fading out. */
-  drawFlashes: StrokeFlash[]
-  removeDrawFlash: (id: number) => void
+  /** Committed strokes, kept visible until the Cmd key is released. */
+  drawStrokes: Stroke[]
 }
 
 export const ScreenshareContext = createContext<ScreenshareContextValue | null>(null)

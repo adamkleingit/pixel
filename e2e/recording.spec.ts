@@ -73,6 +73,13 @@ test('the M shortcut toggles the mouse tool while recording', async ({ page }) =
   await page.keyboard.press('m')
   await expect(tool).toHaveAttribute('aria-pressed', 'true')
 
+  // Clicking a bar button moves focus into the overlay — the shortcut must still
+  // work from there (a keyboard shortcut shouldn't depend on where focus is).
+  await tool.click()
+  await expect(tool).toHaveAttribute('aria-pressed', 'false')
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
   // Discard — this test is about the toggle, not persistence.
   await page.keyboard.press('Escape')
   await expect(page.locator('.status')).not.toHaveClass(/recording/)

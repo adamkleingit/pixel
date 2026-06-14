@@ -393,8 +393,11 @@ export function ScreenshareProvider({
     // `M` toggles the mouse tool (block + draw ⇄ passthrough) live. Handled here
     // (not in installKeyboard) so it's scoped to an active recording and so it
     // beats the block-mode key swallower below, which lets `M` through.
+    // A keyboard shortcut, so it must fire regardless of where focus is — in
+    // particular when a floating-bar button is focused (its events target our
+    // overlay, which isOwnUI would otherwise skip). Only a real text field blocks it.
     const onToolKey = (e: KeyboardEvent) => {
-      if (isOwnUI(e) || e.code !== MOUSE_TOOL_KEY || e.repeat || isEditableTarget()) return
+      if (e.code !== MOUSE_TOOL_KEY || e.repeat || isEditableTarget()) return
       e.preventDefault()
       e.stopPropagation()
       setPassthrough((p) => !p)

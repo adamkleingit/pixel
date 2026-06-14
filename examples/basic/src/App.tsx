@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   Overlay,
   ScreenshareProvider,
@@ -41,8 +43,6 @@ function defaultLanguage(): string {
   const code = (navigator.language || 'en').slice(0, 2).toLowerCase()
   return LOCALE_TO_WHISPER[code] ?? 'english'
 }
-
-type Route = 'dashboard' | 'settings'
 
 function ControlsBar({
   language,
@@ -93,22 +93,64 @@ function ControlsBar({
   )
 }
 
-function Nav({ route, go }: { route: Route; go: (r: Route) => void }) {
+const NAV_LINKS = [
+  { to: '/', label: 'Dashboard' },
+  { to: '/settings', label: 'Settings' },
+]
+
+function Nav() {
   return (
     <nav className="nav">
-      {(['dashboard', 'settings'] as Route[]).map((r) => (
-        <button
-          key={r}
-          className={`nav-link${route === r ? ' active' : ''}`}
-          onClick={() => go(r)}
+      {NAV_LINKS.map(({ to, label }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={to === '/'}
+          className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
         >
-          {r[0].toUpperCase() + r.slice(1)}
-        </button>
+          {label}
+        </NavLink>
       ))}
       <span className="nav-note">
-        Switching pages keeps recording — test clicks across both.
+        Real routes (check the URL & back button) — recording keeps running across both.
       </span>
     </nav>
+  )
+}
+
+/**
+ * A barebones modal that dismisses on click-outside (document `pointerdown`)
+ * and Esc (document `keydown`) — the exact bubble-phase pattern Radix, Headless
+ * UI, MUI and most `useOnClickOutside` hooks use. It's here to verify the
+ * floating bar's event containment: clicking a bar button, or pressing Esc
+ * while a bar button is focused, must NOT close this dialog.
+ */
+function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, onClose])
+
+  if (!open) return null
+  return createPortal(
+    <div className="dialog-backdrop">
+      <div className="dialog-panel" ref={panelRef} role="dialog" aria-modal="true">
+        {children}
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -205,7 +247,10 @@ function Shell({
   language: string
   setLanguage: (l: string) => void
 }) {
-  const [route, setRoute] = useState<Route>('dashboard')
+  const location = useLocation()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const closeDialog = useCallback(() => setDialogOpen(false), [])
+
   return (
     <div className="page">
       <div className="hero">
@@ -220,8 +265,43 @@ function Shell({
         </p>
       </div>
       <ControlsBar language={language} setLanguage={setLanguage} />
-      <Nav route={route} go={setRoute} />
-      {route === 'dashboard' ? <DashboardPage /> : <SettingsPage />}
+      <Nav />
+      <div className="dialog-test">
+        <button className="btn" onClick={() => setDialogOpen(true)}>
+          Open dialog
+        </button>
+        <span className="nav-note" style={{ marginLeft: 12 }}>
+          Open it, then click a floating-bar button (or focus one and press Esc) — it should stay open.
+        </span>
+      </div>
+
+      {/* Keyed by pathname so the enter animation replays on every navigation. */}
+      <div className="route-view" key={location.pathname}>
+        <Routes location={location}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </div>
+
+      <Dialog open={dialogOpen} onClose={closeDialog}>
+        <h3 style={{ margin: '0 0 8px' }}>Test dialog</h3>
+        <p style={{ margin: '0 0 16px', color: '#6b6580', fontSize: 14 }}>
+          Closes on click-outside and Esc — like a real popover. The floating bar should not
+          dismiss it.
+        </p>
+        <label className="field">
+          <span>A field to focus</span>
+          <input type="text" defaultValue="type here…" />
+        </label>
+        <div className="toolbar">
+          <button className="btn" onClick={closeDialog}>
+            Done
+          </button>
+          <button className="btn secondary" onClick={closeDialog}>
+            Cancel
+          </button>
+        </div>
+      </Dialog>
     </div>
   )
 }

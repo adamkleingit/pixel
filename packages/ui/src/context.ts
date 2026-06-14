@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState } from './types'
+import type { BarPosition, Recording, ScreenshareState, StrokePoint } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -19,6 +19,16 @@ export interface RectFlash extends RectShape {
   id: number
 }
 
+/** A freehand stroke (Cmd+drag), as client-coord points. */
+export interface StrokeShape {
+  points: StrokePoint[]
+}
+
+/** A committed stroke (keyed for rendering). Visible until Cmd is released. */
+export interface Stroke extends StrokeShape {
+  id: number
+}
+
 /** Internal context shared between the provider, the overlay, and the public hook. */
 export interface ScreenshareContextValue {
   state: ScreenshareState
@@ -34,6 +44,12 @@ export interface ScreenshareContextValue {
   /** Resolved floating-bar appearance config. */
   bar: ResolvedBarConfig
   lastRecording: Recording | null
+  /** Human-readable message when the last save to the sink failed; null otherwise. */
+  saveError: string | null
+  /** True while a save (or resend) is in flight. */
+  saving: boolean
+  /** Re-attempt sending the last recording that failed to save. No-op if none. */
+  resend: () => void
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void
@@ -42,6 +58,10 @@ export interface ScreenshareContextValue {
   /** Completed rectangles fading out. */
   rectFlashes: RectFlash[]
   removeRectFlash: (id: number) => void
+  /** The freehand stroke currently being drawn (Cmd+drag), if any. */
+  drawStroke: StrokeShape | null
+  /** Committed strokes, kept visible until the Cmd key is released. */
+  drawStrokes: Stroke[]
 }
 
 export const ScreenshareContext = createContext<ScreenshareContextValue | null>(null)

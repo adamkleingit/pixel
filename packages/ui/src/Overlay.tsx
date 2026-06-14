@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
+import { DrawStroke } from './draw/stroke'
 
 export interface OverlayProps {
   /** Extra class applied to the overlay root. */
@@ -24,9 +25,47 @@ const ICONS = {
   cancel: 'M6 6l12 12M18 6L6 18',
   minimize: 'M6 12h12',
   expand: 'M12 6v12M6 12h12',
+  mouse: 'M5 2 L5 19 L9.5 14.5 L12.5 20 L14.5 19 L11.5 13.5 L18 13 Z',
 }
 
 const VERTICAL_POSITIONS = new Set(['center-left', 'center-right'])
+
+/**
+ * Keeps bar-originated events from reaching the host page's document-level
+ * listeners, which dialogs/popovers use for click-outside & Esc dismissal.
+ *
+ * Native (not React) listeners in the BUBBLE phase: the button's own onClick
+ * has already run (target phase fires first), so buttons keep working — the
+ * event just never bubbles on to `document`.
+ *
+ * We intentionally do NOT stop `click`: the buttons fire on React's synthetic
+ * onClick, and React may delegate `click` at `document` (React 16) or the root
+ * container (17+). Stopping native `click` here could break the buttons in some
+ * host React versions. Outside-click libraries key off pointer/mouse-down
+ * anyway. Capture-phase host listeners (rare) fire before the event reaches the
+ * bar and can't be contained here — use the library's own escape hatch for those.
+ */
+function useContainEvents<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const stop = (e: Event) => e.stopPropagation()
+    const stopEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') e.stopPropagation()
+    }
+    const pointer = ['pointerdown', 'mousedown', 'pointerup', 'mouseup'] as const
+    for (const t of pointer) node.addEventListener(t, stop)
+    node.addEventListener('keydown', stopEscape)
+    node.addEventListener('keyup', stopEscape)
+    return () => {
+      for (const t of pointer) node.removeEventListener(t, stop)
+      node.removeEventListener('keydown', stopEscape)
+      node.removeEventListener('keyup', stopEscape)
+    }
+  }, [])
+  return ref
+}
 
 function IconButton({
   icon,
@@ -63,25 +102,27 @@ function IconButton({
   )
 }
 
-/** Passthrough toggle — a transparency (checkerboard) glyph; selected = on. */
-function PassToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+/**
+ * Mouse-tool toggle — a cursor glyph; active (the default) means the mouse tool
+ * is on: the page is inert and you can draw rectangles. Off = no tool, clicks
+ * pass through to the page. Also bound to the `M` key while recording.
+ */
+function MouseToolToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
-      className={`screenshare-rec-btn screenshare-rec-pass${on ? ' active' : ''}`}
+      className={`screenshare-rec-btn screenshare-rec-tool${on ? ' active' : ''}`}
       title={
         on
-          ? 'Pass-through ON — clicks reach the page'
-          : 'Pass-through OFF — page is inert (clicks blocked)'
+          ? 'Mouse tool ON — draw rectangles, page inert (M)'
+          : 'Mouse tool OFF — clicks pass through to the page (M)'
       }
-      aria-label="Pass clicks through to the page"
+      aria-label="Mouse tool"
       aria-pressed={on}
       onClick={onToggle}
     >
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-        <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-        <rect x="3.5" y="3.5" width="8.5" height="8.5" fill="currentColor" />
-        <rect x="12" y="12" width="8.5" height="8.5" fill="currentColor" />
+        <path d={ICONS.mouse} fill="currentColor" />
       </svg>
     </button>
   )
@@ -94,6 +135,7 @@ function RecBar() {
   const recording = state === 'recording'
   const idle = state === 'idle'
   const [minimized, setMinimized] = useState(false)
+  const containRef = useContainEvents<HTMLDivElement>()
 
   // Elapsed timer that only advances while actively recording.
   const [elapsed, setElapsed] = useState(0)
@@ -123,7 +165,7 @@ function RecBar() {
 
   if (minimized) {
     return (
-      <div className={cls} style={{ opacity: bar.opacity }}>
+      <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
         {!idle && <span className="screenshare-rec-dot" />}
         <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
       </div>
@@ -131,7 +173,7 @@ function RecBar() {
   }
 
   return (
-    <div className={cls} style={{ opacity: bar.opacity }}>
+    <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
       {idle ? (
         <button
           type="button"
@@ -154,7 +196,7 @@ function RecBar() {
       )}
 
       <span className="screenshare-rec-sep" />
-      <PassToggle on={passthrough} onToggle={() => setPassthrough(!passthrough)} />
+      <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
 
       {!idle && (
         <>
@@ -175,14 +217,42 @@ function RecBar() {
   )
 }
 
+/** Failure toast shown when a recording couldn't be sent — offers a resend. */
+function SaveError() {
+  const { saveError, saving, resend } = useScreenshareContext()
+  if (!saveError) return null
+  return (
+    <div className="screenshare-save-error" role="alert">
+      <span className="screenshare-save-error-msg">{saveError}</span>
+      <button
+        type="button"
+        className="screenshare-save-error-btn"
+        onClick={resend}
+        disabled={saving}
+      >
+        {saving ? 'Resending…' : 'Resend'}
+      </button>
+    </div>
+  )
+}
+
 /**
  * The single overlay surface mounted by the host. Renders the floating control
  * bar, click radar blips, and drag rectangles. Only the control bar receives
  * pointer events; the rest passes through so the page stays interactive.
  */
 export function Overlay({ className }: OverlayProps) {
-  const { state, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, bar } =
-    useScreenshareContext()
+  const {
+    state,
+    blips,
+    removeBlip,
+    dragRect,
+    rectFlashes,
+    removeRectFlash,
+    drawStroke,
+    drawStrokes,
+    bar,
+  } = useScreenshareContext()
 
   if (typeof document === 'undefined') return null
 
@@ -191,10 +261,15 @@ export function Overlay({ className }: OverlayProps) {
   return createPortal(
     <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
       {(active || bar.always) && <RecBar />}
+      <SaveError />
       {rectFlashes.map((r) => (
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
       ))}
       {dragRect && <DragRect rect={dragRect} />}
+      {drawStrokes.map((s) => (
+        <DrawStroke key={s.id} stroke={s} />
+      ))}
+      {drawStroke && <DrawStroke stroke={drawStroke} />}
       {blips.map((b) => (
         <Blip key={b.id} data={b} onDone={removeBlip} />
       ))}

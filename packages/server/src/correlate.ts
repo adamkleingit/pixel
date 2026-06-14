@@ -33,7 +33,18 @@ interface RectEvent extends BaseEvent {
   endT: number
   snapshot?: string
 }
-type AnyEvent = BaseEvent | ClickEvent | RectEvent
+interface DrawEvent extends BaseEvent {
+  kind: 'draw'
+  x: number
+  y: number
+  width: number
+  height: number
+  startT: number
+  endT: number
+  points: { x: number; y: number }[]
+  snapshot?: string
+}
+type AnyEvent = BaseEvent | ClickEvent | RectEvent | DrawEvent
 
 interface Segment {
   start: number // seconds
@@ -42,11 +53,12 @@ interface Segment {
 }
 
 interface TimelineItem {
-  type: 'click' | 'rect'
+  type: 'click' | 'rect' | 'draw'
   t: number
   /** for clicks: a compact path like "div.grid > div.card > button.btn 'Upgrade'" */
   summary?: string
   element?: ElementInfo
+  /** for rects and draws: the region (+ snapshot filename). */
   rect?: { x: number; y: number; width: number; height: number; snapshot?: string }
 }
 
@@ -85,6 +97,14 @@ function toItem(ev: AnyEvent): TimelineItem | null {
       type: 'rect',
       t: r.t,
       rect: { x: r.x, y: r.y, width: r.width, height: r.height, snapshot: r.snapshot },
+    }
+  }
+  if (ev.kind === 'draw') {
+    const d = ev as DrawEvent
+    return {
+      type: 'draw',
+      t: d.t,
+      rect: { x: d.x, y: d.y, width: d.width, height: d.height, snapshot: d.snapshot },
     }
   }
   return null

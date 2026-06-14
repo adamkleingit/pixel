@@ -26,17 +26,28 @@ Then add the provider and overlay to your app:
 ```tsx
 import { ScreenshareProvider, Overlay, httpSink } from '@getpixel/ui'
 
+// Pixel is a dev-time tool — gate it on your bundler's dev flag so it never
+// ships to production. Vite: import.meta.env.DEV. Webpack/CRA/Next:
+// process.env.NODE_ENV !== 'production'.
+const enabled = import.meta.env.DEV
+
 export function Root() {
   return (
     <ScreenshareProvider
+      isEnabled={enabled}
       config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}
     >
       <YourApp />
-      <Overlay />
+      {enabled && <Overlay />}
     </ScreenshareProvider>
   )
 }
 ```
+
+`isEnabled={false}` makes the provider completely inert — no styles, no keyboard
+shortcuts, no event capture, and `start()` does nothing — so Pixel adds nothing
+to a production build. Render `<Overlay />` behind the same flag so the floating
+bar is dev-only too.
 
 And then install the skill from the local pixel installation:
 
@@ -59,7 +70,7 @@ SDK (`ScreenshareProvider` `config` prop):
   config={{
     sink: httpSink('http://localhost:41789'),
     language: 'english',        // transcription hint; defaults to browser locale in the example
-    passthrough: false,        // initial mode: false = page inert, true = clicks pass through
+    passthrough: false,        // initial tool: false = mouse tool on (inert + draw), true = no tool (clicks pass through)
     stopDelayMs: 500,          // keep recording this long after Stop
     bar: {
       always: true,            // show the bar even when idle (with a Record button). Default false
@@ -71,8 +82,8 @@ SDK (`ScreenshareProvider` `config` prop):
 ```
 
 **Floating bar** — always-on (`bar.always`) shows a Record button while idle and the
-full controls (pause/resume, stop, cancel, the live `pass` toggle) while recording.
-A **−/＋** button minimizes/expands it. Positions:
+full controls (pause/resume, stop, cancel, the live **mouse-tool** toggle) while
+recording. A **−/＋** button minimizes/expands it. Positions:
 
 | | left | center | right |
 |---|---|---|---|
@@ -83,8 +94,12 @@ A **−/＋** button minimizes/expands it. Positions:
 `center-left` / `center-right` lay the bar out **vertically**. Opacity defaults to
 30% and animates to 100% on hover.
 
-The mode (`passthrough`) is also togglable live from the bar and via
-`useScreenshare().setPassthrough(...)`; pausing always makes the page live.
+The **mouse tool** (on by default) makes the page inert so you can annotate:
+**drag** to box a region, or **Cmd+drag** to sketch a freehand stroke — both are
+captured as screenshots for the agent. Toggling the tool off is passthrough
+(clicks reach the page and are still recorded, but rectangles/strokes are
+disabled). Toggle it live from the bar, with the **`M`** key while recording, or
+via `useScreenshare().setPassthrough(...)`; pausing always makes the page live.
 
 Server (env vars):
 - `SCREENSHARE_PORT` (default `41789`)
@@ -124,13 +139,14 @@ Server (env vars):
 ```
 .screenshare/inbox/<id>/
   meta.json         id, startedAt, durationMs, counts
-  events.json       pointer / click (+ target chain) / rect events, on one t-clock
+  events.json       pointer / click (+ target chain) / rect / draw events, on one t-clock
   audio.webm        mic audio (omitted if mic denied)
   transcript.json   Whisper output: { text, segments:[{start,end,text}], language }
   timeline.json     merged brief: { frames[], beats[] } (speech/silence beats)
   snaps/
     frame-*.png     full-viewport screenshots w/ coordinate grid (start/resume)
     snap-*.png      region screenshots (100px padding + drawn rectangle)
+    draw-*.png      freehand-stroke screenshots (Cmd+drag, stroke drawn on top)
 ```
 
 ## Inline Figma-style editing of the user interface  

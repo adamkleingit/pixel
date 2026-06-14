@@ -15,11 +15,22 @@ export interface UseScreenshare {
   setPassthrough: (v: boolean) => void
   /** The most recently completed recording, if any. */
   lastRecording: Recording | null
+  /** Message when the last save to the sink failed (server down, etc.); null otherwise. */
+  saveError: string | null
+  /** True while a save (or resend) is in flight. */
+  saving: boolean
+  /** Re-attempt sending the recording that last failed to save. */
+  resend: () => void
 }
 
 /** Drive and observe recording from anywhere under the provider. */
 export function useScreenshare(): UseScreenshare {
-  const { state, start, stop, pause, resume, cancel, toggle, passthrough, setPassthrough, lastRecording } =
-    useScreenshareContext()
-  return { state, start, stop, pause, resume, cancel, toggle, passthrough, setPassthrough, lastRecording }
+  const {
+    state, start, stop, pause, resume, cancel, toggle,
+    passthrough, setPassthrough, lastRecording, saveError, saving, resend,
+  } = useScreenshareContext()
+  return {
+    state, start, stop, pause, resume, cancel, toggle,
+    passthrough, setPassthrough, lastRecording, saveError, saving, resend,
+  }
 }

@@ -5,21 +5,41 @@ import {
   type RectShape,
   type ResolvedBarConfig,
   type ScreenshareContextValue,
+  type Stroke,
+  type StrokeShape,
 } from './context'
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
-import { captureFullFrame, captureRegion } from './capture/snapshot'
+import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
-import type { Recording, ScreenshareConfig, ScreenshareState } from './types'
+import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
 
+/** Keyboard shortcut (KeyboardEvent.code) that toggles the mouse tool while recording. */
+const MOUSE_TOOL_KEY = 'KeyM'
+
+/** True when focus is in a text field — keystrokes there must not trigger shortcuts. */
+function isEditableTarget(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+
 export interface ScreenshareProviderProps {
   children: React.ReactNode
   config?: ScreenshareConfig
+  /**
+   * Master switch. When `false`, the provider is fully inert — no styles, no
+   * keyboard shortcuts, no event capture, and `start()` is a no-op — so Pixel
+   * adds nothing in production. Gate it on your bundler's dev flag (see README).
+   * Default `true`.
+   */
+  isEnabled?: boolean
   /** Fires once with the finished recording when recording stops. */
   onComplete?: (rec: Recording) => void
   /** Fires after the recording is successfully persisted by the configured sink. */
@@ -30,6 +50,16 @@ export interface ScreenshareProviderProps {
 
 let nextBlipId = 1
 let nextFlashId = 1
+let nextStrokeId = 1
+
+/** Axis-aligned bounding box of a set of points. */
+function boundsOf(points: { x: number; y: number }[]): RectShape {
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
+}
 
 function rectFrom(x0: number, y0: number, x1: number, y1: number): RectShape {
   return {
@@ -43,6 +73,7 @@ function rectFrom(x0: number, y0: number, x1: number, y1: number): RectShape {
 export function ScreenshareProvider({
   children,
   config = {},
+  isEnabled = true,
   onComplete,
   onSaved,
   onCancel,
@@ -52,11 +83,18 @@ export function ScreenshareProvider({
   const [blips, setBlips] = useState<BlipData[]>([])
   const [dragRect, setDragRect] = useState<RectShape | null>(null)
   const [rectFlashes, setRectFlashes] = useState<RectFlash[]>([])
+  const [drawStroke, setDrawStroke] = useState<StrokeShape | null>(null)
+  const [drawStrokes, setDrawStrokes] = useState<Stroke[]>([])
   // Interaction mode is SDK-owned runtime state (initial from config) so it can be
   // toggled live — including mid-recording — from the floating bar.
   const [passthrough, setPassthrough] = useState(config.passthrough === true)
+  // Save status, so the overlay can surface a failure and offer a resend.
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const recorderRef = useRef<Recorder | null>(null)
+  // The recording awaiting a (re)send after a failed save, if any.
+  const pendingRef = useRef<Recording | null>(null)
 
   // Live state mirror so stable callbacks and the key listener read current state.
   const stateRef = useRef(state)
@@ -66,6 +104,8 @@ export function ScreenshareProvider({
   // the double-tap listener always see current values.
   const configRef = useRef(config)
   configRef.current = config
+  const enabledRef = useRef(isEnabled)
+  enabledRef.current = isEnabled
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
   const onSavedRef = useRef(onSaved)
@@ -73,7 +113,9 @@ export function ScreenshareProvider({
   const onCancelRef = useRef(onCancel)
   onCancelRef.current = onCancel
 
-  useEffect(() => injectStyles(), [])
+  useEffect(() => {
+    if (isEnabled) injectStyles()
+  }, [isEnabled])
 
   // Full-viewport screenshot (with coordinate grid) on start and resume.
   const captureFrame = useCallback(async (reason: 'start' | 'resume') => {
@@ -86,11 +128,47 @@ export function ScreenshareProvider({
     recorder.frame(reason, name, res.width, res.height)
   }, [])
 
+  /**
+   * Send a finished recording to the configured sink. On failure it keeps the
+   * recording around (pendingRef) and exposes a message so the overlay can offer
+   * a resend — recordings are never silently lost when the server is down.
+   */
+  const saveRecording = useCallback(async (recording: Recording) => {
+    const sink = configRef.current.sink
+    if (!sink) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const result = await sink.save(recording)
+      recording.id = result.id
+      pendingRef.current = null
+      setLastRecording({ ...recording })
+      onSavedRef.current?.(result)
+    } catch (err) {
+      pendingRef.current = recording
+      setSaveError(
+        "Couldn't send the recording — is the Pixel server running? Click resend to try again.",
+      )
+      console.error('[screenshare] failed to save recording:', err)
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  /** Re-attempt sending the recording that last failed to save. */
+  const resend = useCallback(() => {
+    const rec = pendingRef.current
+    if (rec) void saveRecording(rec)
+  }, [saveRecording])
+
   const start = useCallback(async () => {
-    if (recorderRef.current) return
+    if (!enabledRef.current || recorderRef.current) return
     const cfg = configRef.current
     const recorder = new Recorder({ pointerHz: cfg.pointerHz })
     recorderRef.current = recorder
+    // A new recording supersedes any prior failed-save state.
+    pendingRef.current = null
+    setSaveError(null)
     setState('recording')
     await recorder.start({ audio: cfg.audio !== false })
     void captureFrame('start')
@@ -121,26 +199,20 @@ export function ScreenshareProvider({
     setBlips([])
     setRectFlashes([])
     setDragRect(null)
+    setDrawStroke(null)
+    setDrawStrokes([])
     setLastRecording(recording)
     onCompleteRef.current?.(recording)
 
-    const sink = configRef.current.sink
-    if (sink) {
-      try {
-        const result = await sink.save(recording)
-        recording.id = result.id
-        onSavedRef.current?.(result)
-      } catch (err) {
-        console.error('[screenshare] failed to save recording:', err)
-      }
-    }
-  }, [])
+    await saveRecording(recording)
+  }, [saveRecording])
 
   const pause = useCallback(() => {
     if (stateRef.current !== 'recording') return
     recorderRef.current?.pause()
     setState('paused')
     setDragRect(null)
+    setDrawStroke(null)
   }, [])
 
   const resume = useCallback(() => {
@@ -158,6 +230,8 @@ export function ScreenshareProvider({
     setBlips([])
     setRectFlashes([])
     setDragRect(null)
+    setDrawStroke(null)
+    setDrawStrokes([])
     onCancelRef.current?.()
   }, [])
 
@@ -176,7 +250,7 @@ export function ScreenshareProvider({
 
   // Keyboard: double-tap to start/stop, single tap to pause/resume, Esc to cancel.
   useEffect(() => {
-    if (config.activation?.enabled === false) return
+    if (!isEnabled || config.activation?.enabled === false) return
     return installKeyboard(config.activation, {
       onDouble: () => {
         if (stateRef.current === 'idle') void start()
@@ -190,7 +264,7 @@ export function ScreenshareProvider({
         if (stateRef.current !== 'idle') cancel()
       },
     })
-  }, [config.activation, start, stop, pause, resume, cancel])
+  }, [isEnabled, config.activation, start, stop, pause, resume, cancel])
 
   // While recording (not paused), capture pointer movement, clicks, and drag
   // rectangles. In block mode (default) we also stop page clicks/typing from
@@ -210,18 +284,29 @@ export function ScreenshareProvider({
       return t instanceof Element && !!t.closest('.screenshare-overlay')
     }
 
-    let drag: { x: number; y: number; startT: number; moved: boolean } | null = null
+    // A gesture in progress. `pen` (Cmd+drag, tool-on only) draws a freehand
+    // stroke; otherwise it's a click / rectangle.
+    let drag:
+      | { x: number; y: number; startT: number; moved: boolean; pen: boolean; points: StrokePoint[] }
+      | null = null
 
     const onMove = (e: PointerEvent) => {
       if (isOwnUI(e)) return
       if (block) e.preventDefault()
       recorderRef.current?.samplePointer(e.clientX, e.clientY)
       if (!drag) return
+      if (drag.pen) {
+        drag.moved = true
+        drag.points.push({ x: e.clientX, y: e.clientY })
+        setDrawStroke({ points: drag.points.slice() })
+        return
+      }
       const dx = e.clientX - drag.x
       const dy = e.clientY - drag.y
       if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
       drag.moved = true
-      setDragRect(rectFrom(drag.x, drag.y, e.clientX, e.clientY))
+      // Rectangles are a mouse-tool feature — only draw them when the tool is on.
+      if (block) setDragRect(rectFrom(drag.x, drag.y, e.clientX, e.clientY))
     }
 
     const onDown = (e: PointerEvent) => {
@@ -232,7 +317,16 @@ export function ScreenshareProvider({
       }
       const rec = recorderRef.current
       if (!rec) return
-      drag = { x: e.clientX, y: e.clientY, startT: rec.clock(), moved: false }
+      // Cmd+drag with the mouse tool on = freehand draw; otherwise click/rect.
+      const pen = block && e.metaKey
+      drag = {
+        x: e.clientX,
+        y: e.clientY,
+        startT: rec.clock(),
+        moved: false,
+        pen,
+        points: pen ? [{ x: e.clientX, y: e.clientY }] : [],
+      }
     }
 
     const onUp = (e: PointerEvent) => {
@@ -246,6 +340,23 @@ export function ScreenshareProvider({
       drag = null
       if (!rec || !d) return
 
+      // Cmd+drag: record the freehand stroke, keep it visible (until Cmd is
+      // released, see onMetaUp), and snapshot its region.
+      if (d.pen) {
+        setDrawStroke(null)
+        if (d.points.length < 2) return // a tap, not a stroke
+        const b = boundsOf(d.points)
+        const ev = rec.draw({ startT: d.startT, points: d.points, ...b })
+        setDrawStrokes((prev) => [...prev, { id: nextStrokeId++, points: d.points }])
+        const name = `draw-${Math.round(d.startT)}.png`
+        ev.snapshot = name
+        void captureStroke(d.points, b).then((blob) => {
+          if (blob) rec.addSnapshot(name, blob)
+          else ev.snapshot = undefined
+        })
+        return
+      }
+
       if (!d.moved) {
         // A click: record the target element chain + show a radar blip.
         const target = describeElementChain(e.clientX, e.clientY)
@@ -254,9 +365,14 @@ export function ScreenshareProvider({
         return
       }
 
-      // A drag: record the rectangle, flash it, and grab a region screenshot.
-      const r = rectFrom(d.x, d.y, e.clientX, e.clientY)
+      // A drag past the threshold. Rectangles only exist with the mouse tool on;
+      // when it's off (passthrough) the gesture is a normal app interaction, so
+      // record nothing and let the page handle it.
       setDragRect(null)
+      if (!block) return
+
+      // Tool on: record the rectangle, flash it, and grab a region screenshot.
+      const r = rectFrom(d.x, d.y, e.clientX, e.clientY)
       if (r.width < 2 || r.height < 2) return
       const ev = rec.rect({ startT: d.startT, ...r })
       setRectFlashes((prev) => [...prev, { id: nextFlashId++, ...r }])
@@ -274,10 +390,33 @@ export function ScreenshareProvider({
       setDragRect(null)
     }
 
+    // `M` toggles the mouse tool (block + draw ⇄ passthrough) live. Handled here
+    // (not in installKeyboard) so it's scoped to an active recording and so it
+    // beats the block-mode key swallower below, which lets `M` through.
+    // A keyboard shortcut, so it must fire regardless of where focus is — in
+    // particular when a floating-bar button is focused (its events target our
+    // overlay, which isOwnUI would otherwise skip). Only a real text field blocks it.
+    const onToolKey = (e: KeyboardEvent) => {
+      if (e.code !== MOUSE_TOOL_KEY || e.repeat || isEditableTarget()) return
+      e.preventDefault()
+      e.stopPropagation()
+      setPassthrough((p) => !p)
+    }
+
+    // Strokes stay on screen while Cmd is held; releasing it (or losing focus,
+    // e.g. Cmd-Tab) wipes them. They're already recorded, so nothing is lost.
+    const clearStrokes = () => setDrawStrokes([])
+    const onMetaUp = (e: KeyboardEvent) => {
+      if (e.key === 'Meta') clearStrokes()
+    }
+
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerdown', onDown, true)
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onCancel, true)
+    window.addEventListener('keydown', onToolKey, true)
+    window.addEventListener('keyup', onMetaUp, true)
+    window.addEventListener('blur', clearStrokes)
 
     // Block-mode-only: swallow the page's click/typing so the app doesn't react.
     const swallow = (e: Event) => {
@@ -287,8 +426,8 @@ export function ScreenshareProvider({
     }
     const swallowKey = (e: KeyboardEvent) => {
       if (isOwnUI(e)) return
-      // Let our shortcuts through (handled by installKeyboard).
-      if (e.code === activationKey || e.code === 'Escape') return
+      // Let our shortcuts through (Space/Esc via installKeyboard, M via onToolKey).
+      if (e.code === activationKey || e.code === 'Escape' || e.code === MOUSE_TOOL_KEY) return
       e.preventDefault()
       e.stopPropagation()
     }
@@ -307,6 +446,9 @@ export function ScreenshareProvider({
       window.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('pointerup', onUp, true)
       window.removeEventListener('pointercancel', onCancel, true)
+      window.removeEventListener('keydown', onToolKey, true)
+      window.removeEventListener('keyup', onMetaUp, true)
+      window.removeEventListener('blur', clearStrokes)
       for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
       for (const t of pageKeyEvents) window.removeEventListener(t, swallowKey as EventListener, true)
       setDragRect(null)
@@ -335,13 +477,18 @@ export function ScreenshareProvider({
       setPassthrough,
       bar,
       lastRecording,
+      saveError,
+      saving,
+      resend,
       blips,
       removeBlip,
       dragRect,
       rectFlashes,
       removeRectFlash,
+      drawStroke,
+      drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, blips, removeBlip, dragRect, rectFlashes, removeRectFlash],
+    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

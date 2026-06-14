@@ -152,11 +152,11 @@ const CSS = `
   background: rgba(168, 85, 247, 0.5);
   color: #fff;
 }
-/* pass-through toggle: dim when off, lit + filled when on */
-.screenshare-rec .screenshare-rec-pass {
+/* mouse-tool toggle: lit when the tool is on (active), dim when off */
+.screenshare-rec .screenshare-rec-tool {
   opacity: 0.45;
 }
-.screenshare-rec .screenshare-rec-pass.active {
+.screenshare-rec .screenshare-rec-tool.active {
   opacity: 1;
 }
 @keyframes screenshare-pulse {
@@ -184,6 +184,61 @@ const CSS = `
   from { opacity: 1; }
   to   { opacity: 0; }
 }
+
+/* Freehand strokes (Cmd+drag). Full-viewport SVG; coords are client px. They
+   stay visible until the Cmd key is released. */
+.screenshare-stroke {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.screenshare-stroke path {
+  fill: none;
+  stroke: rgba(168, 85, 247, 0.95);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.6));
+}
+
+.screenshare-save-error {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 460px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  background: rgba(70, 10, 10, 0.96);
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #fee2e2;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+}
+.screenshare-save-error-msg { flex: 1; }
+.screenshare-save-error-btn {
+  flex: none;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 12px;
+  background: #ef4444;
+  color: #fff;
+  font: 600 13px ui-sans-serif, system-ui;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.screenshare-save-error-btn:hover { background: #dc2626; }
+.screenshare-save-error-btn:disabled { opacity: 0.6; cursor: default; }
 `
 
 export function injectStyles(): void {

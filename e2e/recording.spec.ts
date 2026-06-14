@@ -53,9 +53,118 @@ async function recordSession(page: Page): Promise<void> {
   await expect(status).not.toHaveClass(/recording/, { timeout: 15_000 })
 }
 
-test.beforeAll(async () => {
-  // Start each run from a clean dropbox so we read exactly one recording.
+test.beforeEach(async () => {
+  // Start each test from a clean dropbox so we read exactly one recording.
   await rm(SCREENSHARE_DIR, { recursive: true, force: true })
+})
+
+test('the M shortcut toggles the mouse tool while recording', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+
+  const tool = page.getByRole('button', { name: 'Mouse tool' })
+  // Mouse tool is on by default (page inert, rectangles draw).
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'false') // → passthrough / no tool
+
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
+  // Clicking a bar button moves focus into the overlay — the shortcut must still
+  // work from there (a keyboard shortcut shouldn't depend on where focus is).
+  await tool.click()
+  await expect(tool).toHaveAttribute('aria-pressed', 'false')
+  await page.keyboard.press('m')
+  await expect(tool).toHaveAttribute('aria-pressed', 'true')
+
+  // Discard — this test is about the toggle, not persistence.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/)
+})
+
+test('rectangles only record with the mouse tool on; clicks record either way', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+  await page.waitForTimeout(300)
+
+  // Tool ON (default): a drag past the threshold records a rectangle.
+  await page.mouse.move(200, 300)
+  await page.mouse.down()
+  await page.mouse.move(360, 430, { steps: 8 })
+  await page.mouse.up()
+
+  // Tool OFF (M): the same drag must NOT record a rectangle…
+  await page.keyboard.press('m')
+  await expect(page.getByRole('button', { name: 'Mouse tool' })).toHaveAttribute('aria-pressed', 'false')
+  await page.mouse.move(200, 520)
+  await page.mouse.down()
+  await page.mouse.move(360, 600, { steps: 8 })
+  await page.mouse.up()
+  // …but a click still records (and passes through to the app).
+  await page.getByRole('button', { name: 'Upgrade' }).click()
+
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Space')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/, { timeout: 15_000 })
+
+  const id = await waitForReadyRecording()
+  const events = await readJson(join(INBOX_DIR, id, 'events.json'))
+  const rects = events.filter((e: { kind: string }) => e.kind === 'rect')
+  const clicks = events.filter((e: { kind: string }) => e.kind === 'click')
+  expect(rects).toHaveLength(1) // only the tool-on drag
+  expect(clicks.length).toBeGreaterThanOrEqual(1) // the passthrough click was recorded
+})
+
+test('Cmd+drag draws a freehand stroke (recorded with a snapshot) when the tool is on', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await expect(page.locator('.status')).toHaveClass(/recording/)
+  await page.waitForTimeout(300)
+
+  // Cmd held + drag = freehand draw (not a rectangle).
+  await page.keyboard.down('Meta')
+  await page.mouse.move(200, 300)
+  await page.mouse.down()
+  await page.mouse.move(260, 340, { steps: 5 })
+  await page.mouse.move(320, 300, { steps: 5 })
+  await page.mouse.move(380, 360, { steps: 5 })
+  await page.mouse.up()
+
+  // The stroke stays on screen while Cmd is held, and clears when it's released.
+  const strokes = page.locator('.screenshare-stroke')
+  await expect(strokes).toHaveCount(1)
+  await page.keyboard.up('Meta')
+  await expect(strokes).toHaveCount(0)
+
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Space')
+  await expect(page.locator('.status')).not.toHaveClass(/recording/, { timeout: 15_000 })
+
+  const id = await waitForReadyRecording()
+  const dir = join(INBOX_DIR, id)
+  const events = await readJson(join(dir, 'events.json'))
+  const draws = events.filter((e: { kind: string }) => e.kind === 'draw')
+  const rects = events.filter((e: { kind: string }) => e.kind === 'rect')
+  expect(draws).toHaveLength(1)
+  expect(rects).toHaveLength(0) // Cmd+drag is a stroke, not a rectangle
+  expect(draws[0].points.length).toBeGreaterThanOrEqual(2)
+
+  // The stroke's region screenshot is persisted and referenced.
+  expect(draws[0].snapshot).toBeTruthy()
+  expect((await stat(join(dir, 'snaps', draws[0].snapshot))).size).toBeGreaterThan(0)
+
+  // And it's surfaced in the correlated timeline as a draw item.
+  const timeline = await readJson(join(dir, 'timeline.json'))
+  const items = timeline.beats.flatMap((b: { items: { type: string }[] }) => b.items)
+  expect(items.some((i: { type: string }) => i.type === 'draw')).toBe(true)
 })
 
 test('records a session and persists every artifact to the dropbox', async ({ page }) => {
@@ -130,4 +239,42 @@ test('records a session and persists every artifact to the dropbox', async ({ pa
     b.items.map((i) => i.type),
   )
   expect(itemKinds.filter((k: string) => k === 'click').length).toBeGreaterThanOrEqual(2)
+})
+
+test('surfaces an error when the upload fails, then resends successfully', async ({ page }) => {
+  // Fail only the first POST /recordings (as if the server were down); let the
+  // resend through so the recording is recovered, not lost.
+  let attempts = 0
+  await page.route('**/recordings', async (route) => {
+    attempts++
+    if (attempts === 1) await route.abort('failed')
+    else await route.continue()
+  })
+
+  await recordSession(page)
+
+  // The failed save surfaces a resend prompt that names the server, and nothing
+  // has been persisted yet.
+  const banner = page.locator('.screenshare-save-error')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText(/pixel server/i)
+  const resend = page.getByRole('button', { name: 'Resend' })
+  await expect(resend).toBeVisible()
+  expect(existsSync(INBOX_DIR)).toBe(false)
+  expect(attempts).toBe(1)
+
+  // Resend → the second POST goes through, the recording lands, banner clears.
+  await resend.click()
+  const id = await waitForReadyRecording()
+  expect(attempts).toBe(2)
+  await expect(banner).toBeHidden()
+
+  // The recovered recording is complete (audio + events + timeline).
+  const dir = join(INBOX_DIR, id)
+  const meta = await readJson(join(dir, 'meta.json'))
+  expect(meta.hasAudio).toBe(true)
+  expect(meta.eventCount).toBeGreaterThan(0)
+  expect((await stat(join(dir, 'audio.webm'))).size).toBeGreaterThan(0)
+  const timeline = await readJson(join(dir, 'timeline.json'))
+  expect(timeline.hasTranscript).toBe(true)
 })

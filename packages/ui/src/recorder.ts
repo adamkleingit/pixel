@@ -1,12 +1,14 @@
 import fixWebmDuration from 'fix-webm-duration'
 import type {
   AudioTrack,
+  DrawEvent,
   ElementInfo,
   FrameEvent,
   Recording,
   RectEvent,
   ScreenshareEvent,
   SnapshotBlob,
+  StrokePoint,
 } from './types'
 
 /** Emit an audio chunk on this cadence so data flushes steadily (and to prep streaming). */
@@ -152,6 +154,30 @@ export class Recorder {
       t: args.startT,
       startT: args.startT,
       endT,
+      x: args.x,
+      y: args.y,
+      width: args.width,
+      height: args.height,
+    }
+    this.events.push(ev)
+    return ev
+  }
+
+  /** Record a freehand draw (Cmd+drag). `startT` is the active time at stroke start. */
+  draw(args: {
+    startT: number
+    points: StrokePoint[]
+    x: number
+    y: number
+    width: number
+    height: number
+  }): DrawEvent {
+    const ev: DrawEvent = {
+      kind: 'draw',
+      t: args.startT,
+      startT: args.startT,
+      endT: this.now(),
+      points: args.points,
       x: args.x,
       y: args.y,
       width: args.width,

@@ -110,6 +110,56 @@ Server (env vars):
   defaults to English**, so set this if you narrate in another language.
 - `SCREENSHARE_WHISPER_TASK` — `transcribe` (default) or `translate` (→ English).
 
+> **Using a component workbench?** See [Using Pixel with Storybook](#using-pixel-with-storybook) —
+> recordings keep running across story switches.
+
+## Using Pixel with Storybook
+
+Pixel works great for narrating changes against individual components in Storybook,
+and a recording **keeps running as you switch stories** — so you can record one
+brief that spans several of them.
+
+**1. Run the server** (same as any other app):
+
+```bash
+npx @getpixel/server      # writes ./.screenshare/inbox/<id>/, listens on http://localhost:41789
+```
+
+**2. Add a dev-only decorator** in `.storybook/preview.tsx`. The `import.meta.env.DEV`
+gate ensures the static `build-storybook` output never ships Pixel:
+
+```tsx
+import { Overlay, ScreenshareProvider, httpSink } from '@getpixel/ui'
+import type { Decorator } from '@storybook/react'
+
+const withPixel: Decorator = (Story) => {
+  if (!import.meta.env.DEV) return <Story />
+  return (
+    <ScreenshareProvider config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}>
+      <Story />
+      <Overlay />
+    </ScreenshareProvider>
+  )
+}
+
+export default { decorators: [withPixel] }
+```
+
+Then **double-tap Space** in the canvas to start recording.
+
+**Continuity across story switches.** Switching stories tears down and rebuilds the
+decorated subtree, which would normally discard the in-progress recording. Pixel
+parks the live recording on a `globalThis` singleton that the rebuilt decorator
+re-adopts, so audio and event capture continue uninterrupted — `Stop` produces a
+single continuous recording spanning every story you visited.
+
+**The one limitation.** A full reload of the preview iframe **ends the recording** —
+that's Storybook's HMR after you edit a file, or a manual canvas refresh. A document
+reload resets the clock and drops the live mic stream, which can't survive it (exactly
+like a hard refresh in any app). Everything short of a reload is preserved.
+
+**Local dev only.** This is a development tool — gate it behind `import.meta.env.DEV`
+(as above) and never ship it to a production app or a published/static Storybook.
 
 ## Packages
 

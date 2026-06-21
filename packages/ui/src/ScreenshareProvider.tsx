@@ -96,9 +96,16 @@ export function ScreenshareProvider({
   // The recording awaiting a (re)send after a failed save, if any.
   const pendingRef = useRef<Recording | null>(null)
 
+  // Edit mode — orthogonal to recording `state` (§4.3): both can be on at once,
+  // and both belong to one session. v1 just owns the flag + entry/exit; the
+  // edit engine and combined Save batch land in later steps.
+  const [editing, setEditing] = useState(false)
+
   // Live state mirror so stable callbacks and the key listener read current state.
   const stateRef = useRef(state)
   stateRef.current = state
+  const editingRef = useRef(editing)
+  editingRef.current = editing
 
   // Keep the latest config/callbacks in refs so the stable `toggle` closure and
   // the double-tap listener always see current values.
@@ -240,6 +247,17 @@ export function ScreenshareProvider({
     else void stop()
   }, [start, stop])
 
+  // Entering edit is gated on `isEnabled` so a disabled SDK stays fully inert;
+  // exiting is always allowed (turning the session off is safe).
+  const enterEdit = useCallback(() => {
+    if (enabledRef.current) setEditing(true)
+  }, [])
+  const exitEdit = useCallback(() => setEditing(false), [])
+  const toggleEdit = useCallback(() => {
+    if (!enabledRef.current) return
+    setEditing((e) => !e)
+  }, [])
+
   const removeBlip = useCallback((id: number) => {
     setBlips((prev) => prev.filter((b) => b.id !== id))
   }, [])
@@ -260,11 +278,16 @@ export function ScreenshareProvider({
         if (stateRef.current === 'recording') pause()
         else if (stateRef.current === 'paused') resume()
       },
+      // Esc exits edit mode first (the active session layer the user sees),
+      // otherwise cancels a recording.
       onEscape: () => {
-        if (stateRef.current !== 'idle') cancel()
+        if (editingRef.current) exitEdit()
+        else if (stateRef.current !== 'idle') cancel()
       },
+      // Double-Enter toggles edit mode (enter when idle; later: Save when editing).
+      onEditDouble: () => toggleEdit(),
     })
-  }, [isEnabled, config.activation, start, stop, pause, resume, cancel])
+  }, [isEnabled, config.activation, start, stop, pause, resume, cancel, exitEdit, toggleEdit])
 
   // While recording (not paused), capture pointer movement, clicks, and drag
   // rectangles. In block mode (default) we also stop page clicks/typing from
@@ -473,6 +496,10 @@ export function ScreenshareProvider({
       resume,
       cancel,
       toggle,
+      editing,
+      enterEdit,
+      exitEdit,
+      toggleEdit,
       passthrough,
       setPassthrough,
       bar,
@@ -488,7 +515,7 @@ export function ScreenshareProvider({
       drawStroke,
       drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

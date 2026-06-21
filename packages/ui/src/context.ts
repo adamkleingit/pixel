@@ -38,6 +38,14 @@ export interface ScreenshareContextValue {
   resume: () => void
   cancel: () => void
   toggle: () => void
+  /**
+   * Edit mode. Orthogonal to `state` (recording) — you can edit and record at
+   * once; both belong to one session (see complete-refactor.md §4.3).
+   */
+  editing: boolean
+  enterEdit: () => void
+  exitEdit: () => void
+  toggleEdit: () => void
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void

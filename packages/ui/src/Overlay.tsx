@@ -26,6 +26,7 @@ const ICONS = {
   minimize: 'M6 12h12',
   expand: 'M12 6v12M6 12h12',
   mouse: 'M5 2 L5 19 L9.5 14.5 L12.5 20 L14.5 19 L11.5 13.5 L18 13 Z',
+  edit: 'M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z',
 }
 
 const VERTICAL_POSITIONS = new Set(['center-left', 'center-right'])
@@ -128,9 +129,38 @@ function MouseToolToggle({ on, onToggle }: { on: boolean; onToggle: () => void }
   )
 }
 
+/**
+ * Edit-mode toggle — the pencil. Active (the default-off) means edit mode is on.
+ * Composes with recording: you can edit and record at once (§4.3). Also bound to
+ * double-tap Enter (enter) / Esc (exit).
+ */
+function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`screenshare-rec-btn${on ? ' active' : ''}`}
+      title={on ? 'Exit edit mode (Esc)' : 'Edit (double-tap Enter)'}
+      aria-label="Edit"
+      aria-pressed={on}
+      onClick={onToggle}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path
+          d={ICONS.edit}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  )
+}
+
 /** The floating control bar — clickable (pointer-events:auto) over the page. */
 function RecBar() {
-  const { state, start, pause, resume, stop, cancel, passthrough, setPassthrough, bar } =
+  const { state, start, pause, resume, stop, cancel, editing, toggleEdit, passthrough, setPassthrough, bar } =
     useScreenshareContext()
   const recording = state === 'recording'
   const idle = state === 'idle'
@@ -161,6 +191,7 @@ function RecBar() {
     `screenshare-rec pos-${bar.position}` +
     (vertical ? ' vertical' : '') +
     (idle ? ' idle' : recording ? '' : ' paused') +
+    (editing ? ' editing' : '') +
     (minimized ? ' minimized' : '')
 
   if (minimized) {
@@ -196,6 +227,7 @@ function RecBar() {
       )}
 
       <span className="screenshare-rec-sep" />
+      <EditToggle on={editing} onToggle={toggleEdit} />
       <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
 
       {!idle && (
@@ -252,6 +284,7 @@ export function Overlay({ className }: OverlayProps) {
     drawStroke,
     drawStrokes,
     bar,
+    editing,
   } = useScreenshareContext()
 
   if (typeof document === 'undefined') return null
@@ -260,7 +293,7 @@ export function Overlay({ className }: OverlayProps) {
 
   return createPortal(
     <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
-      {(active || bar.always) && <RecBar />}
+      {(active || editing || bar.always) && <RecBar />}
       <SaveError />
       {rectFlashes.map((r) => (
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

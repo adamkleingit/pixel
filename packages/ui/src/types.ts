@@ -111,9 +111,36 @@ export interface Recording {
 
 export type ScreenshareState = 'idle' | 'recording' | 'paused'
 
+/** A recording's processing stage on the server, surfaced in the floating bar. */
+export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
+
+/** One recording the server is tracking, as reported by `RecordingSink.listTasks`. */
+export interface Task {
+  id: string
+  status: TaskStatus
+  createdAt?: number
+  durationMs?: number
+  eventCount?: number
+  /** For finished tasks: the agent's summary (status 'done') or error message. */
+  summary?: string
+  message?: string
+}
+
 /** Where a finished recording is sent. The default is an HTTP sink (see `httpSink`). */
 export interface RecordingSink {
   save(rec: Recording): Promise<{ id: string }>
+  /**
+   * Optional: list the recordings the server currently knows about, for the
+   * floating-bar status indicator. The provider polls this when present; a
+   * rejection is treated as "server unreachable". Omit to disable the indicator.
+   */
+  listTasks?(): Promise<Task[]>
+  /**
+   * Optional: reveal a recording's folder in the OS file manager. The server
+   * runs the native open command (the browser can't), so this is only useful
+   * with a local sink. Wired to row clicks in the tasks popup when present.
+   */
+  openTask?(id: string): Promise<void>
 }
 
 export interface ActivationConfig {
@@ -165,4 +192,10 @@ export interface ScreenshareConfig {
   sink?: RecordingSink
   /** Double-tap-to-toggle keyboard activation. */
   activation?: ActivationConfig
+  /**
+   * How often (ms) to poll the sink for task status, driving the floating-bar
+   * indicator. Only polls if the sink implements `listTasks`. Default 4000.
+   * Set to 0 to disable polling.
+   */
+  taskPollMs?: number
 }

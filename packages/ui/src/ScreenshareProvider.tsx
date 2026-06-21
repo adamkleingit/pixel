@@ -14,7 +14,7 @@ import { captureFullFrame, captureRegion, captureStroke } from './capture/snapsh
 import { Recorder } from './recorder'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
-import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint } from './types'
+import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
@@ -91,6 +91,9 @@ export function ScreenshareProvider({
   // Save status, so the overlay can surface a failure and offer a resend.
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Task status polled from the sink, driving the floating-bar indicator.
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [serverDown, setServerDown] = useState(false)
 
   const recorderRef = useRef<Recorder | null>(null)
   // The recording awaiting a (re)send after a failed save, if any.
@@ -116,6 +119,39 @@ export function ScreenshareProvider({
   useEffect(() => {
     if (isEnabled) injectStyles()
   }, [isEnabled])
+
+  // Poll the sink for task status so the floating bar can show how many
+  // recordings are pending/executing, and flag the server as down when the poll
+  // fails. Reads the sink from configRef so a re-created sink object (common when
+  // config is an inline literal) doesn't thrash the interval.
+  const canPoll = Boolean(config.sink?.listTasks)
+  useEffect(() => {
+    const pollMs = configRef.current.taskPollMs ?? 4000
+    if (!isEnabled || !canPoll || pollMs <= 0) return
+    let cancelled = false
+    let inFlight = false
+    const poll = async () => {
+      if (inFlight) return // skip if the previous poll hasn't settled (slow server)
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      inFlight = true
+      try {
+        const next = await configRef.current.sink!.listTasks!()
+        if (cancelled) return
+        setTasks(next)
+        setServerDown(false)
+      } catch {
+        if (!cancelled) setServerDown(true)
+      } finally {
+        inFlight = false
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), pollMs)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [isEnabled, canPoll, config.taskPollMs])
 
   // Full-viewport screenshot (with coordinate grid) on start and resume.
   const captureFrame = useCallback(async (reason: 'start' | 'resume') => {
@@ -160,6 +196,13 @@ export function ScreenshareProvider({
     const rec = pendingRef.current
     if (rec) void saveRecording(rec)
   }, [saveRecording])
+
+  /** Ask the sink (server) to open a recording's folder in the OS file manager. */
+  const openTask = useCallback((id: string) => {
+    configRef.current.sink?.openTask?.(id)?.catch(() => {
+      /* best-effort; the bar already surfaces server-down via polling */
+    })
+  }, [])
 
   const start = useCallback(async () => {
     if (!enabledRef.current || recorderRef.current) return
@@ -480,6 +523,9 @@ export function ScreenshareProvider({
       saveError,
       saving,
       resend,
+      tasks,
+      serverDown,
+      openTask,
       blips,
       removeBlip,
       dragRect,
@@ -488,7 +534,7 @@ export function ScreenshareProvider({
       drawStroke,
       drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

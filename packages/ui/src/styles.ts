@@ -164,6 +164,108 @@ const CSS = `
   50%      { opacity: 0.25; }
 }
 
+/* Task status indicator: a count badge, or an error tint when the server is down. */
+.screenshare-rec .screenshare-rec-tasks { position: relative; }
+.screenshare-rec .screenshare-rec-tasks.error {
+  color: #fca5a5;
+  animation: screenshare-pulse 1.4s ease-in-out infinite;
+}
+.screenshare-rec .screenshare-rec-tasks.error:hover { background: rgba(248, 113, 113, 0.3); }
+.screenshare-rec .screenshare-rec-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: #a855f7;
+  color: #fff;
+  font: 700 9px ui-sans-serif, system-ui;
+  line-height: 14px;
+  text-align: center;
+  box-shadow: 0 0 0 1.5px rgba(24, 12, 38, 0.92);
+}
+
+/* Tasks popup, anchored just outside the bar (positioned inline by JS). */
+.screenshare-tasks {
+  position: absolute;
+  z-index: 1;
+  width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(24, 12, 38, 0.97);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  color: #f3e8ff;
+  cursor: default;
+}
+.screenshare-tasks-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  padding: 2px 6px 8px;
+}
+.screenshare-tasks-empty {
+  font-size: 12px;
+  color: #b9a9d6;
+  padding: 4px 6px 8px;
+}
+.screenshare-tasks-list { list-style: none; margin: 0; padding: 0; }
+.screenshare-tasks-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 8px;
+}
+.screenshare-tasks-item + .screenshare-tasks-item { margin-top: 2px; }
+.screenshare-tasks-item:hover { background: rgba(168, 85, 247, 0.14); }
+.screenshare-tasks-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.screenshare-tasks-id {
+  font: 500 11px ui-monospace, monospace;
+  color: #e9d5ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screenshare-tasks-pill {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.screenshare-tasks-pill.pending { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
+.screenshare-tasks-pill.executing {
+  background: rgba(96, 165, 250, 0.2);
+  color: #93c5fd;
+  animation: screenshare-pulse 1.4s ease-in-out infinite;
+}
+.screenshare-tasks-pill.done { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.screenshare-tasks-pill.error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
+
 .screenshare-rect {
   position: fixed;
   border: 2px solid rgba(168, 85, 247, 0.95);

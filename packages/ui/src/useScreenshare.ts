@@ -10,6 +10,11 @@ export interface UseScreenshare {
   cancel: () => void
   /** Start if idle, stop otherwise. */
   toggle: () => void
+  /** Edit mode — orthogonal to recording; both can be on at once (one session). */
+  editing: boolean
+  enterEdit: () => void
+  exitEdit: () => void
+  toggleEdit: () => void
   /** Live interaction mode: true = page clicks/typing pass through. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void
@@ -27,10 +32,12 @@ export interface UseScreenshare {
 export function useScreenshare(): UseScreenshare {
   const {
     state, start, stop, pause, resume, cancel, toggle,
+    editing, enterEdit, exitEdit, toggleEdit,
     passthrough, setPassthrough, lastRecording, saveError, saving, resend,
   } = useScreenshareContext()
   return {
     state, start, stop, pause, resume, cancel, toggle,
+    editing, enterEdit, exitEdit, toggleEdit,
     passthrough, setPassthrough, lastRecording, saveError, saving, resend,
   }
 }

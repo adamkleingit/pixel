@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-/** Dedicated test ports so the harness never collides with a real `npm run dev`. */
-export const SERVER_PORT = 41790
-export const EXAMPLE_PORT = 5181
+/** Dedicated test ports so the harness never collides with a real `npm run dev`.
+ *  Offset from main's 41790/5181 so this worktree's e2e can run in parallel with
+ *  the main checkout's (the two share a machine during the refactor). */
+export const SERVER_PORT = 41890
+export const EXAMPLE_PORT = 5281
 export const SERVER_URL = `http://localhost:${SERVER_PORT}`
 export const EXAMPLE_URL = `http://localhost:${EXAMPLE_PORT}`
 

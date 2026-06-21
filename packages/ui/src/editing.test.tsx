@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ScreenshareProvider } from './ScreenshareProvider'
 import { Overlay } from './Overlay'
@@ -91,5 +91,38 @@ describe('edit mode — inert when disabled', () => {
     expect(probeText()).toBe('idle/view')
     doublePressEnter()
     expect(probeText()).toBe('idle/view')
+  })
+})
+
+describe('edit mode — app inert', () => {
+  it('swallows page clicks while editing and restores them on exit; the bar still works', () => {
+    const onPageClick = vi.fn()
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <button data-testid="page-btn" onClick={onPageClick}>
+          App button
+        </button>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const pageBtn = screen.getByTestId('page-btn')
+
+    // Not editing → the page button reacts normally.
+    fireEvent.click(pageBtn)
+    expect(onPageClick).toHaveBeenCalledTimes(1)
+
+    // Enter edit (clicking the bar pencil works — it's our own UI) → page clicks
+    // are swallowed.
+    fireEvent.click(editBtn())
+    expect(probeText()).toBe('idle/editing')
+    fireEvent.click(pageBtn)
+    expect(onPageClick).toHaveBeenCalledTimes(1) // unchanged — swallowed
+
+    // Exit edit (the bar pencil still receives its click) → the page reacts again.
+    fireEvent.click(editBtn())
+    expect(probeText()).toBe('idle/view')
+    fireEvent.click(pageBtn)
+    expect(onPageClick).toHaveBeenCalledTimes(2)
   })
 })

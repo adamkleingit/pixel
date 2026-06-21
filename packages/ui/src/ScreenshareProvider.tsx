@@ -12,6 +12,12 @@ import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
 import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
+import {
+  clearActiveSession,
+  getActiveSession,
+  setActiveSession,
+  updateActiveSession,
+} from './session'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
 import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
@@ -78,7 +84,12 @@ export function ScreenshareProvider({
   onSaved,
   onCancel,
 }: ScreenshareProviderProps) {
-  const [state, setState] = useState<ScreenshareState>('idle')
+  // Adopt any recording already in flight (a remount within the same document —
+  // e.g. a Storybook story switch — parks it on a globalThis singleton). On the
+  // normal first mount the session is empty and these fall back to defaults.
+  const adopted = getActiveSession()
+
+  const [state, setState] = useState<ScreenshareState>(() => adopted?.state ?? 'idle')
   const [lastRecording, setLastRecording] = useState<Recording | null>(null)
   const [blips, setBlips] = useState<BlipData[]>([])
   const [dragRect, setDragRect] = useState<RectShape | null>(null)
@@ -86,18 +97,37 @@ export function ScreenshareProvider({
   const [drawStroke, setDrawStroke] = useState<StrokeShape | null>(null)
   const [drawStrokes, setDrawStrokes] = useState<Stroke[]>([])
   // Interaction mode is SDK-owned runtime state (initial from config) so it can be
-  // toggled live — including mid-recording — from the floating bar.
-  const [passthrough, setPassthrough] = useState(config.passthrough === true)
+  // toggled live — including mid-recording — from the floating bar. Restored from
+  // the adopted session so the mode carries across a remount.
+  const [passthrough, setPassthroughState] = useState(
+    () => adopted?.passthrough ?? config.passthrough === true,
+  )
   // Save status, so the overlay can surface a failure and offer a resend.
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(() => adopted?.saveError ?? null)
   const [saving, setSaving] = useState(false)
   // Task status polled from the sink, driving the floating-bar indicator.
   const [tasks, setTasks] = useState<Task[]>([])
   const [serverDown, setServerDown] = useState(false)
 
-  const recorderRef = useRef<Recorder | null>(null)
+  // Adopt the in-flight recorder if there is one; otherwise start null. useRef's
+  // initializer only runs on first render, so this is the adoption hook.
+  const recorderRef = useRef<Recorder | null>(adopted?.recorder ?? null)
   // The recording awaiting a (re)send after a failed save, if any.
-  const pendingRef = useRef<Recording | null>(null)
+  const pendingRef = useRef<Recording | null>(adopted?.pending ?? null)
+
+  // Mirror passthrough so stable callbacks (start, the M-key toggle) read it
+  // without re-creating, and so we can write it through to the session.
+  const passthroughRef = useRef(passthrough)
+  passthroughRef.current = passthrough
+
+  // Passthrough setter that also writes through to the session (a no-op when no
+  // recording is in flight), so the mode survives a remount.
+  const setPassthrough = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? (v as (prev: boolean) => boolean)(passthroughRef.current) : v
+    passthroughRef.current = next
+    setPassthroughState(next)
+    updateActiveSession({ passthrough: next })
+  }, [])
 
   // Live state mirror so stable callbacks and the key listener read current state.
   const stateRef = useRef(state)
@@ -178,13 +208,15 @@ export function ScreenshareProvider({
       const result = await sink.save(recording)
       recording.id = result.id
       pendingRef.current = null
+      updateActiveSession({ pending: null, saveError: null })
       setLastRecording({ ...recording })
       onSavedRef.current?.(result)
     } catch (err) {
+      const message =
+        "Couldn't send the recording — is the Pixel server running? Click resend to try again."
       pendingRef.current = recording
-      setSaveError(
-        "Couldn't send the recording — is the Pixel server running? Click resend to try again.",
-      )
+      updateActiveSession({ pending: recording, saveError: message })
+      setSaveError(message)
       console.error('[screenshare] failed to save recording:', err)
     } finally {
       setSaving(false)
@@ -205,6 +237,8 @@ export function ScreenshareProvider({
   }, [])
 
   const start = useCallback(async () => {
+    // The recorderRef guard also prevents a double-start right after adoption:
+    // an adopted provider already holds the in-flight recorder.
     if (!enabledRef.current || recorderRef.current) return
     const cfg = configRef.current
     const recorder = new Recorder({ pointerHz: cfg.pointerHz })
@@ -213,6 +247,14 @@ export function ScreenshareProvider({
     pendingRef.current = null
     setSaveError(null)
     setState('recording')
+    // Park the live session so it survives a provider remount.
+    setActiveSession({
+      recorder,
+      state: 'recording',
+      passthrough: passthroughRef.current,
+      pending: null,
+      saveError: null,
+    })
     await recorder.start({ audio: cfg.audio !== false })
     void captureFrame('start')
   }, [captureFrame])
@@ -237,6 +279,8 @@ export function ScreenshareProvider({
 
     recorderRef.current = null
     const recording = await recorder.stop()
+    // The recording is over — the session no longer needs to survive remounts.
+    clearActiveSession()
     recording.language = configRef.current.language
     setState('idle')
     setBlips([])
@@ -254,6 +298,7 @@ export function ScreenshareProvider({
     if (stateRef.current !== 'recording') return
     recorderRef.current?.pause()
     setState('paused')
+    updateActiveSession({ state: 'paused' })
     setDragRect(null)
     setDrawStroke(null)
   }, [])
@@ -262,6 +307,7 @@ export function ScreenshareProvider({
     if (stateRef.current !== 'paused') return
     recorderRef.current?.resume()
     setState('recording')
+    updateActiveSession({ state: 'recording' })
     void captureFrame('resume')
   }, [captureFrame])
 
@@ -269,6 +315,7 @@ export function ScreenshareProvider({
     if (!recorderRef.current) return
     recorderRef.current.abort()
     recorderRef.current = null
+    clearActiveSession()
     setState('idle')
     setBlips([])
     setRectFlashes([])

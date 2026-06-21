@@ -14,7 +14,8 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   server: {
-    port: 5180,
+    // Offset from main's 5180 so the worktree example can run in parallel.
+    port: 5280,
     fs: { allow: [workspaceRoot] },
   },
 })

@@ -9,10 +9,11 @@ import {
   type Recording,
 } from '@getpixel/ui'
 
-// Defaults to the standard server port; the e2e test points it elsewhere via Vite env.
+// Defaults to the worktree dev server port (41889, offset from main's 41789 so
+// both can run in parallel); the e2e test points it elsewhere via Vite env.
 const SERVER_URL =
   (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SCREENSHARE_SERVER_URL ??
-  'http://localhost:41789'
+  'http://localhost:41889'
 
 // Whisper language names (Transformers.js). 'english' is Whisper's default.
 const LANGUAGES = [

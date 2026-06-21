@@ -521,6 +521,34 @@ export function ScreenshareProvider({
     }
   }, [state, passthrough])
 
+  // Edit mode inerts the page so Pixel's selection (a later step) can take over:
+  // page clicks/activation are swallowed and any focused field is blurred. Only
+  // runs when NOT recording — while recording, that effect's block/passthrough
+  // already governs the page, so we don't double-install (which would fight over
+  // capture-phase propagation). Pointer events are left alone for the upcoming
+  // selection handler; swallowing `click` is what blocks navigation/activation.
+  // Keyboard isn't swallowed, so the edit shortcuts (double-Enter / Esc) keep
+  // working — and with clicks blocked, no app field can be focused to type into.
+  useEffect(() => {
+    if (!editing || state === 'recording') return
+    const isOwnUI = (e: Event): boolean => {
+      const t = e.target
+      return t instanceof Element && !!t.closest('.screenshare-overlay')
+    }
+    const swallow = (e: Event) => {
+      if (isOwnUI(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const pageMouseEvents = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'contextmenu']
+    for (const t of pageMouseEvents) window.addEventListener(t, swallow, true)
+    const active = document.activeElement as HTMLElement | null
+    if (active && !active.closest('.screenshare-overlay')) active.blur?.()
+    return () => {
+      for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
+    }
+  }, [editing, state])
+
   const bar = useMemo<ResolvedBarConfig>(
     () => ({
       always: config.bar?.always ?? false,

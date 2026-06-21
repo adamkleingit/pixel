@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,16 @@ import multer from 'multer'
 import { Store } from './store.js'
 import { fileTranscriber, transcribeRecording, whisperTranscriber } from './transcribe.js'
 import { correlateRecording } from './correlate.js'
-import { finish, resolveRoot, watchAndClaim } from './dropbox.js'
+import { finish, listTasks, resolveRoot, taskDir, watchAndClaim } from './dropbox.js'
+
+/** Open a directory in the OS file manager (Finder / Explorer / xdg). */
+function openInFileManager(dir: string): void {
+  const cmd =
+    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open'
+  // Pass the path as an arg (no shell) so it can't be interpreted as a command.
+  // explorer.exe exits non-zero even on success, so the error is ignored.
+  execFile(cmd, [dir], () => {})
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -134,6 +144,24 @@ function startServer(): void {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, root: ROOT })
+  })
+
+  // Current + recent recordings and their lifecycle status, for the client's
+  // floating-bar indicator. Cheap enough to poll (a directory scan + small reads).
+  app.get('/tasks', (_req, res) => {
+    res.json({ tasks: listTasks(ROOT) })
+  })
+
+  // Open a recording's folder in the OS file manager. Clicking a task in the
+  // client hits this — the browser can't open Finder/Explorer itself.
+  app.post('/tasks/:id/reveal', (req, res) => {
+    const dir = taskDir(ROOT, req.params.id)
+    if (!dir) {
+      res.status(404).json({ error: 'unknown recording' })
+      return
+    }
+    openInFileManager(dir)
+    res.json({ ok: true, dir })
   })
 
   app.post('/recordings', upload.any(), async (req, res) => {

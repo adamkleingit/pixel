@@ -238,7 +238,6 @@ const CARDS = [
   { title: 'Inbox', body: 'Triage messages and assign owners.', primary: 'Compose' },
   { title: 'Billing', body: 'Plans, invoices, and payment methods.', primary: 'Upgrade' },
   { title: 'Team', body: 'Invite teammates and manage roles.', primary: 'Invite' },
-  { title: 'Settings', body: 'Workspace preferences and integrations.', primary: 'Edit' },
 ]
 
 function Shell({
@@ -296,7 +295,7 @@ function Shell({
         </label>
         <div className="toolbar">
           <button className="btn" onClick={closeDialog}>
-            Done
+            OK
           </button>
           <button className="btn secondary" onClick={closeDialog}>
             Cancel

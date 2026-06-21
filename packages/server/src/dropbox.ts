@@ -109,6 +109,86 @@ export interface Result {
   message?: string
 }
 
+/** A recording's lifecycle stage, derived from which bucket it sits in. */
+export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
+
+export interface Task {
+  id: string
+  status: TaskStatus
+  /** Epoch ms the recording was written (from meta.json), if available. */
+  createdAt?: number
+  durationMs?: number
+  eventCount?: number
+  /** For finished tasks: the agent's summary / error message (from result.json). */
+  summary?: string
+  message?: string
+}
+
+function readJsonSync<T>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as T
+  } catch {
+    return null
+  }
+}
+
+function listBucket(root: string, bucket: string): string[] {
+  try {
+    // Ignore dotfiles (e.g. .DS_Store, created when Finder opens the folder) —
+    // only timestamp-prefixed recording directories are tasks.
+    return readdirSync(join(root, bucket))
+      .filter((name) => !name.startsWith('.'))
+      .sort()
+  } catch {
+    return [] // bucket doesn't exist yet
+  }
+}
+
+/** Absolute path to a recording's directory, whichever bucket it sits in. Null if unknown. */
+export function taskDir(root: string, id: string): string | null {
+  for (const bucket of ['inbox', 'working', 'done']) {
+    const dir = join(root, bucket, id)
+    if (existsSync(dir)) return dir
+  }
+  return null
+}
+
+type Meta = { createdAt?: number; durationMs?: number; eventCount?: number }
+
+/**
+ * Snapshot the recordings the server knows about, tagged with the lifecycle
+ * stage implied by their bucket: inbox → pending, working → executing, done →
+ * done/error (from result.json). Newest first, capped to the latest `limit`
+ * entries so the history stays bounded.
+ */
+export function listTasks(root = resolveRoot(), { limit = 10 }: { limit?: number } = {}): Task[] {
+  const meta = (bucket: string, id: string): Meta =>
+    readJsonSync<Meta>(join(root, bucket, id, 'meta.json')) ?? {}
+
+  const active: Task[] = [
+    ...listBucket(root, 'inbox').map((id): Task => ({ id, status: 'pending', ...meta('inbox', id) })),
+    ...listBucket(root, 'working').map((id): Task => ({ id, status: 'executing', ...meta('working', id) })),
+  ]
+
+  // Only the newest `limit` finished recordings can survive the cap, so read
+  // result.json for just those rather than the whole done/ history.
+  const done: Task[] = listBucket(root, 'done')
+    .slice(-limit)
+    .map((id): Task => {
+      const result = readJsonSync<Result>(join(root, 'done', id, 'result.json'))
+      return {
+        id,
+        status: result?.status === 'error' ? 'error' : 'done',
+        ...meta('done', id),
+        summary: result?.summary,
+        message: result?.message,
+      }
+    })
+
+  // ids are timestamp-prefixed, so a descending id sort is reverse-chronological.
+  return [...active, ...done].sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, limit)
+}
+
 /**
  * Finish a claimed recording: write `result.json` and move it working → done so
  * it isn't reprocessed. Used by the `done` subcommand.

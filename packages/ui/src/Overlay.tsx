@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
 import { DrawStroke } from './draw/stroke'
+import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
   /** Extra class applied to the overlay root. */
@@ -129,6 +130,102 @@ function MouseToolToggle({ on, onToggle }: { on: boolean; onToggle: () => void }
   )
 }
 
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  pending: 'Pending',
+  executing: 'Executing',
+  done: 'Done',
+  error: 'Error',
+}
+
+/** A recording is "active" (worth a badge count) while pending or executing. */
+function isActive(t: Task): boolean {
+  return t.status === 'pending' || t.status === 'executing'
+}
+
+/** Epoch ms parsed from an id like `20260621-151254-644-rand`, or null. */
+function parseIdTime(id: string): number | null {
+  const m = id.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/)
+  if (!m) return null
+  const [, y, mo, d, h, mi, s] = m
+  return new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime()
+}
+
+/** Human timestamp like `7.12.26 10:15:02` (D.M.YY HH:MM:SS, local time). */
+function formatStamp(t: Task): string {
+  const ms = t.createdAt ?? parseIdTime(t.id)
+  if (ms == null) return t.id
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(2)
+  return `${d.getDate()}.${d.getMonth() + 1}.${yy} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+/** Place the popup just outside the bar, on whichever side the bar is docked. */
+function panelAnchor(position: BarPosition): CSSProperties {
+  const gap = 10
+  if (position.includes('right')) return { right: `calc(100% + ${gap}px)`, top: 0 }
+  if (position.includes('left')) return { left: `calc(100% + ${gap}px)`, top: 0 }
+  if (position.startsWith('top')) return { top: `calc(100% + ${gap}px)`, right: 0 }
+  return { bottom: `calc(100% + ${gap}px)`, right: 0 }
+}
+
+/** The bar button that surfaces task status — a count badge, or an error sign. */
+function TaskIndicator({
+  activeCount,
+  serverDown,
+  open,
+  onClick,
+}: {
+  activeCount: number
+  serverDown: boolean
+  open: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={
+        'screenshare-rec-btn screenshare-rec-tasks' +
+        (serverDown ? ' error' : '') +
+        (open ? ' active' : '')
+      }
+      title={serverDown ? 'Pixel server unreachable — click for details' : 'Recording tasks'}
+      aria-label={serverDown ? 'Pixel server unreachable' : 'Recording tasks'}
+      onClick={onClick}
+    >
+      {serverDown ? (
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d="M12 4 L21.5 20 L2.5 20 Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path d="M12 10v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <circle cx="12" cy="17" r="1" fill="currentColor" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d="M9 6h11M9 12h11M9 18h11"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx="4.5" cy="6" r="1.3" fill="currentColor" />
+          <circle cx="4.5" cy="12" r="1.3" fill="currentColor" />
+          <circle cx="4.5" cy="18" r="1.3" fill="currentColor" />
+        </svg>
+      )}
+      {!serverDown && activeCount > 0 && (
+        <span className="screenshare-rec-badge">{activeCount}</span>
+      )}
+    </button>
+  )
+}
+
 /**
  * Edit-mode toggle — the pencil. Active (the default-off) means edit mode is on.
  * Composes with recording: you can edit and record at once (§4.3). Also bound to
@@ -158,14 +255,95 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
+/** Popup listing the recordings the server is tracking and their status. */
+function TasksPanel({
+  tasks,
+  anchor,
+  onOpen,
+}: {
+  tasks: Task[]
+  anchor: CSSProperties
+  onOpen: (id: string) => void
+}) {
+  return (
+    <div className="screenshare-tasks" style={anchor} role="dialog" aria-label="Recording tasks">
+      <div className="screenshare-tasks-head">Recordings</div>
+      {tasks.length === 0 ? (
+        <div className="screenshare-tasks-empty">No recordings yet.</div>
+      ) : (
+        <ul className="screenshare-tasks-list">
+          {tasks.map((t) => (
+            <li key={t.id} className="screenshare-tasks-item">
+              <button
+                type="button"
+                className="screenshare-tasks-open"
+                title={`Open folder — ${t.id}`}
+                onClick={() => onOpen(t.id)}
+              >
+                <span className="screenshare-tasks-id">{formatStamp(t)}</span>
+                <span className={`screenshare-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /** The floating control bar — clickable (pointer-events:auto) over the page. */
 function RecBar() {
-  const { state, start, pause, resume, stop, cancel, editing, toggleEdit, passthrough, setPassthrough, bar } =
-    useScreenshareContext()
+  const {
+    state,
+    start,
+    pause,
+    resume,
+    stop,
+    cancel,
+    editing,
+    toggleEdit,
+    passthrough,
+    setPassthrough,
+    bar,
+    tasks,
+    serverDown,
+    openTask,
+  } = useScreenshareContext()
   const recording = state === 'recording'
   const idle = state === 'idle'
   const [minimized, setMinimized] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const containRef = useContainEvents<HTMLDivElement>()
+
+  const activeCount = tasks.filter(isActive).length
+  // The indicator earns a slot whenever there's something to show — active
+  // tasks, a server error, or a popup the user has opened.
+  const showIndicator = serverDown || tasks.length > 0 || panelOpen
+  const indicator = showIndicator && (
+    <TaskIndicator
+      activeCount={activeCount}
+      serverDown={serverDown}
+      open={panelOpen}
+      onClick={() => setPanelOpen((o) => !o)}
+    />
+  )
+  // The popup follows the live server state: the tasks list while connected, the
+  // reused error toast (rendered by the caller) while the server is unreachable.
+  const tasksPopup = panelOpen && !serverDown && (
+    <TasksPanel tasks={tasks} anchor={panelAnchor(bar.position)} onOpen={openTask} />
+  )
+  const serverDownToast = panelOpen && serverDown && (
+    <ErrorToast
+      message={
+        <>
+          The Pixel server isn’t responding. Type <strong>pixel</strong> to your agent to start it —
+          the bar reconnects automatically.
+        </>
+      }
+      actionLabel="Dismiss"
+      onAction={() => setPanelOpen(false)}
+    />
+  )
 
   // Elapsed timer that only advances while actively recording.
   const [elapsed, setElapsed] = useState(0)
@@ -196,14 +374,20 @@ function RecBar() {
 
   if (minimized) {
     return (
-      <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
-        {!idle && <span className="screenshare-rec-dot" />}
-        <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
-      </div>
+      <>
+        <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
+          {!idle && <span className="screenshare-rec-dot" />}
+          {indicator}
+          <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
+          {tasksPopup}
+        </div>
+        {serverDownToast}
+      </>
     )
   }
 
   return (
+    <>
     <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
       {idle ? (
         <button
@@ -243,8 +427,45 @@ function RecBar() {
         </>
       )}
 
+      {showIndicator && (
+        <>
+          <span className="screenshare-rec-sep" />
+          {indicator}
+        </>
+      )}
+
       <span className="screenshare-rec-sep" />
       <IconButton icon="minimize" label="Minimize" onClick={() => setMinimized(true)} stroke />
+      {tasksPopup}
+    </div>
+    {serverDownToast}
+    </>
+  )
+}
+
+/** A bottom-center alert toast with a single action button. */
+function ErrorToast({
+  message,
+  actionLabel,
+  onAction,
+  actionDisabled,
+}: {
+  message: ReactNode
+  actionLabel: string
+  onAction: () => void
+  actionDisabled?: boolean
+}) {
+  return (
+    <div className="screenshare-save-error" role="alert">
+      <span className="screenshare-save-error-msg">{message}</span>
+      <button
+        type="button"
+        className="screenshare-save-error-btn"
+        onClick={onAction}
+        disabled={actionDisabled}
+      >
+        {actionLabel}
+      </button>
     </div>
   )
 }
@@ -254,17 +475,12 @@ function SaveError() {
   const { saveError, saving, resend } = useScreenshareContext()
   if (!saveError) return null
   return (
-    <div className="screenshare-save-error" role="alert">
-      <span className="screenshare-save-error-msg">{saveError}</span>
-      <button
-        type="button"
-        className="screenshare-save-error-btn"
-        onClick={resend}
-        disabled={saving}
-      >
-        {saving ? 'Resending…' : 'Resend'}
-      </button>
-    </div>
+    <ErrorToast
+      message={saveError}
+      actionLabel={saving ? 'Resending…' : 'Resend'}
+      onAction={resend}
+      actionDisabled={saving}
+    />
   )
 }
 
@@ -284,16 +500,21 @@ export function Overlay({ className }: OverlayProps) {
     drawStroke,
     drawStrokes,
     bar,
+    tasks,
+    serverDown,
     editing,
   } = useScreenshareContext()
 
   if (typeof document === 'undefined') return null
 
   const active = state === 'recording' || state === 'paused'
+  // Surface the bar (and its indicator) whenever there's status worth showing,
+  // even while idle: active recordings on the server, or a connection error.
+  const showBar = active || bar.always || serverDown || tasks.length > 0 || editing
 
   return createPortal(
     <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
-      {(active || editing || bar.always) && <RecBar />}
+      {showBar && <RecBar />}
       <SaveError />
       {rectFlashes.map((r) => (
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

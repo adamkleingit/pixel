@@ -22,4 +22,6 @@ export type {
   BarConfig,
   BarPosition,
   RecordingSink,
+  Task,
+  TaskStatus,
 } from './types'

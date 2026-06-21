@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState, StrokePoint } from './types'
+import type { BarPosition, Recording, ScreenshareState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -58,6 +58,12 @@ export interface ScreenshareContextValue {
   saving: boolean
   /** Re-attempt sending the last recording that failed to save. No-op if none. */
   resend: () => void
+  /** Recordings the server is tracking (polled). Empty if none or polling is off. */
+  tasks: Task[]
+  /** True when the last task poll failed — the server appears to be unreachable. */
+  serverDown: boolean
+  /** Reveal a recording's folder in the OS file manager (no-op if the sink can't). */
+  openTask: (id: string) => void
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void

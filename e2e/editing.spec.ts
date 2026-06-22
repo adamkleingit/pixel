@@ -141,6 +141,35 @@ test('selection: Shift+click adds a second element (multi-select)', async ({ pag
   await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
 })
 
+test('design pane: docks on the right, shrinks the body, collapses, and restores on exit', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const pane = page.locator('.screenshare-pane')
+  const marginRight = () => page.evaluate(() => document.documentElement.style.marginRight)
+
+  // Appears immediately on entering edit mode, and shrinks the body (not float).
+  await editBtn(page).click()
+  await expect(pane).toBeVisible()
+  expect(await marginRight()).toBe('280px')
+
+  // Inspects the selected element.
+  await page.getByRole('button', { name: 'Upgrade' }).click({ modifiers: ['Meta'] })
+  await expect(page.locator('.screenshare-pane-tag')).toBeVisible()
+
+  // Collapse → frees the reserved width (like the recording menu's minimize).
+  await page.locator('.screenshare-pane-collapse').click()
+  await expect(page.locator('.screenshare-pane.collapsed')).toBeVisible()
+  expect(await marginRight()).toBe('0px')
+
+  // Expand again restores the width; exiting edit restores the original margin.
+  await page.locator('.screenshare-pane-collapse').click()
+  expect(await marginRight()).toBe('280px')
+  await editBtn(page).click() // exit edit
+  await expect(pane).toHaveCount(0)
+  expect(await marginRight()).toBe('')
+})
+
 test('edit mode inerts the page: a nav link does not navigate while editing', async ({ page }) => {
   await page.goto('/')
   const edit = editBtn(page)

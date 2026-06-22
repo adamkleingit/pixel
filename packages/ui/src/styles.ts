@@ -75,12 +75,14 @@ const CSS = `
 /* positions */
 .screenshare-rec.pos-top-left { top: 16px; left: 16px; }
 .screenshare-rec.pos-top-center { top: 16px; left: 50%; transform: translateX(-50%); }
-.screenshare-rec.pos-top-right { top: 16px; right: 16px; }
+/* Right-docked positions account for the design pane's width (a CSS var the
+   pane sets on :root) so the bar floats beside the pane, not under it. */
+.screenshare-rec.pos-top-right { top: 16px; right: calc(16px + var(--screenshare-dock-right, 0px)); }
 .screenshare-rec.pos-center-left { top: 50%; left: 16px; transform: translateY(-50%); }
-.screenshare-rec.pos-center-right { top: 50%; right: 16px; transform: translateY(-50%); }
+.screenshare-rec.pos-center-right { top: 50%; right: calc(16px + var(--screenshare-dock-right, 0px)); transform: translateY(-50%); }
 .screenshare-rec.pos-bottom-left { bottom: 16px; left: 16px; }
 .screenshare-rec.pos-bottom-center { bottom: 16px; left: 50%; transform: translateX(-50%); }
-.screenshare-rec.pos-bottom-right { bottom: 16px; right: 16px; }
+.screenshare-rec.pos-bottom-right { bottom: 16px; right: calc(16px + var(--screenshare-dock-right, 0px)); }
 
 /* vertical layout for center-left / center-right */
 .screenshare-rec.vertical {
@@ -359,6 +361,101 @@ const CSS = `
 }
 .screenshare-sel-hover {
   border: 1.5px dashed rgba(168, 85, 247, 0.8);
+}
+
+/* Design pane — docks on the right and reserves layout width (the body is
+   shrunk via documentElement margin-right, set from DesignPane). */
+.screenshare-pane {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  pointer-events: auto;
+  background: #faf8ff;
+  border-left: 1px solid #e6deff;
+  box-shadow: -2px 0 16px rgba(124, 58, 237, 0.12);
+  display: flex;
+  flex-direction: column;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: #2a1f3d;
+  z-index: 2147483002;
+}
+.screenshare-pane.collapsed {
+  width: 36px;
+}
+.screenshare-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid #ece6ff;
+  flex-shrink: 0;
+}
+.screenshare-pane-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #6b5b8a;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.screenshare-pane-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b5b8a;
+  flex-shrink: 0;
+}
+.screenshare-pane-collapse:hover { background: #efe9ff; }
+.screenshare-pane.collapsed .screenshare-pane-head {
+  padding: 0;
+  justify-content: center;
+}
+.screenshare-pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.screenshare-pane-empty {
+  color: #8b7fa6;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 2px;
+}
+.screenshare-pane-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7c3aed;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+.screenshare-pane-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-top: 1px solid #f1ecff;
+}
+.screenshare-pane-row:first-of-type { border-top: none; }
+.screenshare-pane-key { color: #8b7fa6; white-space: nowrap; }
+.screenshare-pane-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #2a1f3d;
+  text-align: right;
+  word-break: break-word;
 }
 `
 

@@ -384,6 +384,18 @@ const CSS = `
 .screenshare-pane.collapsed {
   width: 36px;
 }
+.screenshare-pane-resize {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 1;
+}
+.screenshare-pane-resize:hover {
+  background: linear-gradient(to right, rgba(124, 58, 237, 0.35), transparent);
+}
 .screenshare-pane-head {
   display: flex;
   align-items: center;

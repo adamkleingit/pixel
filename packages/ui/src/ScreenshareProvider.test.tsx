@@ -292,20 +292,14 @@ describe('session continuity across a provider remount', () => {
 })
 
 describe('mouse tool toggle', () => {
-  it('is on by default (no passthrough) and toggles off', () => {
+  it('is hidden when idle (it only governs recording) — the toggle itself is covered by the recording e2e', () => {
     render(
       <ScreenshareProvider config={{ bar: { always: true } }}>
         <Probe />
         <Overlay />
       </ScreenshareProvider>,
     )
-    const tool = screen.getByRole('button', { name: 'Mouse tool' })
-    // Default: mouse tool on → pressed; the page is inert / rectangles draw.
-    expect(tool.getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(tool)
-    // Off → passthrough (no tool).
-    expect(tool.getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(tool)
-    expect(tool.getAttribute('aria-pressed')).toBe('true')
+    // Bar is visible (bar.always) but, idle, the mouse tool isn't offered.
+    expect(screen.queryByRole('button', { name: 'Mouse tool' })).toBeNull()
   })
 })

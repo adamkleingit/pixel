@@ -170,6 +170,60 @@ test('design pane: docks on the right, shrinks the body, collapses, and restores
   expect(await marginRight()).toBe('')
 })
 
+test('the mouse tool is hidden when not recording', async ({ page }) => {
+  await page.goto('/')
+  // Idle: the bar is shown but the mouse tool (a recording-only control) isn't.
+  await expect(page.locator('.screenshare-rec')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Mouse tool' })).toHaveCount(0)
+})
+
+test('selection outline recalculates when the design pane collapses (body reflows)', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const target = page.getByRole('button', { name: 'Upgrade' })
+  await target.click({ modifiers: ['Meta'] })
+  const anchor = page.locator('.screenshare-sel-anchor')
+  await expect(anchor).toBeVisible()
+
+  // Collapse the pane → the body widens and the element shifts. The outline
+  // must follow it (this is the bug fix — it used to go stale).
+  await page.locator('.screenshare-pane-collapse').click()
+  await page.waitForTimeout(300) // margin transition + reflow
+
+  const t = await target.boundingBox()
+  const a = await anchor.boundingBox()
+  expect(t).not.toBeNull()
+  expect(a).not.toBeNull()
+  expect(Math.abs(t!.x - a!.x)).toBeLessThanOrEqual(3)
+  expect(Math.abs(t!.y - a!.y)).toBeLessThanOrEqual(3)
+  expect(Math.abs(t!.width - a!.width)).toBeLessThanOrEqual(3)
+})
+
+test('design pane is resizable by dragging its left edge', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const pane = page.locator('.screenshare-pane')
+  const before = (await pane.boundingBox())!.width
+  expect(Math.round(before)).toBe(280)
+
+  const hb = (await page.locator('.screenshare-pane-resize').boundingBox())!
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + 120)
+  await page.mouse.down()
+  await page.mouse.move(hb.x - 80, hb.y + 120, { steps: 6 }) // drag left → wider
+  await page.mouse.up()
+
+  const after = (await pane.boundingBox())!.width
+  expect(after).toBeGreaterThan(before + 40)
+  // The reserved body width tracks the new pane width.
+  expect(await page.evaluate(() => document.documentElement.style.marginRight)).toBe(
+    `${Math.round(after)}px`,
+  )
+})
+
 test('edit mode inerts the page: a nav link does not navigate while editing', async ({ page }) => {
   await page.goto('/')
   const edit = editBtn(page)

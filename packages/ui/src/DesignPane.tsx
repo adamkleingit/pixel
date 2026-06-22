@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 
 /**
@@ -17,6 +17,8 @@ import { useSelectionStore } from './selection/selection-store'
 
 const PANE_W = 280
 const COLLAPSED_W = 36
+const MIN_W = 220
+const MAX_W = 560
 
 /** Curated computed-style readout for the selected element. */
 function readStyles(el: Element): Array<[string, string]> {
@@ -46,24 +48,56 @@ export function DesignPane() {
   const { entries } = useSelectionStore()
   const anchor = entries[0]?.element ?? null
   const [collapsed, setCollapsed] = useState(false)
+  const [width, setWidth] = useState(PANE_W)
   const [tag, setTag] = useState('')
   const [rows, setRows] = useState<Array<[string, string]>>([])
 
+  // Resize by dragging the pane's left edge (like Pixel's right sidebar).
+  const dragging = useRef(false)
+  const dragStart = useRef({ x: 0, w: PANE_W })
+
+  function onResizeDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (collapsed) return
+    e.preventDefault()
+    dragging.current = true
+    dragStart.current = { x: e.clientX, w: width }
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* no active pointer (e.g. jsdom) — capture is best-effort */
+    }
+  }
+  function onResizeMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return
+    const next = dragStart.current.w - (e.clientX - dragStart.current.x) // drag left → wider
+    setWidth(Math.min(MAX_W, Math.max(MIN_W, next)))
+  }
+  function onResizeUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return
+    dragging.current = false
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Reserve layout width by shrinking <html>; restore on collapse / unmount.
   // The CSS var lets the floating bar dodge the pane (see styles `pos-*-right`).
+  // No transition while dragging (the resize should track the pointer 1:1).
   useEffect(() => {
     const html = document.documentElement
     const prevMargin = html.style.marginRight
     const prevTransition = html.style.transition
-    html.style.transition = 'margin-right 160ms ease'
-    html.style.marginRight = `${collapsed ? 0 : PANE_W}px`
-    html.style.setProperty('--screenshare-dock-right', `${collapsed ? COLLAPSED_W : PANE_W}px`)
+    html.style.transition = dragging.current ? 'none' : 'margin-right 160ms ease'
+    html.style.marginRight = `${collapsed ? 0 : width}px`
+    html.style.setProperty('--screenshare-dock-right', `${collapsed ? COLLAPSED_W : width}px`)
     return () => {
       html.style.marginRight = prevMargin
       html.style.transition = prevTransition
       html.style.removeProperty('--screenshare-dock-right')
     }
-  }, [collapsed])
+  }, [collapsed, width])
 
   useEffect(() => {
     if (!anchor) {
@@ -76,7 +110,22 @@ export function DesignPane() {
   }, [anchor])
 
   return (
-    <aside className={`screenshare-pane${collapsed ? ' collapsed' : ''}`} aria-label="Design pane">
+    <aside
+      className={`screenshare-pane${collapsed ? ' collapsed' : ''}`}
+      style={collapsed ? undefined : { width }}
+      aria-label="Design pane"
+    >
+      {!collapsed && (
+        <div
+          className="screenshare-pane-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize design pane"
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+        />
+      )}
       <div className="screenshare-pane-head">
         {!collapsed && <span className="screenshare-pane-title">Design</span>}
         <button

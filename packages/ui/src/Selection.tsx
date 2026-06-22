@@ -5,6 +5,7 @@ import {
   computeHoverTarget,
   pointerElement,
   rectOf,
+  rectsEqual,
   type Rect,
 } from './selection/selection-utils'
 
@@ -172,14 +173,23 @@ function SelectionOverlays() {
 function Outline({ el, variant }: { el: Element; variant: 'anchor' | 'match' | 'hover' }) {
   const [rect, setRect] = useState<Rect>(() => rectOf(el))
   useEffect(() => {
-    const update = () => setRect(rectOf(el))
-    update()
-    window.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
+    // Track continuously with rAF (only re-rendering when the box actually
+    // changes — rectsEqual). This catches *every* reflow cause uniformly:
+    // scroll, resize, and crucially the design pane collapsing/expanding (which
+    // shifts the body width with a CSS transition and fires no scroll/resize).
+    let raf = 0
+    let prev = rectOf(el)
+    setRect(prev)
+    const tick = () => {
+      const next = rectOf(el)
+      if (!rectsEqual(prev, next)) {
+        prev = next
+        setRect(next)
+      }
+      raf = requestAnimationFrame(tick)
     }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
   }, [el])
   return (
     <div

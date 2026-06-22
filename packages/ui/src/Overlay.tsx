@@ -415,7 +415,9 @@ function RecBar() {
 
       <span className="screenshare-rec-sep" />
       <EditToggle on={editing} onToggle={toggleEdit} />
-      <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
+      {/* The mouse tool only governs recording's block/passthrough — hide it
+          unless a recording is active. */}
+      {!idle && <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />}
 
       {!idle && (
         <>

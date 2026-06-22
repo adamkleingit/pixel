@@ -174,6 +174,25 @@ describe('edit mode — design pane', () => {
     expect(pane()).toBeNull()
     expect(html.style.marginRight).toBe('')
   })
+
+  it('is resizable by dragging the left edge (body margin tracks the width)', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const html = document.documentElement
+    fireEvent.click(editBtn())
+    expect(html.style.marginRight).toBe('280px')
+
+    const handle = document.querySelector('.screenshare-pane-resize')!
+    // Drag left by 100px → pane (and the reserved body width) grows to 380px.
+    fireEvent.pointerDown(handle, { clientX: 1000, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 900, pointerId: 1 })
+    fireEvent.pointerUp(handle, { clientX: 900, pointerId: 1 })
+    expect(html.style.marginRight).toBe('380px')
+  })
 })
 
 describe('edit mode — app inert', () => {

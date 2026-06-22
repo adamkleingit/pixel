@@ -341,6 +341,17 @@ const CSS = `
 }
 .screenshare-save-error-btn:hover { background: #dc2626; }
 .screenshare-save-error-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Edit-mode selection outline — drawn over the picked element's box. */
+.screenshare-select-outline {
+  position: fixed;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px solid rgba(168, 85, 247, 0.95);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 10px rgba(168, 85, 247, 0.5);
+  z-index: 2147483001;
+}
 `
 
 export function injectStyles(): void {

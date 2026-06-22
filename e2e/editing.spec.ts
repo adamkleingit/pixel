@@ -69,6 +69,34 @@ test('editing composes with recording: a recording can run while editing (one se
   await expect(edit).toHaveAttribute('aria-pressed', 'false')
 })
 
+test('edit mode: clicking an element draws a selection outline over its box', async ({ page }) => {
+  await page.goto('/')
+  const edit = editBtn(page)
+  await edit.click()
+  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+
+  // Click a real page element. It won't react (inert), but selection picks it.
+  const target = page.getByRole('button', { name: 'Upgrade' })
+  await target.click()
+
+  const outline = page.locator('.screenshare-select-outline')
+  await expect(outline).toBeVisible()
+
+  // The outline should overlay the clicked element's box.
+  const a = await target.boundingBox()
+  const b = await outline.boundingBox()
+  expect(a).not.toBeNull()
+  expect(b).not.toBeNull()
+  expect(Math.abs(a!.x - b!.x)).toBeLessThanOrEqual(3)
+  expect(Math.abs(a!.y - b!.y)).toBeLessThanOrEqual(3)
+  expect(Math.abs(a!.width - b!.width)).toBeLessThanOrEqual(3)
+  expect(Math.abs(a!.height - b!.height)).toBeLessThanOrEqual(3)
+
+  // Exit edit → the outline is gone.
+  await page.keyboard.press('Escape')
+  await expect(outline).toHaveCount(0)
+})
+
 test('edit mode inerts the page: a nav link does not navigate while editing', async ({ page }) => {
   await page.goto('/')
   const edit = editBtn(page)

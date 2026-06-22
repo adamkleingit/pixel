@@ -4,6 +4,7 @@ import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
 import { DrawStroke } from './draw/stroke'
+import { SelectionLayer } from './SelectionLayer'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -515,6 +516,7 @@ export function Overlay({ className }: OverlayProps) {
   return createPortal(
     <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
       {showBar && <RecBar />}
+      {editing && <SelectionLayer />}
       <SaveError />
       {rectFlashes.map((r) => (
         <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

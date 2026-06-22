@@ -94,6 +94,42 @@ describe('edit mode — inert when disabled', () => {
   })
 })
 
+describe('edit mode — selection', () => {
+  it('pointerdown selects the element under the pointer and draws an outline; bar pointerdowns are ignored; exit clears it', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <button data-testid="page-btn">App button</button>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const pageBtn = screen.getByTestId('page-btn')
+    const outline = () => document.querySelector('.screenshare-select-outline')
+
+    // Not editing → no selection layer is even mounted.
+    fireEvent.pointerDown(pageBtn)
+    expect(outline()).toBeNull()
+
+    // Enter edit; nothing selected yet → no outline.
+    fireEvent.click(editBtn())
+    expect(outline()).toBeNull()
+
+    // Pointerdown a page element → an outline appears.
+    fireEvent.pointerDown(pageBtn)
+    expect(outline()).not.toBeNull()
+
+    // Pointerdown on our own bar (the pencil) is ignored — selection is unchanged
+    // (it doesn't deselect, and pointerdown doesn't toggle edit either).
+    fireEvent.pointerDown(editBtn())
+    expect(outline()).not.toBeNull()
+    expect(probeText()).toBe('idle/editing')
+
+    // Exit edit → the selection layer unmounts → outline gone.
+    fireEvent.click(editBtn())
+    expect(outline()).toBeNull()
+  })
+})
+
 describe('edit mode — app inert', () => {
   it('swallows page clicks while editing and restores them on exit; the bar still works', () => {
     const onPageClick = vi.fn()

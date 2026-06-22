@@ -136,6 +136,65 @@ describe('edit mode — selection', () => {
   })
 })
 
+describe('edit mode — design pane', () => {
+  const pane = () => document.querySelector('.screenshare-pane')
+
+  it('docks on edit (shrinking the body), inspects the selection, collapses, and restores on exit', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <button data-testid="page-btn">App button</button>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const html = document.documentElement
+
+    // Not editing → no pane, body not shrunk.
+    expect(pane()).toBeNull()
+
+    // Enter edit → the pane appears immediately and shrinks the body.
+    fireEvent.click(editBtn())
+    expect(pane()).not.toBeNull()
+    expect(html.style.marginRight).toBe('280px')
+    expect(document.querySelector('.screenshare-pane-empty')).not.toBeNull() // nothing selected
+
+    // Select an element → the pane inspects it.
+    fireEvent.pointerDown(screen.getByTestId('page-btn'))
+    expect(document.querySelector('.screenshare-pane-tag')).not.toBeNull()
+    expect(document.querySelectorAll('.screenshare-pane-row').length).toBeGreaterThan(0)
+
+    // Collapse (like the recording menu's minimize) → frees the width, hides body.
+    fireEvent.click(document.querySelector('.screenshare-pane-collapse')!)
+    expect(document.querySelector('.screenshare-pane.collapsed')).not.toBeNull()
+    expect(document.querySelector('.screenshare-pane-body')).toBeNull()
+    expect(html.style.marginRight).toBe('0px')
+
+    // Exit edit → pane gone, body margin restored.
+    fireEvent.click(editBtn())
+    expect(pane()).toBeNull()
+    expect(html.style.marginRight).toBe('')
+  })
+
+  it('is resizable by dragging the left edge (body margin tracks the width)', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const html = document.documentElement
+    fireEvent.click(editBtn())
+    expect(html.style.marginRight).toBe('280px')
+
+    const handle = document.querySelector('.screenshare-pane-resize')!
+    // Drag left by 100px → pane (and the reserved body width) grows to 380px.
+    fireEvent.pointerDown(handle, { clientX: 1000, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 900, pointerId: 1 })
+    fireEvent.pointerUp(handle, { clientX: 900, pointerId: 1 })
+    expect(html.style.marginRight).toBe('380px')
+  })
+})
+
 describe('edit mode — app inert', () => {
   it('swallows page clicks while editing and restores them on exit; the bar still works', () => {
     const onPageClick = vi.fn()

@@ -4,6 +4,7 @@ import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
 import { DrawStroke } from './draw/stroke'
+import { DesignPane } from './DesignPane'
 import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
 import type { BarPosition, Task, TaskStatus } from './types'
@@ -414,7 +415,9 @@ function RecBar() {
 
       <span className="screenshare-rec-sep" />
       <EditToggle on={editing} onToggle={toggleEdit} />
-      <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
+      {/* The mouse tool only governs recording's block/passthrough — hide it
+          unless a recording is active. */}
+      {!idle && <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />}
 
       {!idle && (
         <>
@@ -519,6 +522,7 @@ export function Overlay({ className }: OverlayProps) {
       <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
         {showBar && <RecBar />}
         {editing && <Selection />}
+        {editing && <DesignPane />}
         <SaveError />
         {rectFlashes.map((r) => (
           <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

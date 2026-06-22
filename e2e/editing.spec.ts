@@ -141,6 +141,89 @@ test('selection: Shift+click adds a second element (multi-select)', async ({ pag
   await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
 })
 
+test('design pane: docks on the right, shrinks the body, collapses, and restores on exit', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const pane = page.locator('.screenshare-pane')
+  const marginRight = () => page.evaluate(() => document.documentElement.style.marginRight)
+
+  // Appears immediately on entering edit mode, and shrinks the body (not float).
+  await editBtn(page).click()
+  await expect(pane).toBeVisible()
+  expect(await marginRight()).toBe('280px')
+
+  // Inspects the selected element.
+  await page.getByRole('button', { name: 'Upgrade' }).click({ modifiers: ['Meta'] })
+  await expect(page.locator('.screenshare-pane-tag')).toBeVisible()
+
+  // Collapse → frees the reserved width (like the recording menu's minimize).
+  await page.locator('.screenshare-pane-collapse').click()
+  await expect(page.locator('.screenshare-pane.collapsed')).toBeVisible()
+  expect(await marginRight()).toBe('0px')
+
+  // Expand again restores the width; exiting edit restores the original margin.
+  await page.locator('.screenshare-pane-collapse').click()
+  expect(await marginRight()).toBe('280px')
+  await editBtn(page).click() // exit edit
+  await expect(pane).toHaveCount(0)
+  expect(await marginRight()).toBe('')
+})
+
+test('the mouse tool is hidden when not recording', async ({ page }) => {
+  await page.goto('/')
+  // Idle: the bar is shown but the mouse tool (a recording-only control) isn't.
+  await expect(page.locator('.screenshare-rec')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Mouse tool' })).toHaveCount(0)
+})
+
+test('selection outline recalculates when the design pane collapses (body reflows)', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const target = page.getByRole('button', { name: 'Upgrade' })
+  await target.click({ modifiers: ['Meta'] })
+  const anchor = page.locator('.screenshare-sel-anchor')
+  await expect(anchor).toBeVisible()
+
+  // Collapse the pane → the body widens and the element shifts. The outline
+  // must follow it (this is the bug fix — it used to go stale).
+  await page.locator('.screenshare-pane-collapse').click()
+  await page.waitForTimeout(300) // margin transition + reflow
+
+  const t = await target.boundingBox()
+  const a = await anchor.boundingBox()
+  expect(t).not.toBeNull()
+  expect(a).not.toBeNull()
+  expect(Math.abs(t!.x - a!.x)).toBeLessThanOrEqual(3)
+  expect(Math.abs(t!.y - a!.y)).toBeLessThanOrEqual(3)
+  expect(Math.abs(t!.width - a!.width)).toBeLessThanOrEqual(3)
+})
+
+test('design pane is resizable by dragging its left edge', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const pane = page.locator('.screenshare-pane')
+  const before = (await pane.boundingBox())!.width
+  expect(Math.round(before)).toBe(280)
+
+  const hb = (await page.locator('.screenshare-pane-resize').boundingBox())!
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + 120)
+  await page.mouse.down()
+  await page.mouse.move(hb.x - 80, hb.y + 120, { steps: 6 }) // drag left → wider
+  await page.mouse.up()
+
+  const after = (await pane.boundingBox())!.width
+  expect(after).toBeGreaterThan(before + 40)
+  // The reserved body width tracks the new pane width.
+  expect(await page.evaluate(() => document.documentElement.style.marginRight)).toBe(
+    `${Math.round(after)}px`,
+  )
+})
+
 test('edit mode inerts the page: a nav link does not navigate while editing', async ({ page }) => {
   await page.goto('/')
   const edit = editBtn(page)

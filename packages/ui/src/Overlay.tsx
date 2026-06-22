@@ -4,7 +4,8 @@ import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
 import { DrawStroke } from './draw/stroke'
-import { SelectionLayer } from './SelectionLayer'
+import { Selection } from './Selection'
+import { SelectionProvider } from './selection/selection-store'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -514,22 +515,24 @@ export function Overlay({ className }: OverlayProps) {
   const showBar = active || bar.always || serverDown || tasks.length > 0 || editing
 
   return createPortal(
-    <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
-      {showBar && <RecBar />}
-      {editing && <SelectionLayer />}
-      <SaveError />
-      {rectFlashes.map((r) => (
-        <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
-      ))}
-      {dragRect && <DragRect rect={dragRect} />}
-      {drawStrokes.map((s) => (
-        <DrawStroke key={s.id} stroke={s} />
-      ))}
-      {drawStroke && <DrawStroke stroke={drawStroke} />}
-      {blips.map((b) => (
-        <Blip key={b.id} data={b} onDone={removeBlip} />
-      ))}
-    </div>,
+    <SelectionProvider>
+      <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
+        {showBar && <RecBar />}
+        {editing && <Selection />}
+        <SaveError />
+        {rectFlashes.map((r) => (
+          <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />
+        ))}
+        {dragRect && <DragRect rect={dragRect} />}
+        {drawStrokes.map((s) => (
+          <DrawStroke key={s.id} stroke={s} />
+        ))}
+        {drawStroke && <DrawStroke stroke={drawStroke} />}
+        {blips.map((b) => (
+          <Blip key={b.id} data={b} onDone={removeBlip} />
+        ))}
+      </div>
+    </SelectionProvider>,
     document.body,
   )
 }

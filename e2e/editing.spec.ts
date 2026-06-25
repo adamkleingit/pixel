@@ -308,3 +308,30 @@ test('resize handle changes the element size and commits (undo reverts)', async 
   await page.keyboard.press('Meta+z')
   await expect.poll(() => target.evaluate((e) => (e as HTMLElement).style.width)).toBe('')
 })
+
+test('edit mode normalizes cursors (no pointer on buttons, no not-allowed on disabled)', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const btn = page.getByRole('button', { name: 'Upgrade' })
+  // Not editing: the app's own cursor applies (a button is a pointer).
+  expect(await btn.evaluate((b) => getComputedStyle(b).cursor)).toBe('pointer')
+
+  await editBtn(page).click()
+  // Editing: neutralized to default everywhere on the app.
+  expect(await btn.evaluate((b) => getComputedStyle(b).cursor)).toBe('default')
+})
+
+test('double-clicking a text input edits it in place', async ({ page }) => {
+  await page.goto('/settings')
+  await editBtn(page).click()
+
+  const input = page.locator('input[type="text"]').first()
+  await expect(input).toBeVisible()
+  await input.dblclick() // form field → edits directly
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('Renamed Co.')
+  await page.keyboard.press('Enter')
+
+  await expect(input).toHaveValue('Renamed Co.')
+})

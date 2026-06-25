@@ -366,6 +366,24 @@ const CSS = `
   border: 1.5px dashed rgba(168, 85, 247, 0.8);
 }
 
+/* Edit-mode cursor/selection normalization (in-app port of Pixel's edit-mode
+   stylesheet — its :host * scoping becomes "the app, excluding Pixel's own
+   UI"). The designer is picking elements, not interacting, so neutralize the
+   app's cursors (no pointer on buttons, no not-allowed on disabled inputs) and
+   disable text selection. Pixel's UI (.screenshare-* classes) keeps its own
+   cursors; the element under an inline edit re-enables a text caret. */
+html.screenshare-editing body *:not([class*='screenshare-']) {
+  cursor: default !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+html.screenshare-editing [data-pixel-editing],
+html.screenshare-editing [data-pixel-editing] * {
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
 /* Design pane — docks on the right and reserves layout width (the body is
    shrunk via documentElement margin-right, set from DesignPane). */
 .screenshare-pane {

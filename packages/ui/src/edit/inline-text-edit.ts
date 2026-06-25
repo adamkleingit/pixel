@@ -45,11 +45,23 @@ function liftInertness(element: HTMLElement): () => void {
   }
 }
 
+/** Marks the element under an inline edit so the edit-mode stylesheet restores a
+ *  text caret + native selection on it (see styles `[data-pixel-editing]`). */
+const INLINE_EDITING_ATTR = 'data-pixel-editing'
+
 export function beginInlineEdit(element: HTMLElement, commit: CommitFn): InlineEditSession | null {
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-    return beginInputInlineEdit(element, commit)
+  const inner =
+    element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+      ? beginInputInlineEdit(element, commit)
+      : beginTextInlineEdit(element, commit)
+  element.setAttribute(INLINE_EDITING_ATTR, '')
+  return {
+    element: inner.element,
+    exit(options) {
+      inner.exit(options)
+      element.removeAttribute(INLINE_EDITING_ATTR)
+    },
   }
-  return beginTextInlineEdit(element, commit)
 }
 
 function beginTextInlineEdit(element: HTMLElement, commit: CommitFn): InlineEditSession {
@@ -153,17 +165,24 @@ function beginInputInlineEdit(
     node.removeEventListener('keydown', onKeyDown)
     node.removeEventListener('blur', onBlur)
     const typed = element.value
-    element.value = originalValue
     element.blur()
     restoreInertness()
-    if (options?.commit === false) return
+    if (options?.commit === false) {
+      element.value = originalValue
+      return
+    }
     if (target === 'value') {
-      if (typed === originalValue) return
+      if (typed === originalValue) {
+        element.value = originalValue
+        return
+      }
+      element.value = typed // keep the edit visible (in-app: the commit IS the change)
       commit(
         [{ target: element, kind: 'attr', name: 'value', before: originalValue, after: typed }],
         'value',
       )
     } else {
+      element.value = originalValue // placeholder was seeded into value — restore runtime value
       if (typed === originalPlaceholder) return
       commit(
         [

@@ -50,6 +50,8 @@ export function Selection() {
   commitRef.current = history.commit
 
   useEffect(() => {
+    // Edit-mode cursor/selection normalization (see styles `html.screenshare-editing`).
+    document.documentElement.classList.add('screenshare-editing')
     // The active inline-text edit session, if any (double-click on text).
     let editSession: InlineEditSession | null = null
     // Anchor depth at <body> (not document) so depth-0 is the app's top content
@@ -107,11 +109,22 @@ export function Selection() {
 
       const current = anchor()
 
-      // Double on the already-selected text element → inline edit; otherwise
-      // drill one level deeper into the pointer stack.
+      // Double-click → inline edit. A form field (input/textarea) is a leaf you
+      // never drill into, so double-clicking one edits it directly (fixes
+      // short-input edit). For everything else we keep Pixel's rule: edit only
+      // the already-selected text element; otherwise drill one level deeper.
       if (isDouble) {
-        if (current && isTextEditable(current) && current.contains(target)) {
-          const session = beginInlineEdit(current, commitRef.current)
+        const isField =
+          (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) &&
+          isTextEditable(target)
+        const editTarget = isField
+          ? (target as HTMLElement)
+          : current && isTextEditable(current) && current.contains(target)
+            ? (current as HTMLElement)
+            : null
+        if (editTarget) {
+          storeRef.current.pick(TILE, editTarget)
+          const session = beginInlineEdit(editTarget, commitRef.current)
           if (session) {
             editSession = session
             storeRef.current.setHover(TILE, null)
@@ -191,6 +204,7 @@ export function Selection() {
       editSession?.exit({ commit: true })
       editSession = null
       storeRef.current.clearAll()
+      document.documentElement.classList.remove('screenshare-editing')
     }
   }, [])
 

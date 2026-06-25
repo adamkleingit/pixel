@@ -4,7 +4,6 @@ import { rectOf, type Rect } from '../selection/selection-utils'
 import { getViewportScale } from '../selection/viewport'
 import {
   isDragging,
-  startMoveDrag,
   startRadiusDrag,
   startResizeDrag,
   type Committer,
@@ -133,8 +132,8 @@ export function Handles({ element }: { element: HTMLElement }) {
         transformOrigin: '50% 50%',
       }}
     >
-      {/* Move layer first so the resize/radius handles overlay it. */}
-      <MoveLayer element={element} committerRef={committerRef} />
+      {/* Move grip removed — moving will be re-done as dragging the element
+          itself (Pixel's reposition-drag) in the faithful drag port. */}
       {ALL_SIDES.map((side) => (
         <EdgeBand key={side} side={side} element={element} rect={rect} committerRef={committerRef} />
       ))}
@@ -147,28 +146,6 @@ export function Handles({ element }: { element: HTMLElement }) {
 }
 
 type CommitterRef = { current: Committer }
-
-function MoveLayer({ element, committerRef }: { element: HTMLElement; committerRef: CommitterRef }) {
-  return (
-    <div
-      className="screenshare-h-move"
-      data-handle="move"
-      onPointerDown={(e) => {
-        if (e.button !== 0 || isDragging()) return
-        e.preventDefault()
-        e.stopPropagation()
-        capture(e)
-        startMoveDrag({
-          element,
-          committer: committerRef.current,
-          startX: e.clientX,
-          startY: e.clientY,
-          cursor: 'move',
-        })
-      }}
-    />
-  )
-}
 
 function CornerHandle({
   corner,

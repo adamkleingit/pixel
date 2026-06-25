@@ -7,6 +7,7 @@ import { DrawStroke } from './draw/stroke'
 import { DesignPane } from './DesignPane'
 import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
+import { EditHistoryProvider } from './edit/edit-history'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -518,7 +519,8 @@ export function Overlay({ className }: OverlayProps) {
   const showBar = active || bar.always || serverDown || tasks.length > 0 || editing
 
   return createPortal(
-    <SelectionProvider>
+    <EditHistoryProvider>
+      <SelectionProvider>
       <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
         {showBar && <RecBar />}
         {editing && <Selection />}
@@ -536,7 +538,8 @@ export function Overlay({ className }: OverlayProps) {
           <Blip key={b.id} data={b} onDone={removeBlip} />
         ))}
       </div>
-    </SelectionProvider>,
+      </SelectionProvider>
+    </EditHistoryProvider>,
     document.body,
   )
 }

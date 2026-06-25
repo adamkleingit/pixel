@@ -2,6 +2,9 @@
 // Injected once into <head>; scoped under .screenshare-* class names so they
 // never collide with the host app.
 
+import { DESIGN_SECTIONS_CSS } from './design/sections-css'
+import { HANDLES_CSS } from './drag/handles-css'
+
 const STYLE_ID = 'screenshare-styles'
 
 const CSS = `
@@ -476,6 +479,6 @@ export function injectStyles(): void {
   if (document.getElementById(STYLE_ID)) return
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = CSS
+  style.textContent = CSS + DESIGN_SECTIONS_CSS + HANDLES_CSS
   document.head.appendChild(style)
 }

@@ -161,7 +161,8 @@ describe('edit mode — design pane', () => {
     // Select an element → the pane inspects it.
     fireEvent.pointerDown(screen.getByTestId('page-btn'))
     expect(document.querySelector('.screenshare-pane-tag')).not.toBeNull()
-    expect(document.querySelectorAll('.screenshare-pane-row').length).toBeGreaterThan(0)
+    // The editable design sections render for the selection.
+    expect(document.querySelectorAll('.screenshare-ds-section').length).toBeGreaterThan(0)
 
     // Collapse (like the recording menu's minimize) → frees the width, hides body.
     fireEvent.click(document.querySelector('.screenshare-pane-collapse')!)

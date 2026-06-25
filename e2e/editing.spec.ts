@@ -245,3 +245,66 @@ test('edit mode inerts the page: a nav link does not navigate while editing', as
   await settings.click()
   await expect(page).toHaveURL(/\/settings$/)
 })
+
+test('design pane edits commit to the tracker and Cmd+Z undoes them', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const btn = page.getByRole('button', { name: 'Upgrade' })
+  await btn.click({ modifiers: ['Meta'] }) // select the exact element
+  const padInput = page
+    .locator('.screenshare-ds-row', { hasText: 'Padding' })
+    .locator('input.screenshare-ds-input')
+  await expect(padInput).toBeVisible()
+
+  await padInput.fill('30px')
+  await padInput.blur() // commit on blur
+  await expect
+    .poll(() => btn.evaluate((b) => (b as HTMLElement).style.padding))
+    .toBe('30px')
+
+  // Undo (focus is off the input, so the shortcut applies).
+  await page.keyboard.press('Meta+z')
+  await expect
+    .poll(() => btn.evaluate((b) => (b as HTMLElement).style.padding))
+    .not.toBe('30px')
+})
+
+test('double-click edits text in place and commits the new text', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const compose = page.getByRole('button', { name: 'Compose' })
+  await compose.click({ modifiers: ['Meta'] }) // select the text element
+  await page.waitForTimeout(450) // clear the double-tap window vs the select click
+  await compose.dblclick() // → inline edit (contenteditable, all selected)
+  await page.keyboard.type('Send')
+  await page.keyboard.press('Enter') // commit
+
+  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+})
+
+test('resize handle changes the element size and commits (undo reverts)', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const target = page.getByText('Triage messages and assign owners.')
+  await target.click({ modifiers: ['Meta'] }) // select the <p>
+  const before = (await target.boundingBox())!.width
+
+  const handle = page.locator('.screenshare-h-edge[data-side="right"]')
+  await expect(handle).toBeVisible()
+  const hb = (await handle.boundingBox())!
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + 60, hb.y + hb.height / 2, { steps: 6 })
+  await page.mouse.up()
+
+  const after = (await target.boundingBox())!.width
+  expect(after).toBeGreaterThan(before + 20)
+  expect(await target.evaluate((e) => (e as HTMLElement).style.width)).not.toBe('')
+
+  // Undo restores the original (no inline width).
+  await page.keyboard.press('Meta+z')
+  await expect.poll(() => target.evaluate((e) => (e as HTMLElement).style.width)).toBe('')
+})

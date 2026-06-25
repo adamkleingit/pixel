@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
+import { useEditHistory } from './edit/edit-history'
+import { beginInlineEdit, isTextEditable, type InlineEditSession } from './edit/inline-text-edit'
+import { Handles } from './drag/Handles'
 import {
   computeDrillTarget,
   computeHoverTarget,
@@ -41,8 +44,14 @@ export function Selection() {
   const store = useSelectionStore()
   const storeRef = useRef(store)
   storeRef.current = store
+  // `commit` is stable; capture it in a ref so the once-installed listeners use it.
+  const history = useEditHistory()
+  const commitRef = useRef(history.commit)
+  commitRef.current = history.commit
 
   useEffect(() => {
+    // The active inline-text edit session, if any (double-click on text).
+    let editSession: InlineEditSession | null = null
     // Anchor depth at <body> (not document) so depth-0 is the app's top content
     // element, and "outside → inside" drilling steps through real page levels —
     // anchoring at document would make the first hover/select the whole <html>.
@@ -55,6 +64,7 @@ export function Selection() {
 
     function onPointerMove(event: Event) {
       const e = event as PointerEvent
+      if (editSession) return // an inline edit owns the pointer
       if (inOwnUI(e)) return
       const target = pointerElement(e, root)
       lastPointerTarget = target
@@ -72,8 +82,19 @@ export function Selection() {
     function onPointerDown(event: Event) {
       const e = event as PointerEvent
       if (e.button !== 0) return
-      if (inOwnUI(e)) return
       const target = pointerElement(e, root)
+
+      // An inline edit is active: a click inside the field places the caret
+      // (leave it alone); a click anywhere else commits and exits the edit,
+      // then continues as a normal selection. We must exit explicitly because
+      // the preventDefault below would otherwise block the field's blur.
+      if (editSession) {
+        if (target && editSession.element.contains(target)) return
+        editSession.exit({ commit: true })
+        editSession = null
+      }
+
+      if (inOwnUI(e)) return
       if (!target) return
       // Suppress native focus / drag-to-select; the edit-inert layer already
       // swallows click/mousedown, but pointerdown is left live for us.
@@ -86,8 +107,17 @@ export function Selection() {
 
       const current = anchor()
 
-      // Double → drill one level deeper into the pointer stack.
+      // Double on the already-selected text element → inline edit; otherwise
+      // drill one level deeper into the pointer stack.
       if (isDouble) {
+        if (current && isTextEditable(current) && current.contains(target)) {
+          const session = beginInlineEdit(current, commitRef.current)
+          if (session) {
+            editSession = session
+            storeRef.current.setHover(TILE, null)
+            return
+          }
+        }
         const drilled = computeDrillTarget(target, root, current)
         storeRef.current.pick(TILE, drilled)
         storeRef.current.setHover(TILE, drilled)
@@ -125,6 +155,18 @@ export function Selection() {
     // selection we stop propagation so it doesn't *also* exit edit mode — a
     // second Escape (nothing selected) falls through and exits.
     function onKeyDown(event: KeyboardEvent) {
+      // While inline-editing, Escape cancels the edit (and nothing else — block
+      // the provider's edit-exit and the selection-clear). Other keys pass
+      // through to the field (typing / Enter-to-commit).
+      if (editSession) {
+        if (event.key === 'Escape') {
+          editSession.exit({ commit: false })
+          editSession = null
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
       if (event.key !== 'Escape') return
       const s = storeRef.current
       if (s.entries.length || s.hover) {
@@ -145,7 +187,9 @@ export function Selection() {
       window.removeEventListener('keydown', onModifierKey, true)
       window.removeEventListener('keyup', onModifierKey, true)
       window.removeEventListener('keydown', onKeyDown, true)
-      // Leaving edit mode clears the selection.
+      // Leaving edit mode commits any open inline edit and clears the selection.
+      editSession?.exit({ commit: true })
+      editSession = null
       storeRef.current.clearAll()
     }
   }, [])
@@ -165,6 +209,8 @@ function SelectionOverlays() {
         <Outline key={i} el={e.element} variant="match" />
       ))}
       {anchor && <Outline el={anchor} variant="anchor" />}
+      {/* Drag handles (resize / move / corner-radius) for the anchor only. */}
+      {anchor instanceof HTMLElement && <Handles element={anchor} />}
     </>
   )
 }

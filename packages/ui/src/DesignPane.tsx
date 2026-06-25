@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
+import { useEditHistory } from './edit/edit-history'
+import { DesignSections } from './design/DesignSections'
 
 /**
  * DesignPane — the right-docked inspector shown in edit mode. Unlike the
@@ -20,22 +22,6 @@ const COLLAPSED_W = 36
 const MIN_W = 220
 const MAX_W = 560
 
-/** Curated computed-style readout for the selected element. */
-function readStyles(el: Element): Array<[string, string]> {
-  const cs = getComputedStyle(el)
-  const r = el.getBoundingClientRect()
-  return [
-    ['size', `${Math.round(r.width)} × ${Math.round(r.height)}`],
-    ['display', cs.display],
-    ['color', cs.color],
-    ['background', cs.backgroundColor],
-    ['font', `${cs.fontSize} / ${cs.fontWeight}`],
-    ['padding', cs.padding],
-    ['margin', cs.margin],
-    ['radius', cs.borderRadius],
-  ]
-}
-
 /** `<tag.class>` / `<tag#id>` label for the selected element. */
 function describe(el: Element): string {
   const tag = el.tagName.toLowerCase()
@@ -47,10 +33,11 @@ function describe(el: Element): string {
 export function DesignPane() {
   const { entries } = useSelectionStore()
   const anchor = entries[0]?.element ?? null
+  const el = anchor instanceof HTMLElement ? anchor : null
+  const history = useEditHistory()
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(PANE_W)
   const [tag, setTag] = useState('')
-  const [rows, setRows] = useState<Array<[string, string]>>([])
 
   // Resize by dragging the pane's left edge (like Pixel's right sidebar).
   const dragging = useRef(false)
@@ -100,14 +87,23 @@ export function DesignPane() {
   }, [collapsed, width])
 
   useEffect(() => {
-    if (!anchor) {
-      setTag('')
-      setRows([])
-      return
-    }
-    setTag(describe(anchor))
-    setRows(readStyles(anchor))
+    setTag(anchor ? describe(anchor) : '')
   }, [anchor])
+
+  // Undo / redo (Cmd/Ctrl+Z, +Shift to redo) — ignored while typing in a field
+  // or inline-editing, so it doesn't fight the native text undo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      e.preventDefault()
+      if (e.shiftKey) history.redo()
+      else history.undo()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [history.undo, history.redo])
 
   return (
     <aside
@@ -151,15 +147,10 @@ export function DesignPane() {
 
       {!collapsed && (
         <div className="screenshare-pane-body">
-          {anchor ? (
+          {el ? (
             <>
               <div className="screenshare-pane-tag">{tag}</div>
-              {rows.map(([k, v]) => (
-                <div className="screenshare-pane-row" key={k}>
-                  <span className="screenshare-pane-key">{k}</span>
-                  <span className="screenshare-pane-val">{v}</span>
-                </div>
-              ))}
+              <DesignSections element={el} />
             </>
           ) : (
             <div className="screenshare-pane-empty">

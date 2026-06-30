@@ -1,36 +1,51 @@
 ---
 name: pixel
 description: >
-  Pick up Screenshare recordings (voice + clicks + selected regions) dropped on
-  disk and act on them as implementation briefs. Use when the user says "pixel",
+  Pick up Screenshare tasks dropped on disk and carry them out in the codebase. A
+  task is either a **recording** (voice + clicks + selected regions, acted on as an
+  implementation brief) or a **saved edit** (direct visual changes the user made in
+  the running app's in-app edit mode and hit Save). Use when the user says "pixel",
   "start pixel", "check for recordings", "watch screenshare", "process my
-  recording", or points you at a .screenshare dropbox folder. On "pixel" / "start
-  pixel", start the ingest server and watch for recordings (steps 1 → 6). Each
-  recording is a spoken request grounded in the elements the user clicked and the
-  regions they selected.
+  recording", "apply my edits", or points you at a .screenshare dropbox folder. On
+  "pixel" / "start pixel", start the ingest server and watch for tasks (steps 1 → 6).
 ---
 
 # Screenshare watch
 
-Screenshare records a short session — microphone audio (transcribed), mouse
-movements/clicks, and drag-selected regions (with screenshots) — and drops it
-into an on-disk **dropbox**. Your job is to claim a new recording, understand it
-as a brief, and carry it out in the current codebase.
+Screenshare drops **tasks** into an on-disk **dropbox** for you to carry out in the
+current codebase. A task is one of two kinds:
+
+- a **recording** — a short session of microphone audio (transcribed), mouse
+  movements/clicks, and drag-selected regions (with screenshots), acted on as a
+  spoken implementation **brief**; or
+- a **saved edit** — a batch of direct visual changes the user made in the app's
+  in-app **edit mode** (move / resize / restyle / retype elements) and hit
+  **Save**. Your job is to write those changes into the source so they persist.
+
+Claim a task, recognize which kind it is (step 4), and carry it out.
 
 **"pixel" / "start pixel"** — start the ingest server (step 1), then **tell the
-user how to record** (verbatim):
+user how to use Pixel** (verbatim):
 
 ```
-1. Start recording by double-tapping **Space** inside your app
-2. Describe your changes. Single **Space** to pause/resume, double **Space** to finish, **Esc** to cancel
-3. I (your agent) will do the rest
+Two ways to point me at changes — I pick up either automatically:
+
+🎙  Record what you want
+1. Double-tap Space inside your app to start; describe your changes out loud
+2. Single Space to pause/resume, double Space to finish, Esc to cancel
+
+✏️  Edit directly
+1. Click the pencil in the bar (or double-tap Enter) to enter edit mode
+2. Move / resize / restyle / retype elements right on the page
+3. Save (the disk button, or double-tap Enter) to send them — Esc discards
+
+Either way, I do the rest.
 ```
 
-Then enter the **watch loop** (step 6) and stay in it: first **drain** any
-recordings already waiting in the inbox, then **block** until the next one lands,
-claiming (step 3), reading (step 4), and doing the work (step 5) for each.
-**Looping is the default — keep watching until the user explicitly asks you to
-stop.**
+Then enter the **watch loop** (step 6) and stay in it: first **drain** any tasks
+already waiting in the inbox, then **block** until the next one lands, claiming
+(step 3), reading (step 4), and doing the work (step 5) for each. **Looping is the
+default — keep watching until the user explicitly asks you to stop.**
 
 ## 1. Make sure the ingest server is running
 
@@ -44,6 +59,15 @@ npx @getpixel/server        # http://localhost:41789 → writes .screenshare/inb
 
 Set `SCREENSHARE_DIR` to control where it writes, and `SCREENSHARE_WHISPER_LANG`
 (e.g. `hebrew`) if narration isn't English.
+
+On startup the same server also **extracts the project's design tokens** (from
+shadcn `globals.css`, a Tailwind config, or `@theme` CSS) into
+`.screenshare/design-tokens.json`, and **watches those source files** — re-extracting
+whenever they change. This is automatic; there's no separate command. The in-app
+design pane reads the file over `GET /tokens` so its color/spacing/radius pickers
+and on-canvas drag-snap reflect the real design system. It also extracts from the
+directory the server runs in; set `SCREENSHARE_PROJECT_DIR` to point at a different
+project root.
 
 > **If Pixel isn't installed or isn't configured correctly** (the command fails,
 > the package is missing, or the server won't start), follow the project README to
@@ -61,15 +85,17 @@ Look for the `.screenshare/` directory (default at the project root). It contain
 
 ```
 .screenshare/
-  inbox/<id>/      ← new, unclaimed recordings
+  inbox/<id>/      ← new, unclaimed tasks (recordings or saved edits)
   working/<id>/    ← currently being handled (you create this)
   done/<id>/       ← finished (you create this)
+  design-tokens.json  ← the project's extracted design tokens (server-maintained)
 ```
 
 If you can't find it, ask the user for the path (it's wherever they ran
 `@getpixel/server`, honoring `SCREENSHARE_DIR`).
 
-A recording directory contains:
+A **saved-edit** task directory contains just `edits.json` (+ a `meta.json` /
+`timeline.json` marker) — see step 4. A **recording** task directory contains:
 - `timeline.json` — **read this first.** The merged, time-ordered brief. Its
   top-level `frames` array lists full-viewport screenshots taken at start/resume
   (each PNG has a semi-transparent **coordinate grid every 50px** baked in — use
@@ -82,7 +108,7 @@ A recording directory contains:
   screenshots. Region shots include **100px of padding** around the selection
   with the **user's rectangle drawn on top**, so you see the target in context.
 
-## 3. Claim a recording
+## 3. Claim a task
 
 Don't touch the dropbox directories yourself — let the server do it. Run:
 
@@ -90,22 +116,27 @@ Don't touch the dropbox directories yourself — let the server do it. Run:
 npx @getpixel/server watch
 ```
 
-It **blocks until a recording is ready** (fully uploaded *and* transcribed), then
-atomically claims it (oldest first, multi-agent safe) and prints one JSON line:
+It **blocks until a task is ready** (a recording fully uploaded *and* transcribed,
+or a saved edit), then atomically claims it (oldest first, multi-agent safe) and
+prints one JSON line:
 
 ```json
 {"id":"20260613-175521-404-oauonr","dir":"/abs/path/.screenshare/working/<id>"}
 ```
 
-`dir` is where the recording now lives. Read your brief from `<dir>/timeline.json`
-(see step 4). Because it blocks, this is also your watch loop — see step 6 for how
-to run it.
+`dir` is where the task now lives. Read it from `<dir>` (see step 4). Because it
+blocks, this is also your watch loop — see step 6 for how to run it.
 
-## 4. Read the brief
+## 4. Read the task
 
-**First check whether the task is an _edit_ or a _recording_.** If `<dir>` contains
-an `edits.json`, it's a **Save from edit mode** — a direct batch of visual changes
-the user made in the running app (no audio/beats). Apply those to source instead of
+**First check whether the task is a _saved edit_ or a _recording_** — they need
+different handling, and you should describe to the user what actually landed
+(e.g. "A saved edit batch landed (3 changes) — applying them" or "A new recording
+landed — reading the brief"). Don't call an edit a recording.
+
+If `<dir>` contains an `edits.json`, it's a **Save from edit mode** — a direct
+batch of visual changes the user made in the running app (no audio/beats). Apply
+those to source instead of
 interpreting a spoken brief:
 
 `edits.json` = `{ url, createdAt, changes: [...] }`. Each change is:
@@ -123,6 +154,22 @@ interpreting a spoken brief:
   (set the style/text/attribute, or reorder the element). `before` is for context
   / conflict-checking. Group changes by element; later changes to the same
   (element, property) supersede earlier ones.
+- `source` — **present only when the value was bound to a design token** (the user
+  picked a token in the design pane, or a drag snapped to one). When present,
+  **write the token's symbolic form in source, NOT the resolved `after` value** —
+  that's the whole point: keep edits on the design system. `source` is
+  `{ tokenId, tokenName, usage, resolvedValue }`; spell it from `usage`:
+  - `{ kind: 'utility', className: 'bg-primary' }` → use the Tailwind/shadcn class
+    (`className="… bg-primary"`), adapting the verb to the property where needed
+    (a color token is `bg-`/`text-`/`border-` by what it sets; `rounded-…` for
+    radius, `p-`/`m-`/`gap-` for spacing).
+  - `{ kind: 'css-var', expr: 'var(--brand-coral)' }` → write the `var(...)` expr
+    as the CSS value.
+  - `{ kind: 'theme-path', path: 'palette.primary.main', importHint }` → reference
+    the theme path (MUI/Chakra), adding the import if `importHint` is given.
+
+  `resolvedValue` (== `after`) is the fallback if the symbolic form genuinely can't
+  be applied at that site. Prefer the symbolic form.
 
 Make the edits durable in the codebase (the user already sees them applied live in
 their app — your job is to write them into the source so they persist), then finish
@@ -149,7 +196,7 @@ as the *where*. Example beat → "make this tighter" + a click on
 ## 5. Do the work, then finish
 
 Implement the request in the current repo (edit code, run what's needed). When
-done, mark the recording finished — this writes `result.json` and moves it to
+done, mark the task finished — this writes `result.json` and moves it to
 `done/` so it isn't reprocessed:
 
 ```bash
@@ -162,21 +209,20 @@ still moves to `done/`.
 ## 6. Watch loop (default)
 
 You **cannot watch files passively.** When you end a turn, nothing wakes you — so
-"I'm now watching" followed by stopping means you miss every recording. The watch
+"I'm now watching" followed by stopping means you miss every task. The watch
 *is* a running `watch` command, not a state of mind.
 
 The instant the server is up, run `npx @getpixel/server watch` **in the
-background** (`run_in_background: true`). It blocks until a recording is ready,
-then claims and prints it (step 3) — and because it claims the **oldest** ready
-recording, it also drains any backlog that piled up before you started. The
-harness re-invokes you when it exits, so the user can still talk to you while it
-waits.
+background** (`run_in_background: true`). It blocks until a task is ready, then
+claims and prints it (step 3) — and because it claims the **oldest** ready task,
+it also drains any backlog that piled up before you started. The harness
+re-invokes you when it exits, so the user can still talk to you while it waits.
 
 The loop:
 
 1. Start `watch` in the background.
-2. When it exits, read the printed `{id, dir}`, process the recording (steps 4 →
-   5: read `<dir>/timeline.json`, do the work, `done <id> ...`).
+2. When it exits, read the printed `{id, dir}`, process the task (steps 4 → 5:
+   read `<dir>/` — `edits.json` or `timeline.json` — do the work, `done <id> ...`).
 3. Start `watch` again and wait. Repeat forever.
 
 The running `watch` *is* the loop — never replace it with a passive "waiting"
@@ -185,4 +231,4 @@ message and then stop.
 **Stop only when the user explicitly asks** ("stop", "stop pixel", "stop
 watching"). Then kill the running `watch`, exit the loop, and leave the server
 as-is (or stop it if they ask). Don't stop just because the inbox is momentarily
-empty — `watch` keeps blocking until the next recording.
+empty — `watch` keeps blocking until the next task.

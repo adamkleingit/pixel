@@ -1,6 +1,10 @@
 # Pixel - the missing visual layer of coding agents
 
-Pixel allows you to capture a screen recording, with **audio, mouse movements/clicks, drag-selected regions**   
+Pixel lets you point your coding agent at UI changes two ways: **record** them
+(audio + mouse movements/clicks + drag-selected regions) as a spoken brief, or
+**edit** the running app directly (Figma-style move/resize/restyle/retype) and
+**Save**. Either way the change lands in a dropbox your agent watches and applies
+to the source.  
 It seamlessly integrates with your existing coding agent  
 
 ## Getting Started with your agent
@@ -177,14 +181,23 @@ like a hard refresh in any app). Everything short of a reload is preserved.
     app doesn't react) or **passthrough** (page stays interactive). Pausing always
     makes the page live.
 - **`@getpixel/server`** — standalone Node server (runnable as `npx @getpixel/server`)
-  that receives a recording, writes it to a `.screenshare/inbox/<id>/` dropbox on
-  disk, **transcribes the audio with Whisper** (Transformers.js + a bundled
-  ffmpeg, fully local) into `transcript.json`, and merges everything into a
-  time-ordered `timeline.json`.
+  that receives two kinds of **tasks** and writes each into a `.screenshare/inbox/<id>/`
+  dropbox on disk:
+  - **recordings** (POST `/recordings`) — **transcribed with Whisper** (Transformers.js
+    + a bundled ffmpeg, fully local) into `transcript.json`, then merged into a
+    time-ordered `timeline.json`;
+  - **saved edits** (POST `/edits`) — a batch of direct UI changes from edit mode,
+    written as `edits.json` (no transcription).
+
+  It also extracts the project's **design tokens** for the in-app design pane
+  (`GET /tokens`). The bundled **`pixel` skill** drives the agent side: claim a
+  task, recognize its kind, and carry it out.
 - **`examples/basic`** (`@getpixel/example`) — a Vite React app that consumes
   `@getpixel/ui` as a published (built) package.
 
-## On-disk recording layout
+## On-disk task layout
+
+A **recording** task:
 
 ```
 .screenshare/inbox/<id>/
@@ -199,8 +212,26 @@ like a hard refresh in any app). Everything short of a reload is preserved.
     draw-*.png      freehand-stroke screenshots (Cmd+drag, stroke drawn on top)
 ```
 
-## Inline Figma-style editing of the user interface  
-(coming soon)  
+A **saved-edit** task (no audio/beats — the brief is the change list):
+
+```
+.screenshare/inbox/<id>/
+  meta.json         id, kind: "edit", changeCount, url
+  edits.json        { url, createdAt, changes:[{ target[], kind, name, before, after, source? }] }
+  timeline.json     readiness marker (so the same watch/claim pipeline picks it up)
+```
+
+## Inline Figma-style editing of the user interface
+
+Mount the SDK and click the **pencil** in the bar (or double-tap **Enter**) to
+enter **edit mode**: select elements on the page and move / resize / restyle /
+retype them directly on the live DOM, with a Figma-style design pane (its
+color/spacing/radius pickers and drag-snap are bound to the project's real design
+tokens). **Save** (the disk button, or double-tap **Enter**) sends the batch to
+the server as an `/edits` task; **Cancel** (X, or **Esc**) reverts and exits.
+Saved edits land in the dropbox alongside recordings, and the agent applies them
+to source — preferring the **symbolic token form** (e.g. `bg-primary`,
+`var(--brand-coral)`) over a raw value when a change was bound to a design token.
 
 ## Develop this repo
 

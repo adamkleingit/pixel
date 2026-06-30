@@ -158,11 +158,20 @@ describe('edit mode — design pane', () => {
     expect(html.style.marginRight).toBe('280px')
     expect(document.querySelector('.screenshare-pane-empty')).not.toBeNull() // nothing selected
 
-    // Select an element → the pane inspects it.
+    // Select an element → the pane inspects it. Pixel's real DesignPanel renders
+    // for the selection: its SidebarHeader echoes the selected tag, and the
+    // tag-driven property sections (Position / Appearance / Typography) appear.
     fireEvent.pointerDown(screen.getByTestId('page-btn'))
-    expect(document.querySelector('.screenshare-pane-tag')).not.toBeNull()
-    // The editable design sections render for the selection.
-    expect(document.querySelectorAll('.screenshare-ds-section').length).toBeGreaterThan(0)
+    const paneTag = document.querySelector('.screenshare-pane-tag')!
+    expect(paneTag).not.toBeNull()
+    const tag = paneTag.textContent! // e.g. "<div>" / "<button>"
+    const paneBody = document.querySelector('.screenshare-pane-body')!
+    // The DesignPanel's SidebarHeader echoes the same tag as the pane title.
+    expect(paneBody.textContent).toContain(tag.replace(/[<>]/g, ''))
+    // Tag-driven sections from section-visibility render for the selection.
+    expect(paneBody.textContent).toContain('Position')
+    expect(paneBody.textContent).toContain('Appearance')
+    expect(paneBody.textContent).toContain('Effects')
 
     // Collapse (like the recording menu's minimize) → frees the width, hides body.
     fireEvent.click(document.querySelector('.screenshare-pane-collapse')!)

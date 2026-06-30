@@ -250,24 +250,19 @@ test('design pane edits commit to the tracker and Cmd+Z undoes them', async ({ p
   await page.goto('/')
   await editBtn(page).click()
 
-  const btn = page.getByRole('button', { name: 'Upgrade' })
-  await btn.click({ modifiers: ['Meta'] }) // select the exact element
-  const padInput = page
-    .locator('.screenshare-ds-row', { hasText: 'Padding' })
-    .locator('input.screenshare-ds-input')
-  await expect(padInput).toBeVisible()
+  // Select a text leaf; the real pane's Content section shows its text.
+  const p = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  await p.click({ modifiers: ['Meta'] })
 
-  await padInput.fill('30px')
-  await padInput.blur() // commit on blur
-  await expect
-    .poll(() => btn.evaluate((b) => (b as HTMLElement).style.padding))
-    .toBe('30px')
+  const textarea = page.getByRole('textbox', { name: 'Text content' })
+  await expect(textarea).toBeVisible()
+  await textarea.fill('Edited copy')
+  await textarea.blur() // ContentSection commits through the change tracker
+  await expect(p).toHaveText('Edited copy')
 
-  // Undo (focus is off the input, so the shortcut applies).
-  await page.keyboard.press('Meta+z')
-  await expect
-    .poll(() => btn.evaluate((b) => (b as HTMLElement).style.padding))
-    .not.toBe('30px')
+  // Undo (focus is off the field, so the shortcut applies).
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(p).toHaveText('Triage messages and assign owners.')
 })
 
 test('double-click edits text in place and commits the new text', async ({ page }) => {
@@ -288,7 +283,8 @@ test('resize handle changes the element size and commits (undo reverts)', async 
   await page.goto('/')
   await editBtn(page).click()
 
-  const target = page.getByText('Triage messages and assign owners.')
+  // Stable selector (the text changes elsewhere; the pane also mirrors it in a textarea).
+  const target = page.locator('.card', { hasText: 'Inbox' }).locator('p')
   await target.click({ modifiers: ['Meta'] }) // select the <p>
   const before = (await target.boundingBox())!.width
 

@@ -11,7 +11,8 @@
  * A `Change` is symmetric (before/after), so undo = apply `before`, redo =
  * apply `after` — mirroring Pixel's `DesignEntry`.
  */
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { setReporterCommit } from './change-reporter'
 
 export interface Change {
   target: HTMLElement
@@ -97,6 +98,14 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     for (const c of next.changes) applyValue(c.target, c.kind, c.name, c.after)
     setPointer(p + 1)
   }, [])
+
+  // Bridge the tracker into the change-reporter shim so the ported design pane
+  // (applyPatch → reportPatch pre-hook) and drag gestures (commitChangeBatch)
+  // record through us while edit mode is mounted.
+  useEffect(() => {
+    setReporterCommit(commit)
+    return () => setReporterCommit(null)
+  }, [commit])
 
   const value = useMemo<EditHistory>(
     () => ({

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
-import { DesignSections } from './design/DesignSections'
+import { DesignPanel } from './properties-sidebar/DesignPanel'
+import { TokensProvider } from './tokens-context'
 
 /**
  * DesignPane — the right-docked inspector shown in edit mode. Unlike the
@@ -34,6 +35,9 @@ export function DesignPane() {
   const { entries } = useSelectionStore()
   const anchor = entries[0]?.element ?? null
   const el = anchor instanceof HTMLElement ? anchor : null
+  // The full selection (anchor + match entries) — sections collapse disagreeing
+  // values to "Multiple" when more than one element is passed.
+  const els = entries.map((e) => e.element)
   const history = useEditHistory()
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(PANE_W)
@@ -150,7 +154,14 @@ export function DesignPane() {
           {el ? (
             <>
               <div className="screenshare-pane-tag">{tag}</div>
-              <DesignSections element={el} />
+              <TokensProvider>
+                <DesignPanel
+                  selectedTag={el.tagName.toLowerCase()}
+                  headerTag={el.tagName.toLowerCase()}
+                  selectedElement={el}
+                  elements={els.length ? els : [el]}
+                />
+              </TokensProvider>
             </>
           ) : (
             <div className="screenshare-pane-empty">

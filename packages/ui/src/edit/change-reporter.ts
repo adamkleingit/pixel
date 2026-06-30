@@ -27,6 +27,7 @@ let injectedCommit: CommitFn | null = null
 /** Map a CSS/text/attr property name to the tracker's change surface. */
 function mapProperty(property: string): { kind: EditChange['kind']; name: string } {
   if (property === 'text') return { kind: 'text', name: '' }
+  if (property === 'pixel-move-node') return { kind: 'move', name: '' }
   if (property === 'value' || property === 'placeholder') return { kind: 'attr', name: property }
   return { kind: 'style', name: property }
 }

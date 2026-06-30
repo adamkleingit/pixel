@@ -16,9 +16,11 @@ import { setReporterCommit } from './change-reporter'
 
 export interface Change {
   target: HTMLElement
-  /** What surface the value lives on. */
-  kind: 'style' | 'text' | 'attr'
-  /** style property (e.g. `padding-left`), attribute name, or '' for text. */
+  /** What surface the value lives on. `move` reorders the element within its
+   *  parent — `before`/`after` are DOM child indices (see reposition-drag's
+   *  `pixel-move-node`). */
+  kind: 'style' | 'text' | 'attr' | 'move'
+  /** style property (e.g. `padding-left`), attribute name, or '' for text/move. */
   name: string
   before: string
   after: string
@@ -49,6 +51,16 @@ function applyValue(target: HTMLElement, kind: Change['kind'], name: string, val
     else target.style.setProperty(name, value)
   } else if (kind === 'text') {
     target.textContent = value
+  } else if (kind === 'move') {
+    // Reposition `target` to child index `value` within its parent. Compute the
+    // reference against the siblings *excluding* target so the resulting index
+    // is exactly `value` regardless of target's current position.
+    const parent = target.parentElement
+    if (!parent) return
+    const index = Number(value)
+    if (!Number.isFinite(index)) return
+    const siblings = Array.from(parent.children).filter((c) => c !== target)
+    parent.insertBefore(target, siblings[index] ?? null)
   } else {
     if (value === '') target.removeAttribute(name)
     else target.setAttribute(name, value)

@@ -288,7 +288,10 @@ test('resize handle changes the element size and commits (undo reverts)', async 
   await target.click({ modifiers: ['Meta'] }) // select the <p>
   const before = (await target.boundingBox())!.width
 
-  const handle = page.locator('.screenshare-h-edge[data-side="right"]')
+  // Pixel's real ResizeHandles render an EdgeBand per resizable side; it's a
+  // body-portal div tagged `data-resize-handle="edge"` + `data-side` (no
+  // className — Pixel handles are inline-styled).
+  const handle = page.locator('[data-resize-handle="edge"][data-side="right"]')
   await expect(handle).toBeVisible()
   const hb = (await handle.boundingBox())!
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
@@ -300,9 +303,81 @@ test('resize handle changes the element size and commits (undo reverts)', async 
   expect(after).toBeGreaterThan(before + 20)
   expect(await target.evaluate((e) => (e as HTMLElement).style.width)).not.toBe('')
 
-  // Undo restores the original (no inline width).
+  // Undo reverts the size. Pixel's drag-session commits the *resolved* pre-drag
+  // value as `before` (not an empty inline), so undo restores the element to
+  // its original rendered width rather than clearing the inline prop.
   await page.keyboard.press('Meta+z')
-  await expect.poll(() => target.evaluate((e) => (e as HTMLElement).style.width)).toBe('')
+  await expect
+    .poll(async () => Math.round((await target.boundingBox())!.width))
+    .toBe(Math.round(before))
+})
+
+test('corner handle resizes both axes and commits (undo reverts)', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const target = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  await target.click({ modifiers: ['Meta'] }) // select the <p>
+  const before = (await target.boundingBox())!
+
+  // Pixel's CornerHandle is a body-portal div tagged data-resize-handle="corner".
+  // A block child anchors start/start → only the bottom-right corner resizes.
+  const corner = page.locator('[data-resize-handle="corner"][data-corner="br"]')
+  await expect(corner).toBeVisible()
+  const cb = (await corner.boundingBox())!
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(cb.x + 50, cb.y + 40, { steps: 6 })
+  await page.mouse.up()
+
+  const after = (await target.boundingBox())!
+  expect(after.width).toBeGreaterThan(before.width + 20)
+  expect(await target.evaluate((e) => (e as HTMLElement).style.width)).not.toBe('')
+  expect(await target.evaluate((e) => (e as HTMLElement).style.height)).not.toBe('')
+
+  // Undo restores the original geometry — one atomic entry reverts width + height
+  // together (back to the resolved pre-drag values).
+  await page.keyboard.press('Meta+z')
+  await expect
+    .poll(async () => Math.round((await target.boundingBox())!.width))
+    .toBe(Math.round(before.width))
+  await expect
+    .poll(async () => Math.round((await target.boundingBox())!.height))
+    .toBe(Math.round(before.height))
+})
+
+test('dragging the element body repositions it (Cmd reorder) and commits (undo reverts)', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  // Pixel's reposition-drag, Cmd mode: dragging an in-flow element shows the
+  // insertion line and, on drop past a sibling, reorders it in the flow (an
+  // atomic, committed DOM move). We drag the first toolbar button past the
+  // second so the order flips. (We drag *directly* — the single pointerdown both
+  // selects, Cmd = exact leaf, and arms the move; a separate pre-click would land
+  // inside the double-click window and route to inline-edit instead.)
+  const toolbar = page.locator('.card', { hasText: 'Inbox' }).locator('.toolbar')
+  const order = () => toolbar.evaluate((t) => Array.from(t.children).map((c) => c.textContent))
+  expect(await order()).toEqual(['Compose', 'Details'])
+
+  const compose = toolbar.getByRole('button', { name: 'Compose' })
+  const box = (await compose.boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+
+  await page.keyboard.down('Meta') // Cmd → insertion-line reorder mode
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx + 140, cy, { steps: 12 }) // travel past "Details"
+  await page.mouse.up()
+  await page.keyboard.up('Meta')
+
+  // The element moved in the flow — order flipped.
+  await expect.poll(order).toEqual(['Details', 'Compose'])
+
+  // Undo reverts the reposition (one atomic entry restores the original order).
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(order).toEqual(['Compose', 'Details'])
 })
 
 test('edit mode normalizes cursors (no pointer on buttons, no not-allowed on disabled)', async ({

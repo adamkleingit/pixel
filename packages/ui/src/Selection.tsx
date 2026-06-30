@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
 import { beginInlineEdit, isTextEditable, type InlineEditSession } from './edit/inline-text-edit'
-import { Handles } from './drag/Handles'
+import { ResizeHandles } from './drag/Handles'
+import { SpacingHandles } from './drag/SpacingHandles'
+import { CornerRadiusHandles } from './drag/CornerRadiusHandles'
+import { InsertionLine } from './drag/InsertionLine'
+import { startRepositionDrag } from './drag/reposition-drag'
 import {
   computeDrillTarget,
   computeHoverTarget,
@@ -63,6 +67,58 @@ export function Selection() {
     let lastPointerTarget: Element | null = null
 
     const anchor = (): Element | null => storeRef.current.entries[0]?.element ?? null
+
+    const DRAG_THRESHOLD = 4 // screen px
+
+    // Arm a reposition drag on the just-selected element. Watches `pointermove`
+    // and `pointerup` on document: if the cursor crosses DRAG_THRESHOLD before
+    // release, hand off to `startRepositionDrag` (Pixel's layout-aware move —
+    // static/flex/absolute, Cmd insertion-line, Ctrl flow-toggle, Alt
+    // duplicate); if release fires first, just tear down — the click already
+    // routed selection state correctly. Ported verbatim from Pixel's
+    // Selection.tsx `armRepositionDrag`.
+    function armRepositionDrag(
+      element: HTMLElement,
+      down: PointerEvent,
+      peers: HTMLElement[],
+    ) {
+      const startX = down.clientX
+      const startY = down.clientY
+      const startedWithAlt = down.altKey
+      const startedWithMeta = down.metaKey
+      const startedWithCtrl = down.ctrlKey
+      const startedWithShift = down.shiftKey
+
+      function onMove(e: PointerEvent) {
+        const dx = e.clientX - startX
+        const dy = e.clientY - startY
+        if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return
+        teardown()
+        startRepositionDrag({
+          element,
+          startX,
+          startY,
+          // Re-read modifiers from the *current* event when threshold is
+          // crossed, so a user who holds Cmd just-before-drag still gets
+          // insertion-line mode even if it wasn't held at pointerdown. Alt is
+          // the exception per spec §3 — captured at the threshold moment, not
+          // re-read every frame after.
+          altKey: e.altKey || startedWithAlt,
+          metaKey: e.metaKey || startedWithMeta,
+          ctrlKey: e.ctrlKey || startedWithCtrl,
+          shiftKey: e.shiftKey || startedWithShift,
+          peers,
+        })
+      }
+      function teardown() {
+        document.removeEventListener('pointermove', onMove)
+        document.removeEventListener('pointerup', teardown)
+        document.removeEventListener('pointercancel', teardown)
+      }
+      document.addEventListener('pointermove', onMove)
+      document.addEventListener('pointerup', teardown)
+      document.addEventListener('pointercancel', teardown)
+    }
 
     function onPointerMove(event: Event) {
       const e = event as PointerEvent
@@ -148,6 +204,15 @@ export function Selection() {
 
       storeRef.current.pick(TILE, picked) // replaces the whole set with [picked]
       storeRef.current.setHover(TILE, picked)
+
+      // Arm a reposition drag: if the user moves more than DRAG_THRESHOLD
+      // screen px before releasing, start a layout-aware move of `picked`
+      // (Pixel's `startRepositionDrag`). Otherwise this was a click and the
+      // selection state above already routed correctly. No multi-edit peers
+      // in-app yet → peers = []. See Pixel Selection.tsx § armRepositionDrag.
+      if (picked instanceof HTMLElement) {
+        armRepositionDrag(picked, e, [])
+      }
     }
 
     // Cmd press/release re-targets the hover (exact leaf vs depth-anchored)
@@ -223,10 +288,54 @@ function SelectionOverlays() {
         <Outline key={i} el={e.element} variant="match" />
       ))}
       {anchor && <Outline el={anchor} variant="anchor" />}
-      {/* Drag handles (resize / move / corner-radius) for the anchor only. */}
-      {anchor instanceof HTMLElement && <Handles element={anchor} />}
+      {/* Pixel's real drag overlays for the anchor: 8-way resize + rotate
+          (ResizeHandles), padding/margin/gap spacing bars (SpacingHandles),
+          and corner-radius dots (CornerRadiusHandles). They read commit
+          through the change-reporter/patch seam directly, so they only need
+          the live element + its viewport rect. Move is handled separately by
+          armRepositionDrag (dragging the element body). */}
+      {anchor instanceof HTMLElement && <AnchorHandles element={anchor} />}
+      {/* Insertion line for Cmd-mode reposition drags. */}
+      <InsertionLine />
     </>
   )
+}
+
+/** Renders Pixel's three handle overlays for the anchor, feeding each the
+ *  element's live viewport rect (tracked on rAF + `pixel-drag-frame` so the
+ *  handles follow the element as a gesture grows/shrinks it). */
+function AnchorHandles({ element }: { element: HTMLElement }) {
+  const rect = useTrackedRect(element)
+  return (
+    <>
+      <ResizeHandles rect={rect} element={element} />
+      <SpacingHandles rect={rect} element={element} />
+      <CornerRadiusHandles rect={rect} element={element} />
+    </>
+  )
+}
+
+/** Track an element's viewport rect continuously (only re-rendering when the
+ *  box actually changes — rectsEqual), mirroring `Outline`. Also re-measures
+ *  on every drag frame (`pixel-drag-frame`) so the handles track live edits. */
+function useTrackedRect(element: HTMLElement): Rect {
+  const [rect, setRect] = useState<Rect>(() => rectOf(element))
+  useEffect(() => {
+    let raf = 0
+    let prev = rectOf(element)
+    setRect(prev)
+    const tick = () => {
+      const next = rectOf(element)
+      if (!rectsEqual(prev, next)) {
+        prev = next
+        setRect(next)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [element])
+  return rect
 }
 
 /** A fixed-position box tracking an element's viewport rect (via rectOf). */

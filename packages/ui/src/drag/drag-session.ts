@@ -1,38 +1,25 @@
 /**
- * Drag session — the non-React gesture engine behind `<Handles>`. Captures
- * pre-gesture geometry on pointer-down, writes inline styles LIVE per frame via
- * the edit-history's `applyLive`, and on pointer-up commits ONE atomic entry
- * (net before/after per touched property) so undo reverts the whole gesture.
+ * Drag session — captures pre-drag state, mutates inline styles per frame in
+ * silent mode, and on pointer up commits one change-reporter batch with
+ * `(previousValue → finalValue)`.
  *
- * Ported close to Pixel's `drag-session.ts` (resize axis math, rotation
- * projection) and `radius-drag.ts` (inward-diagonal projection), with three
- * adaptations spelled out in the port brief:
- *  - coordinate scale comes from `../selection/viewport` (1 in-app, kept in the
- *    math so it stays zoom-ready);
- *  - live geometry is read straight off `getBoundingClientRect()`;
- *  - commits go through the in-app `EditHistory` (`applyLive` per frame, one
- *    `commit([...changes])` on release) instead of Pixel's RPC change-reporter.
+ * Two gestures share this plumbing:
+ *  - Resize: writes `width`/`height` (+ `top`/`left` for out-of-flow boxes).
+ *    See tech-specs/drag-to-resize.md §5.1.
+ *  - Rotate: writes `transform: rotate(Ndeg)`. See §5.2.
  *
- * Pixel's per-frame `setPatchSilent` machinery isn't needed: `applyLive` writes
- * without recording, and the single `commit` carries the captured pre-gesture
- * inline values as `before`. A DRAG_THRESHOLD guards against a click being read
- * as a drag — no styles are written until the pointer travels past it.
+ * Cmd is captured at pointer-down to choose between modes; once started the
+ * gesture runs to completion regardless of further key state. Shift, Alt etc.
+ * are read live off the move event.
  */
-import type { Change } from '../edit/edit-history'
-import { getViewportScale } from '../selection/viewport'
 
-export type HandleSide = 'top' | 'right' | 'bottom' | 'left'
-export type HandleCorner = 'tl' | 'tr' | 'bl' | 'br'
-export type RadiusCorner = HandleCorner
-
-/** A click only becomes a drag after the pointer travels this many px. */
-export const DRAG_THRESHOLD = 3
-
-/** Commit hook the React layer wires to the edit-history. */
-export interface Committer {
-  applyLive: (target: HTMLElement, kind: Change['kind'], name: string, value: string) => void
-  commit: (changes: Change[], label?: string) => void
-}
+import type { Change } from '../agent-client'
+import { getViewportScale } from '../canvas/viewport'
+import { commitChangeBatch } from '../edit/change-reporter'
+import { applyPatch, setPatchSilent, type Patch } from '../edit/patch'
+import { readRotationDeg } from '../edit/read-computed'
+import type { HandleCorner, HandleSide } from './handle-layout'
+import { snapModeFromEvent, snapToStep } from './token-snap'
 
 interface AxisSign {
   active: boolean
@@ -44,8 +31,78 @@ interface AxisInputs {
   height: AxisSign
 }
 
-/** Resize axes for a given handle — which dimensions move and in which
- *  direction. Mirrors Pixel's `axesForHandle`. */
+interface BaseFields {
+  element: HTMLElement
+  /** Peers (matched elements in other tiles) that mirror every per-frame
+   *  patch. Empty in single-edit; non-empty when the gesture started under
+   *  multi-edit. The agent-side fan-out for the source rewrite happens via
+   *  `commitChangeBatch` reading the live `variants` scope. */
+  peers: readonly HTMLElement[]
+  /** Per-peer pre-drag inline values, captured at gesture start, so a
+   *  cancellation can restore exactly what was on each peer (mirroring the
+   *  source's previous-inline tracking). Keyed by CSS property name. */
+  peerPreviousInline: Map<HTMLElement, Map<string, string>>
+  htmlBefore: string
+  prevDocCursor: string
+  prevBodyUserSelect: string
+}
+
+interface ResizeFields {
+  kind: 'resize'
+  axes: AxisInputs
+  startX: number
+  startY: number
+  startWidth: number
+  startHeight: number
+  previousWidthInline: string
+  previousHeightInline: string
+  previousTopInline: string
+  previousLeftInline: string
+  previousWidthResolved: string
+  previousHeightResolved: string
+  previousTopResolved: string
+  previousLeftResolved: string
+  outOfFlow: boolean
+  startTop: number
+  startLeft: number
+  rotationRad: number
+}
+
+interface RotateFields {
+  kind: 'rotate'
+  /** Element center in screen coords — pivot for the rotate gesture. */
+  centerX: number
+  centerY: number
+  /** Angle from center to initial cursor, in radians. */
+  startAngleRad: number
+  /** Element's rotation in degrees at gesture start. */
+  startRotationDeg: number
+  /** Latest written rotation (deg), updated every frame. Exposed via
+   *  `getActiveRotateDrag()` so the chrome can render a live tooltip. */
+  liveRotationDeg: number
+  previousTransformInline: string
+  previousTransformResolved: string
+}
+
+type ActiveSession = BaseFields & (ResizeFields | RotateFields)
+
+let session: ActiveSession | null = null
+
+export function isDragging(): boolean {
+  return session !== null
+}
+
+/** Live rotate-drag info for the chrome — element + current angle (deg).
+ *  Returns null when no rotate drag is active. The rotate handles read this
+ *  each `pixel-drag-frame` to render a live "Rotate {n}°" tooltip. */
+export function getActiveRotateDrag(): {
+  element: HTMLElement
+  rotationDeg: number
+} | null {
+  if (!session || session.kind !== 'rotate') return null
+  return { element: session.element, rotationDeg: session.liveRotationDeg }
+}
+
 export function axesForHandle(input: { side?: HandleSide; corner?: HandleCorner }): AxisInputs {
   if (input.corner) {
     const c = input.corner
@@ -55,115 +112,219 @@ export function axesForHandle(input: { side?: HandleSide; corner?: HandleCorner 
     }
   }
   switch (input.side) {
-    case 'right':  return { width: { active: true, sign: 1 },   height: { active: false, sign: 1 } }
-    case 'left':   return { width: { active: true, sign: -1 },  height: { active: false, sign: 1 } }
-    case 'bottom': return { width: { active: false, sign: 1 },  height: { active: true, sign: 1 } }
-    case 'top':    return { width: { active: false, sign: 1 },  height: { active: true, sign: -1 } }
+    case 'right':  return { width:  { active: true, sign: 1 },  height: { active: false, sign: 1 } }
+    case 'left':   return { width:  { active: true, sign: -1 }, height: { active: false, sign: 1 } }
+    case 'bottom': return { width:  { active: false, sign: 1 }, height: { active: true, sign: 1 } }
+    case 'top':    return { width:  { active: false, sign: 1 }, height: { active: true, sign: -1 } }
   }
   throw new Error('axesForHandle: handle missing side or corner')
 }
 
-/** Inward unit vector at each corner — projecting pointer motion onto this axis
- *  gives the radius delta (positive = grow). The /√2 normalisation makes a
- *  diagonal pointer drag write px at screen rate. Mirrors Pixel's `INWARD`. */
-const INWARD: Record<RadiusCorner, { x: number; y: number }> = {
-  tl: { x:  1 / Math.SQRT2, y:  1 / Math.SQRT2 },
-  tr: { x: -1 / Math.SQRT2, y:  1 / Math.SQRT2 },
-  br: { x: -1 / Math.SQRT2, y: -1 / Math.SQRT2 },
-  bl: { x:  1 / Math.SQRT2, y: -1 / Math.SQRT2 },
-}
-
 // ---------------------------------------------------------------------------
-// Session state
+// Resize
 // ---------------------------------------------------------------------------
 
-interface BaseSession {
+interface ResizeStartInput {
   element: HTMLElement
-  committer: Committer
+  side?: HandleSide
+  corner?: HandleCorner
   startX: number
   startY: number
-  /** True once the pointer has travelled past DRAG_THRESHOLD; before that no
-   *  styles are written and a release commits nothing. */
-  moved: boolean
-  /** Pre-gesture inline values (element.style.<prop>, '' when unset) keyed by
-   *  CSS property — these become each change's `before`. */
-  beforeInline: Map<string, string>
-  prevDocCursor: string
-  prevBodyUserSelect: string
+  /** CSS rotation of the element in degrees — drag delta is projected into
+   *  the element's local axes so resize math is correct under rotation. */
+  rotationDeg: number
+  cursor: string
+  peers?: readonly HTMLElement[]
 }
 
-interface ResizeSession extends BaseSession {
-  kind: 'resize'
-  axes: AxisInputs
-  startWidth: number
-  startHeight: number
-  startLeft: number
-  startTop: number
-  /** Whether left/top can take effect — if computed position was `static` we
-   *  promote to `relative` (recorded in the commit) so they do. */
-  needsPositionPromotion: boolean
-  rotationRad: number
-}
+export function startResizeDrag(input: ResizeStartInput): void {
+  if (session) return
 
-interface MoveSession extends BaseSession {
-  kind: 'move'
-  startLeft: number
-  startTop: number
-  needsPositionPromotion: boolean
-}
+  const rect = input.element.getBoundingClientRect()
+  const axes = axesForHandle(input)
+  // `rect` is in scaled screen space under canvas zoom; the gesture writes
+  // element-space CSS px, so convert the start dimensions back out by the
+  // viewport scale (matches the per-frame delta conversion in `moveResize`).
+  const scale = getViewportScale() || 1
 
-interface RadiusSession extends BaseSession {
-  kind: 'radius'
-  corner: RadiusCorner
-  startRadius: number
-  maxRadius: number
-  rotationRad: number
-}
+  const previousWidthInline = readInline(input.element, 'width')
+  const previousHeightInline = readInline(input.element, 'height')
+  const previousTopInline = readInline(input.element, 'top')
+  const previousLeftInline = readInline(input.element, 'left')
 
-type Session = ResizeSession | MoveSession | RadiusSession
+  const position = readComputed(input.element, 'position')
+  const outOfFlow = position === 'absolute' || position === 'fixed'
+  // `offsetLeft`/`offsetTop` are offsetParent-relative for absolute, which
+  // matches what we'll write into the `left`/`top` CSS properties. For
+  // fixed elements offsetParent is null → fall back to viewport coords.
+  const startLeft = outOfFlow && position === 'fixed' ? rect.left : input.element.offsetLeft
+  const startTop = outOfFlow && position === 'fixed' ? rect.top : input.element.offsetTop
 
-let session: Session | null = null
+  const base = beginSession(
+    input.element,
+    input.cursor,
+    input.peers ?? [],
+    RESIZE_TRACKED_PROPS,
+  )
 
-export function isDragging(): boolean {
-  return session !== null
+  session = {
+    ...base,
+    kind: 'resize',
+    axes,
+    startX: input.startX,
+    startY: input.startY,
+    startWidth: rect.width / scale,
+    startHeight: rect.height / scale,
+    previousWidthInline,
+    previousHeightInline,
+    previousTopInline,
+    previousLeftInline,
+    previousWidthResolved: previousWidthInline || readComputed(input.element, 'width'),
+    previousHeightResolved: previousHeightInline || readComputed(input.element, 'height'),
+    previousTopResolved: previousTopInline || readComputed(input.element, 'top'),
+    previousLeftResolved: previousLeftInline || readComputed(input.element, 'left'),
+    outOfFlow,
+    startTop,
+    startLeft,
+    rotationRad: (input.rotationDeg * Math.PI) / 180,
+  }
+
+  attachListeners()
+  emitFrame()
 }
 
 // ---------------------------------------------------------------------------
-// Shared helpers
+// Rotate
 // ---------------------------------------------------------------------------
 
-function readInline(el: HTMLElement, property: string): string {
-  return (el.style.getPropertyValue(property) ?? '').trim()
+interface RotateStartInput {
+  element: HTMLElement
+  startX: number
+  startY: number
+  cursor: string
+  peers?: readonly HTMLElement[]
 }
 
-function readComputed(el: HTMLElement, property: string): string {
-  return getComputedStyle(el).getPropertyValue(property).trim()
+export function startRotateDrag(input: RotateStartInput): void {
+  if (session) return
+
+  const rect = input.element.getBoundingClientRect()
+  const centerX = rect.left + rect.width / 2
+  const centerY = rect.top + rect.height / 2
+  const startAngleRad = Math.atan2(input.startY - centerY, input.startX - centerX)
+  const startRotationDeg = parseFloat(readRotationDeg(input.element)) || 0
+
+  const previousTransformInline = readInline(input.element, 'transform')
+  const previousTransformResolved =
+    previousTransformInline || readComputed(input.element, 'transform')
+
+  const base = beginSession(
+    input.element,
+    input.cursor,
+    input.peers ?? [],
+    ROTATE_TRACKED_PROPS,
+  )
+
+  session = {
+    ...base,
+    kind: 'rotate',
+    centerX,
+    centerY,
+    startAngleRad,
+    startRotationDeg,
+    liveRotationDeg: startRotationDeg,
+    previousTransformInline,
+    previousTransformResolved,
+  }
+
+  attachListeners()
+  emitFrame()
 }
 
-function captureBefore(el: HTMLElement, props: readonly string[]): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const p of props) map.set(p, readInline(el, p))
-  return map
-}
+// ---------------------------------------------------------------------------
+// Shared lifecycle
+// ---------------------------------------------------------------------------
 
-function beginCursorLock(cursor: string): { prevDocCursor: string; prevBodyUserSelect: string } {
+function beginSession(
+  element: HTMLElement,
+  cursor: string,
+  rawPeers: readonly HTMLElement[],
+  capturedProps: readonly string[],
+): BaseFields {
+  setPatchSilent(true)
   const docEl = document.documentElement
   const prevDocCursor = docEl.style.cursor
   docEl.style.cursor = cursor
   const prevBodyUserSelect = document.body.style.userSelect
   document.body.style.userSelect = 'none'
-  return { prevDocCursor, prevBodyUserSelect }
+
+  const rootNode = element.getRootNode()
+  const htmlBefore = rootNode instanceof ShadowRoot ? rootNode.innerHTML : ''
+
+  // Snapshot each peer's pre-drag inline value for every prop the gesture
+  // might touch. Cancel restores from this map; commits don't read it (the
+  // agent fan-out via `variants` rewrites every selected variant's source).
+  const peerPreviousInline = new Map<HTMLElement, Map<string, string>>()
+  const peers: HTMLElement[] = []
+  for (const peer of rawPeers) {
+    if (peer === element) continue
+    peers.push(peer)
+    const snap = new Map<string, string>()
+    for (const prop of capturedProps) snap.set(prop, readInline(peer, prop))
+    peerPreviousInline.set(peer, snap)
+  }
+
+  return { element, peers, peerPreviousInline, htmlBefore, prevDocCursor, prevBodyUserSelect }
+}
+
+const RESIZE_TRACKED_PROPS = ['width', 'height', 'top', 'left'] as const
+const ROTATE_TRACKED_PROPS = ['transform'] as const
+
+/** Apply `patch` to the source AND mirror it onto every peer in silent mode
+ *  so peer tiles stay visually in sync with the source. */
+function applyPatchToSession(s: BaseFields, patch: Patch): void {
+  applyPatch(s.element, patch)
+  for (const peer of s.peers) applyPatch(peer, patch)
 }
 
 function attachListeners(): void {
   document.addEventListener('pointermove', onPointerMove)
   document.addEventListener('pointerup', onPointerUp)
   document.addEventListener('pointercancel', onPointerCancel)
+  // Capture phase so we beat the selection's Escape handler.
   document.addEventListener('keydown', onKeyDown, true)
+}
+
+function onPointerMove(e: PointerEvent): void {
+  if (!session) return
+  if (session.kind === 'resize') return moveResize(e, session)
+  if (session.kind === 'rotate') return moveRotate(e, session)
+}
+
+function onPointerUp(): void {
+  if (!session) return
+  finalizeCommit()
+  cleanup()
+}
+
+function onPointerCancel(): void {
+  if (!session) return
+  revert()
+  cleanup()
+}
+
+function onKeyDown(e: KeyboardEvent): void {
+  if (!session) return
+  if (e.key !== 'Escape') return
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  revert()
+  cleanup()
 }
 
 function cleanup(): void {
   if (!session) return
+  setPatchSilent(false)
   document.documentElement.style.cursor = session.prevDocCursor
   document.body.style.userSelect = session.prevBodyUserSelect
   document.removeEventListener('pointermove', onPointerMove)
@@ -174,73 +335,21 @@ function cleanup(): void {
   emitFrame()
 }
 
-/** Notify the React overlay (and any tooltip) so it re-measures each frame. */
 function emitFrame(): void {
-  document.dispatchEvent(new Event('screenshare-drag-frame'))
-}
-
-function past(el: number, by: number): boolean {
-  return Math.abs(el) > by
+  document.dispatchEvent(new Event('pixel-drag-frame'))
 }
 
 // ---------------------------------------------------------------------------
-// Resize
+// Resize gesture
 // ---------------------------------------------------------------------------
 
-export interface ResizeStartInput {
-  element: HTMLElement
-  committer: Committer
-  side?: HandleSide
-  corner?: HandleCorner
-  startX: number
-  startY: number
-  /** Element CSS rotation (deg) — drag delta is projected into the element's
-   *  local axes so resize math stays correct under rotation. */
-  rotationDeg: number
-  cursor: string
-}
-
-export function startResizeDrag(input: ResizeStartInput): void {
-  if (session) return
-  const el = input.element
-  const rect = el.getBoundingClientRect()
-  const scale = getViewportScale() || 1
-  const axes = axesForHandle(input)
-
-  const position = readComputed(el, 'position')
-  const isStatic = position === 'static'
-  const isFixed = position === 'fixed'
-  // offsetLeft/Top are offsetParent-relative (what we write into left/top). For
-  // fixed elements offsetParent is null → fall back to viewport coords.
-  const startLeft = isFixed ? rect.left : el.offsetLeft
-  const startTop = isFixed ? rect.top : el.offsetTop
-
-  const lock = beginCursorLock(input.cursor)
-  session = {
-    kind: 'resize',
-    element: el,
-    committer: input.committer,
-    startX: input.startX,
-    startY: input.startY,
-    moved: false,
-    beforeInline: captureBefore(el, ['width', 'height', 'left', 'top', 'position']),
-    axes,
-    startWidth: rect.width / scale,
-    startHeight: rect.height / scale,
-    startLeft,
-    startTop,
-    needsPositionPromotion: isStatic,
-    rotationRad: (input.rotationDeg * Math.PI) / 180,
-    ...lock,
-  }
-  attachListeners()
-}
-
-function moveResize(e: PointerEvent, s: ResizeSession): void {
+function moveResize(e: PointerEvent, s: BaseFields & ResizeFields): void {
+  // Convert the screen-pixel drag delta into element space: under canvas zoom
+  // `S`, the element moves `S` screen px per 1 element px, so the element-space
+  // delta the inline `width`/`height` are written in is the screen delta / S.
   const scale = getViewportScale() || 1
   const dx = (e.clientX - s.startX) / scale
   const dy = (e.clientY - s.startY) / scale
-
   // Project the (zoom-corrected) delta into the element's un-rotated local frame.
   const cos = Math.cos(s.rotationRad)
   const sin = Math.sin(s.rotationRad)
@@ -249,10 +358,15 @@ function moveResize(e: PointerEvent, s: ResizeSession): void {
 
   let widthDelta = 0
   let heightDelta = 0
-  if (s.axes.width.active) widthDelta = Math.max(localDx * s.axes.width.sign, -s.startWidth)
-  if (s.axes.height.active) heightDelta = Math.max(localDy * s.axes.height.sign, -s.startHeight)
+  if (s.axes.width.active) {
+    widthDelta = Math.max(localDx * s.axes.width.sign, -s.startWidth)
+  }
+  if (s.axes.height.active) {
+    heightDelta = Math.max(localDy * s.axes.height.sign, -s.startHeight)
+  }
 
-  // Aspect-ratio lock (Shift) — only meaningful for corner drags (both axes).
+  // Aspect-ratio lock — only meaningful for corner drags (both axes active).
+  // For edge drags Shift is a no-op per tech-specs/drag-to-resize.md §5.1.
   if (
     e.shiftKey &&
     s.axes.width.active &&
@@ -264,197 +378,175 @@ function moveResize(e: PointerEvent, s: ResizeSession): void {
     const wRel = Math.abs(widthDelta) / s.startWidth
     const hRel = Math.abs(heightDelta) / s.startHeight
     if (wRel >= hRel) {
-      heightDelta = (s.startWidth + widthDelta) / aspect - s.startHeight
+      const newW = s.startWidth + widthDelta
+      heightDelta = newW / aspect - s.startHeight
     } else {
-      widthDelta = (s.startHeight + heightDelta) * aspect - s.startWidth
+      const newH = s.startHeight + heightDelta
+      widthDelta = newH * aspect - s.startWidth
     }
+    // Re-clamp after coupling so neither dim goes negative.
     widthDelta = Math.max(widthDelta, -s.startWidth)
     heightDelta = Math.max(heightDelta, -s.startHeight)
   }
 
-  if (s.needsPositionPromotion && (s.axes.width.sign === -1 || s.axes.height.sign === -1)) {
-    // left/top only take effect once positioned; promote to relative live.
-    s.committer.applyLive(s.element, 'style', 'position', 'relative')
-  }
   if (s.axes.width.active) {
-    s.committer.applyLive(s.element, 'style', 'width', `${Math.round(s.startWidth + widthDelta)}px`)
-    if (s.axes.width.sign === -1) {
-      s.committer.applyLive(s.element, 'style', 'left', `${Math.round(s.startLeft - widthDelta)}px`)
+    applyPatchToSession(s, {
+      kind: 'setStyle',
+      property: 'width',
+      value: `${Math.round(s.startWidth + widthDelta)}px`,
+    })
+    if (s.outOfFlow && s.axes.width.sign === -1) {
+      applyPatchToSession(s, {
+        kind: 'setStyle',
+        property: 'left',
+        value: `${Math.round(s.startLeft - widthDelta)}px`,
+      })
     }
   }
   if (s.axes.height.active) {
-    s.committer.applyLive(s.element, 'style', 'height', `${Math.round(s.startHeight + heightDelta)}px`)
-    if (s.axes.height.sign === -1) {
-      s.committer.applyLive(s.element, 'style', 'top', `${Math.round(s.startTop - heightDelta)}px`)
+    applyPatchToSession(s, {
+      kind: 'setStyle',
+      property: 'height',
+      value: `${Math.round(s.startHeight + heightDelta)}px`,
+    })
+    if (s.outOfFlow && s.axes.height.sign === -1) {
+      applyPatchToSession(s, {
+        kind: 'setStyle',
+        property: 'top',
+        value: `${Math.round(s.startTop - heightDelta)}px`,
+      })
     }
   }
   emitFrame()
 }
 
 // ---------------------------------------------------------------------------
-// Move
+// Rotate gesture
 // ---------------------------------------------------------------------------
 
-export interface MoveStartInput {
-  element: HTMLElement
-  committer: Committer
-  startX: number
-  startY: number
-  cursor: string
-}
+const ROTATE_SNAP_DEG = 15
 
-export function startMoveDrag(input: MoveStartInput): void {
-  if (session) return
-  const el = input.element
-  const rect = el.getBoundingClientRect()
-  const position = readComputed(el, 'position')
-  const isFixed = position === 'fixed'
-  const startLeft = isFixed ? rect.left : el.offsetLeft
-  const startTop = isFixed ? rect.top : el.offsetTop
-
-  const lock = beginCursorLock(input.cursor)
-  session = {
-    kind: 'move',
-    element: el,
-    committer: input.committer,
-    startX: input.startX,
-    startY: input.startY,
-    moved: false,
-    beforeInline: captureBefore(el, ['left', 'top', 'position']),
-    startLeft,
-    startTop,
-    needsPositionPromotion: position === 'static',
-    ...lock,
-  }
-  attachListeners()
-}
-
-function moveReposition(e: PointerEvent, s: MoveSession): void {
-  const scale = getViewportScale() || 1
-  const dx = (e.clientX - s.startX) / scale
-  const dy = (e.clientY - s.startY) / scale
-  if (s.needsPositionPromotion) {
-    s.committer.applyLive(s.element, 'style', 'position', 'relative')
-  }
-  s.committer.applyLive(s.element, 'style', 'left', `${Math.round(s.startLeft + dx)}px`)
-  s.committer.applyLive(s.element, 'style', 'top', `${Math.round(s.startTop + dy)}px`)
+function moveRotate(e: PointerEvent, s: BaseFields & RotateFields): void {
+  const angle = Math.atan2(e.clientY - s.centerY, e.clientX - s.centerX)
+  const deltaDeg = ((angle - s.startAngleRad) * 180) / Math.PI
+  const raw = s.startRotationDeg + deltaDeg
+  // Same modifier model as the token-snapping drags: plain drag snaps to the
+  // nearest 15° within threshold, ⌘/Ctrl drags smoothly, Shift snaps only.
+  const next = snapToStep(raw, ROTATE_SNAP_DEG, snapModeFromEvent(e))
+  s.liveRotationDeg = next
+  applyPatchToSession(s, {
+    kind: 'setStyle',
+    property: 'transform',
+    value: `rotate(${next.toFixed(1)}deg)`,
+  })
   emitFrame()
 }
 
 // ---------------------------------------------------------------------------
-// Corner radius
+// Commit / revert
 // ---------------------------------------------------------------------------
 
-export interface RadiusStartInput {
-  element: HTMLElement
-  committer: Committer
-  corner: RadiusCorner
-  startX: number
-  startY: number
-  rotationDeg: number
-  cursor: string
-}
-
-export function startRadiusDrag(input: RadiusStartInput): void {
-  if (session) return
-  const el = input.element
-  const rect = el.getBoundingClientRect()
-  const scale = getViewportScale() || 1
-  const maxRadius = Math.min(rect.width, rect.height) / 2 / scale
-  const startRadius = readPx(el, 'border-radius')
-
-  const lock = beginCursorLock(input.cursor)
-  session = {
-    kind: 'radius',
-    element: el,
-    committer: input.committer,
-    startX: input.startX,
-    startY: input.startY,
-    moved: false,
-    beforeInline: captureBefore(el, ['border-radius']),
-    corner: input.corner,
-    startRadius,
-    maxRadius,
-    rotationRad: (input.rotationDeg * Math.PI) / 180,
-    ...lock,
-  }
-  attachListeners()
-}
-
-function moveRadius(e: PointerEvent, s: RadiusSession): void {
-  const scale = getViewportScale() || 1
-  const dx = (e.clientX - s.startX) / scale
-  const dy = (e.clientY - s.startY) / scale
-  // Project into the un-rotated local frame so inward stays consistent.
-  const cos = Math.cos(s.rotationRad)
-  const sin = Math.sin(s.rotationRad)
-  const localDx = dx * cos + dy * sin
-  const localDy = -dx * sin + dy * cos
-  const inward = INWARD[s.corner]
-  const delta = localDx * inward.x + localDy * inward.y
-  // √2 compensates for the /√2 in INWARD: a diagonal drag of N px grows the
-  // radius by ~N px. Clamped to [0, min(W,H)/2] — CSS's geometric cap.
-  const raw = Math.max(0, Math.min(s.maxRadius, s.startRadius + delta * Math.SQRT2))
-  s.committer.applyLive(s.element, 'style', 'border-radius', `${Math.round(raw)}px`)
-  emitFrame()
-}
-
-function readPx(el: HTMLElement, property: string): number {
-  return parseFloat(readComputed(el, property)) || 0
-}
-
-// ---------------------------------------------------------------------------
-// Shared lifecycle
-// ---------------------------------------------------------------------------
-
-function onPointerMove(e: PointerEvent): void {
+function finalizeCommit(): void {
   if (!session) return
-  if (!session.moved) {
-    if (!past(e.clientX - session.startX, DRAG_THRESHOLD) && !past(e.clientY - session.startY, DRAG_THRESHOLD)) {
-      return
-    }
-    session.moved = true
-  }
-  if (session.kind === 'resize') return moveResize(e, session)
-  if (session.kind === 'move') return moveReposition(e, session)
-  if (session.kind === 'radius') return moveRadius(e, session)
-}
+  // Drop silent BEFORE reading so subsequent reporter calls would observe the
+  // real DOM. We don't replay through applyPatch — we send the whole batch
+  // directly via commitChangeBatch with the captured pre-drag values.
+  setPatchSilent(false)
 
-function onPointerUp(): void {
-  if (!session) return
-  if (session.moved) finalizeCommit(session)
-  cleanup()
-}
-
-function onPointerCancel(): void {
-  if (!session) return
-  revert(session)
-  cleanup()
-}
-
-function onKeyDown(e: KeyboardEvent): void {
-  if (!session) return
-  if (e.key !== 'Escape') return
-  e.preventDefault()
-  e.stopImmediatePropagation()
-  revert(session)
-  cleanup()
-}
-
-/** Net before/after per touched property → one atomic edit-history entry. */
-function finalizeCommit(s: Session): void {
   const changes: Change[] = []
-  for (const [name, before] of s.beforeInline) {
-    const after = readInline(s.element, name)
-    if (after !== before) changes.push({ target: s.element, kind: 'style', name, before, after })
+  if (session.kind === 'resize') {
+    collectResizeChanges(session, changes)
+  } else if (session.kind === 'rotate') {
+    collectRotateChanges(session, changes)
   }
-  if (changes.length > 0) s.committer.commit(changes, s.kind)
+  commitChangeBatch({ element: session.element, htmlBefore: session.htmlBefore, changes })
 }
 
-/** Escape / pointer-cancel — restore every touched property's pre-gesture
- *  inline value without recording. */
-function revert(s: Session): void {
-  for (const [name, before] of s.beforeInline) {
-    s.committer.applyLive(s.element, 'style', name, before)
+function collectResizeChanges(s: BaseFields & ResizeFields, changes: Change[]): void {
+  if (s.axes.width.active) {
+    changes.push({
+      property: 'width',
+      previousValue: s.previousWidthResolved,
+      newValue: readInline(s.element, 'width') || readComputed(s.element, 'width'),
+    })
+    if (s.outOfFlow && s.axes.width.sign === -1) {
+      changes.push({
+        property: 'left',
+        previousValue: s.previousLeftResolved,
+        newValue: readInline(s.element, 'left') || readComputed(s.element, 'left'),
+      })
+    }
   }
+  if (s.axes.height.active) {
+    changes.push({
+      property: 'height',
+      previousValue: s.previousHeightResolved,
+      newValue: readInline(s.element, 'height') || readComputed(s.element, 'height'),
+    })
+    if (s.outOfFlow && s.axes.height.sign === -1) {
+      changes.push({
+        property: 'top',
+        previousValue: s.previousTopResolved,
+        newValue: readInline(s.element, 'top') || readComputed(s.element, 'top'),
+      })
+    }
+  }
+}
+
+function collectRotateChanges(s: BaseFields & RotateFields, changes: Change[]): void {
+  changes.push({
+    property: 'transform',
+    previousValue: s.previousTransformResolved,
+    newValue: readInline(s.element, 'transform') || readComputed(s.element, 'transform'),
+  })
+}
+
+function revert(): void {
+  if (!session) return
+  // Patches still need to mutate the DOM; we just don't want them reported.
+  setPatchSilent(true)
+  if (session.kind === 'resize') {
+    if (session.axes.width.active) {
+      applyPatch(session.element, { kind: 'setStyle', property: 'width', value: session.previousWidthInline })
+      if (session.outOfFlow && session.axes.width.sign === -1) {
+        applyPatch(session.element, { kind: 'setStyle', property: 'left', value: session.previousLeftInline })
+      }
+    }
+    if (session.axes.height.active) {
+      applyPatch(session.element, { kind: 'setStyle', property: 'height', value: session.previousHeightInline })
+      if (session.outOfFlow && session.axes.height.sign === -1) {
+        applyPatch(session.element, { kind: 'setStyle', property: 'top', value: session.previousTopInline })
+      }
+    }
+  } else if (session.kind === 'rotate') {
+    applyPatch(session.element, {
+      kind: 'setStyle',
+      property: 'transform',
+      value: session.previousTransformInline,
+    })
+  }
+  // Restore each peer to its captured pre-drag inline state. We revert every
+  // tracked prop, including ones the source's revert path skipped (e.g. an
+  // axis the source happened to leave alone), since we mutated the same set
+  // for the peer when applyPatchToSession fanned out per frame.
+  for (const peer of session.peers) {
+    const snap = session.peerPreviousInline.get(peer)
+    if (!snap) continue
+    for (const [property, value] of snap) {
+      applyPatch(peer, { kind: 'setStyle', property, value })
+    }
+  }
+  setPatchSilent(false)
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function readInline(el: Element, property: string): string {
+  return ((el as HTMLElement).style?.getPropertyValue(property) ?? '').trim()
+}
+
+function readComputed(el: Element, property: string): string {
+  return getComputedStyle(el).getPropertyValue(property).trim()
 }

@@ -103,8 +103,33 @@ to run it.
 
 ## 4. Read the brief
 
-Read `<dir>/timeline.json` (the `dir` from step 3). It's an array of **beats** in
-time order:
+**First check whether the task is an _edit_ or a _recording_.** If `<dir>` contains
+an `edits.json`, it's a **Save from edit mode** — a direct batch of visual changes
+the user made in the running app (no audio/beats). Apply those to source instead of
+interpreting a spoken brief:
+
+`edits.json` = `{ url, createdAt, changes: [...] }`. Each change is:
+
+- `target` — the element's DOM ancestor chain (outermost → innermost), the **same
+  shape as a recording click target** (`tag` · `id` · `classes` · `text`). The
+  **last** entry is the edited element itself. Use it to locate the element in
+  source (match by tag + classes/id + text, narrowing with ancestors).
+- `kind` — `"style"` (a CSS property), `"text"` (text content), `"attr"` (an
+  attribute), or `"move"` (reordered within its parent — `before`/`after` are
+  child indices).
+- `name` — the CSS property (e.g. `padding-left`) or attribute name; empty for
+  `text`/`move`.
+- `before` / `after` — the previous and new value. **Apply `after`** to the source
+  (set the style/text/attribute, or reorder the element). `before` is for context
+  / conflict-checking. Group changes by element; later changes to the same
+  (element, property) supersede earlier ones.
+
+Make the edits durable in the codebase (the user already sees them applied live in
+their app — your job is to write them into the source so they persist), then finish
+exactly as in step 5 (`done <id> ...`). The rest of this step is for **recordings**.
+
+Otherwise read `<dir>/timeline.json` (the `dir` from step 3). It's an array of
+**beats** in time order:
 
 - `kind: "speech"` — `text` is what the user said in that span, and `items` are
   the clicks/rects that happened during (or within 500ms of) it. This is the

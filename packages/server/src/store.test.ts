@@ -85,3 +85,41 @@ describe('Store.save', () => {
     expect((await readdir(join(root, 'inbox'))).sort()).toEqual([a.id, b.id].sort())
   })
 })
+
+describe('Store.saveEdits', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'pixel-store-'))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('writes edits.json + a ready timeline.json into inbox/<id>', async () => {
+    const store = new Store(root)
+    const changes = [
+      { target: [{ tag: 'p', classes: [] }], kind: 'text', name: '', before: 'old', after: 'new' },
+    ]
+    const result = await store.saveEdits({ url: 'http://app/', createdAt: 7, changes })
+
+    expect(result.changeCount).toBe(1)
+    expect(result.path).toBe(join(root, 'inbox', result.id))
+
+    // The readiness marker the watch/claim pipeline waits for.
+    expect(existsSync(join(result.path, 'timeline.json'))).toBe(true)
+
+    const meta = JSON.parse(await readFile(join(result.path, 'meta.json'), 'utf8'))
+    expect(meta).toMatchObject({ id: result.id, kind: 'edit', eventCount: 1, changeCount: 1 })
+
+    const edits = JSON.parse(await readFile(join(result.path, 'edits.json'), 'utf8'))
+    expect(edits).toMatchObject({ url: 'http://app/', createdAt: 7, changes })
+  })
+
+  it('treats a missing/invalid changes list as empty', async () => {
+    const store = new Store(root)
+    const result = await store.saveEdits({ changes: 'nope' as unknown as unknown[] })
+    expect(result.changeCount).toBe(0)
+    expect(JSON.parse(await readFile(join(result.path, 'edits.json'), 'utf8')).changes).toEqual([])
+  })
+})

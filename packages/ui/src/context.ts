@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState, StrokePoint, Task } from './types'
+import type { BarPosition, EditPayload, Recording, ScreenshareState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -46,6 +46,9 @@ export interface ScreenshareContextValue {
   enterEdit: () => void
   exitEdit: () => void
   toggleEdit: () => void
+  /** Persist a batch of edit-mode changes to the sink (Save). Rejects on failure
+   *  so the caller can keep the user in edit mode. No-op sink → rejects. */
+  saveEdits: (payload: EditPayload) => Promise<{ id: string }>
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void

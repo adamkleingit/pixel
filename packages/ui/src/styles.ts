@@ -127,6 +127,19 @@ const CSS = `
   animation: none;
   opacity: 0.5;
 }
+/* Edit-mode indicator: a steady (non-pulsing) blue dot, distinct from the
+   recording dot, so the bar reads as "editing" at a glance. */
+.screenshare-rec .screenshare-rec-edit-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+}
+/* Save (diskette) tinted green to read as the primary/confirm action. */
+.screenshare-rec .screenshare-rec-save {
+  color: #4ade80;
+}
 .screenshare-rec .screenshare-rec-time {
   min-width: 58px;
 }

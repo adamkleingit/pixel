@@ -10,6 +10,7 @@ import {
 } from './context'
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
+import { requestEditCancel, requestEditSave } from './edit/edit-actions'
 import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
 import {
@@ -20,7 +21,7 @@ import {
 } from './session'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
-import type { Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
+import type { EditPayload, Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
@@ -236,6 +237,31 @@ export function ScreenshareProvider({
     if (rec) void saveRecording(rec)
   }, [saveRecording])
 
+  /**
+   * Persist a batch of edit-mode changes via the sink (Save). Resolves with the
+   * created task id; rejects (surfacing a message) so the caller can keep the
+   * user in edit mode and let them retry. Mirrors `saveRecording`, but edits are
+   * stateless — there's no pending-resend buffer.
+   */
+  const saveEdits = useCallback(async (payload: EditPayload): Promise<{ id: string }> => {
+    const sink = configRef.current.sink
+    if (!sink?.saveEdits) {
+      throw new Error('No sink configured to save edits.')
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      return await sink.saveEdits(payload)
+    } catch (err) {
+      const message = "Couldn't save your edits — is the Pixel server running?"
+      setSaveError(message)
+      console.error('[screenshare] failed to save edits:', err)
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
   /** Ask the sink (server) to open a recording's folder in the OS file manager. */
   const openTask = useCallback((id: string) => {
     configRef.current.sink?.openTask?.(id)?.catch(() => {
@@ -368,16 +394,20 @@ export function ScreenshareProvider({
         if (stateRef.current === 'recording') pause()
         else if (stateRef.current === 'paused') resume()
       },
-      // Esc exits edit mode first (the active session layer the user sees),
-      // otherwise cancels a recording.
+      // Esc while editing → Cancel (discard + exit); the Selection layer handles
+      // the first Esc (clear selection) and stops propagation, so this fires only
+      // once nothing is selected. Otherwise Esc cancels a recording.
       onEscape: () => {
-        if (editingRef.current) exitEdit()
+        if (editingRef.current) requestEditCancel()
         else if (stateRef.current !== 'idle') cancel()
       },
-      // Double-Enter toggles edit mode (enter when idle; later: Save when editing).
-      onEditDouble: () => toggleEdit(),
+      // Double-Enter enters edit mode when not editing; once editing, it Saves.
+      onEditDouble: () => {
+        if (editingRef.current) requestEditSave()
+        else enterEdit()
+      },
     })
-  }, [isEnabled, config.activation, start, stop, pause, resume, cancel, exitEdit, toggleEdit])
+  }, [isEnabled, config.activation, start, stop, pause, resume, cancel, enterEdit])
 
   // While recording (not paused), capture pointer movement, clicks, and drag
   // rectangles. In block mode (default) we also stop page clicks/typing from
@@ -618,6 +648,7 @@ export function ScreenshareProvider({
       enterEdit,
       exitEdit,
       toggleEdit,
+      saveEdits,
       passthrough,
       setPassthrough,
       bar,
@@ -636,7 +667,7 @@ export function ScreenshareProvider({
       drawStroke,
       drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

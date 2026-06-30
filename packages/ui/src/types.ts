@@ -126,9 +126,38 @@ export interface Task {
   message?: string
 }
 
+/** One committed change from edit mode, serialized for the agent to apply to
+ *  source. `target` is the DOM ancestor chain (outermost → innermost) of the
+ *  edited element — the same shape as a recording click target, so the agent
+ *  resolves it the same way. */
+export interface EditChangeRecord {
+  target: ElementInfo[]
+  /** What surface changed. `move` reorders within the parent (before/after are
+   *  child indices). */
+  kind: 'style' | 'text' | 'attr' | 'move'
+  /** CSS property / attribute name; '' for text and move. */
+  name: string
+  before: string
+  after: string
+}
+
+/** A saved batch of edit-mode changes — the "Save" analog of a Recording. */
+export interface EditPayload {
+  /** The page the edits were made on. */
+  url: string
+  createdAt: number
+  changes: EditChangeRecord[]
+}
+
 /** Where a finished recording is sent. The default is an HTTP sink (see `httpSink`). */
 export interface RecordingSink {
   save(rec: Recording): Promise<{ id: string }>
+  /**
+   * Optional: persist a batch of edit-mode changes (the "Save" button / double-
+   * Enter). Written to the same dropbox the agent watches, so it's picked up
+   * exactly like a recording. Omit to disable saving edits.
+   */
+  saveEdits?(payload: EditPayload): Promise<{ id: string }>
   /**
    * Optional: list the recordings the server currently knows about, for the
    * floating-bar status indicator. The provider polls this when present; a

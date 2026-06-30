@@ -1,4 +1,4 @@
-import type { Recording, RecordingSink, Task } from '../types'
+import type { EditPayload, Recording, RecordingSink, Task } from '../types'
 
 export const DEFAULT_SERVER_URL = 'http://localhost:41789'
 
@@ -63,6 +63,17 @@ export function httpSink(
       const res = await fetch(`${root}/recordings`, {
         method: 'POST',
         body: form,
+      })
+      if (!res.ok) {
+        throw new Error(`screenshare server responded ${res.status}`)
+      }
+      return (await res.json()) as { id: string }
+    },
+    async saveEdits(payload: EditPayload): Promise<{ id: string }> {
+      const res = await fetch(`${root}/edits`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         throw new Error(`screenshare server responded ${res.status}`)

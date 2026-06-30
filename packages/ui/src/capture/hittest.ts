@@ -40,14 +40,22 @@ export function describeElementChain(x: number, y: number): ElementInfo[] {
   if (typeof document === 'undefined') return []
   const hit = document.elementFromPoint(x, y)
   if (!hit) return []
+  return describeElementPath(hit)
+}
 
+/**
+ * Like `describeElementChain`, but for a specific element (not a hit point):
+ * the meaningful ancestor chain outermost → innermost, ending at `el` itself.
+ * Used to serialize an edited element's location for the agent.
+ */
+export function describeElementPath(el: Element): ElementInfo[] {
   const chain: Element[] = []
-  let el: Element | null = hit
+  let cur: Element | null = el
   let depth = 0
-  while (el && depth < MAX_DEPTH) {
-    if (SKIP_TAGS.has(el.tagName)) break
-    if (!isOwnOverlay(el)) chain.push(el)
-    el = el.parentElement
+  while (cur && depth < MAX_DEPTH) {
+    if (SKIP_TAGS.has(cur.tagName)) break
+    if (!isOwnOverlay(cur)) chain.push(cur)
+    cur = cur.parentElement
     depth++
   }
   // chain is innermost → outermost; reverse to outermost → innermost.

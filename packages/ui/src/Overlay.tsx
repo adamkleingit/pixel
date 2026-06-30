@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useScreenshareContext } from './context'
 import { Blip } from './draw/blip'
@@ -7,7 +7,9 @@ import { DrawStroke } from './draw/stroke'
 import { DesignPane } from './DesignPane'
 import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
-import { EditHistoryProvider } from './edit/edit-history'
+import { EditHistoryProvider, useEditHistory } from './edit/edit-history'
+import { setEditActionHandlers } from './edit/edit-actions'
+import { buildEditPayload } from './edit/edit-payload'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -32,6 +34,8 @@ const ICONS = {
   expand: 'M12 6v12M6 12h12',
   mouse: 'M5 2 L5 19 L9.5 14.5 L12.5 20 L14.5 19 L11.5 13.5 L18 13 Z',
   edit: 'M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z',
+  // Floppy-disk "save": outer body + 5px corner, the label slot, the slider.
+  save: 'M5 3h11l3 3v15H5zM8 3v5h7V3M8 21v-7h8v7',
 }
 
 const VERTICAL_POSITIONS = new Set(['center-left', 'center-right'])
@@ -235,6 +239,87 @@ function TaskIndicator({
  * Composes with recording: you can edit and record at once (§4.3). Also bound to
  * double-tap Enter (enter) / Esc (exit).
  */
+/**
+ * Edit-mode bar controls: Save (diskette) + Cancel (X). Save persists the change
+ * batch through the sink (→ dropbox → the agent picks it up like a recording)
+ * and exits, leaving the edits applied; Cancel reverts every change and exits.
+ * Both are also bound to keys — double-Enter (Save) / Esc (Cancel) — via the
+ * edit-actions bridge registered here, so the shortcuts and the buttons run the
+ * exact same logic. Lives inside EditHistoryProvider so it can read the batch.
+ */
+function EditControls() {
+  const history = useEditHistory()
+  const { saveEdits, exitEdit, saving } = useScreenshareContext()
+
+  const save = useCallback(async () => {
+    const batch = history.batch
+    if (batch.length === 0) {
+      exitEdit() // nothing to persist
+      return
+    }
+    try {
+      await saveEdits(buildEditPayload(batch))
+      history.clear() // edits stay applied in the DOM; the agent rewrites source
+      exitEdit()
+    } catch {
+      /* stay in edit mode — the provider already surfaced the error */
+    }
+  }, [history, saveEdits, exitEdit])
+
+  const cancel = useCallback(() => {
+    history.discard() // revert the live DOM, then exit
+    exitEdit()
+  }, [history, exitEdit])
+
+  // Bridge the same actions to the provider's double-Enter / Esc shortcuts.
+  useEffect(() => {
+    setEditActionHandlers({ save: () => void save(), cancel })
+    return () => setEditActionHandlers(null)
+  }, [save, cancel])
+
+  return (
+    <>
+      <button
+        type="button"
+        className="screenshare-rec-btn screenshare-rec-save"
+        title="Save (double-tap Enter)"
+        aria-label="Save"
+        onClick={() => void save()}
+        disabled={saving}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d={ICONS.save}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="screenshare-rec-btn"
+        title="Cancel (Esc)"
+        aria-label="Cancel"
+        onClick={cancel}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d={ICONS.cancel}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </>
+  )
+}
+
 function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
@@ -393,43 +478,59 @@ function RecBar() {
   return (
     <>
     <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
-      {idle ? (
-        <button
-          type="button"
-          className="screenshare-rec-record"
-          title="Start recording (double-tap Space)"
-          onClick={() => start()}
-        >
-          <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
-            <path d={ICONS.record} fill="#ef4444" />
-          </svg>
-          Rec
-        </button>
+      {/* Editing and recording are separated: in edit mode the bar shows the
+          edit label + Save/Cancel (no Rec); while recording it shows the rec
+          controls (no Edit). Both appear only when idle. */}
+      {editing ? (
+        <>
+          <span className="screenshare-rec-edit-dot" />
+          <span className="screenshare-rec-time">Editing</span>
+          <span className="screenshare-rec-sep" />
+          <EditControls />
+        </>
       ) : (
         <>
-          <span className="screenshare-rec-dot" />
-          <span className="screenshare-rec-time">
-            {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
-          </span>
-        </>
-      )}
-
-      <span className="screenshare-rec-sep" />
-      <EditToggle on={editing} onToggle={toggleEdit} />
-      {/* The mouse tool only governs recording's block/passthrough — hide it
-          unless a recording is active. */}
-      {!idle && <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />}
-
-      {!idle && (
-        <>
-          <span className="screenshare-rec-sep" />
-          {recording ? (
-            <IconButton icon="pause" label="Pause (Space)" onClick={pause} />
+          {idle ? (
+            <button
+              type="button"
+              className="screenshare-rec-record"
+              title="Start recording (double-tap Space)"
+              onClick={() => start()}
+            >
+              <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+                <path d={ICONS.record} fill="#ef4444" />
+              </svg>
+              Rec
+            </button>
           ) : (
-            <IconButton icon="resume" label="Resume (Space)" onClick={resume} />
+            <>
+              <span className="screenshare-rec-dot" />
+              <span className="screenshare-rec-time">
+                {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
+              </span>
+            </>
           )}
-          <IconButton icon="stop" label="Stop (double-tap Space)" onClick={() => void stop()} />
-          <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke />
+
+          <span className="screenshare-rec-sep" />
+          {/* Edit is offered only when idle — hidden while a recording is active. */}
+          {idle && <EditToggle on={false} onToggle={toggleEdit} />}
+          {/* The mouse tool only governs recording's block/passthrough. */}
+          {!idle && (
+            <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
+          )}
+
+          {!idle && (
+            <>
+              <span className="screenshare-rec-sep" />
+              {recording ? (
+                <IconButton icon="pause" label="Pause (Space)" onClick={pause} />
+              ) : (
+                <IconButton icon="resume" label="Resume (Space)" onClick={resume} />
+              )}
+              <IconButton icon="stop" label="Stop (double-tap Space)" onClick={() => void stop()} />
+              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke />
+            </>
+          )}
         </>
       )}
 

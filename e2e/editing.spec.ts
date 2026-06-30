@@ -1,10 +1,38 @@
 import { expect, test } from '@playwright/test'
-import { rm } from 'node:fs/promises'
-import { SCREENSHARE_DIR } from './fixtures'
+import { existsSync } from 'node:fs'
+import { readFile, readdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { INBOX_DIR, SCREENSHARE_DIR } from './fixtures'
+
+/** Poll the dropbox until an edit task (edits.json + ready timeline.json) lands. */
+async function waitForEditTask(timeoutMs = 30_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    let ids: string[] = []
+    try {
+      ids = await readdir(INBOX_DIR)
+    } catch {
+      /* inbox not created yet */
+    }
+    for (const id of ids) {
+      const dir = join(INBOX_DIR, id)
+      if (existsSync(join(dir, 'edits.json')) && existsSync(join(dir, 'timeline.json'))) return id
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error(`no edit task appeared in ${INBOX_DIR} within ${timeoutMs}ms`)
+}
 
 // Scope to the screenshare bar — the example app has its own "Edit" button.
-const editBtn = (page: import('@playwright/test').Page) =>
+type PWPage = import('@playwright/test').Page
+const editBtn = (page: PWPage) =>
   page.locator('.screenshare-rec').getByRole('button', { name: 'Edit' })
+// In edit mode the pencil is replaced by Save/Cancel (editing/recording are
+// separated). These are the bar's edit-mode controls + the "is editing" marker.
+const saveBtn = (page: PWPage) => page.locator('.screenshare-rec').getByRole('button', { name: 'Save' })
+const cancelBtn = (page: PWPage) =>
+  page.locator('.screenshare-rec').getByRole('button', { name: 'Cancel' })
+const editingBar = (page: PWPage) => page.locator('.screenshare-rec.editing')
 
 test.beforeEach(async () => {
   // The composition test records (and uploads) — start from a clean dropbox.
@@ -17,56 +45,53 @@ test('the Edit pencil enters and exits edit mode', async ({ page }) => {
   await expect(edit).toHaveAttribute('aria-pressed', 'false')
 
   await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.screenshare-rec.editing')).toBeVisible()
+  // The pencil is replaced by Save/Cancel while editing.
+  await expect(editingBar(page)).toBeVisible()
+  await expect(edit).toHaveCount(0)
+  await expect(saveBtn(page)).toBeVisible()
 
-  await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.locator('.screenshare-rec.editing')).toHaveCount(0)
+  // Cancel (X) exits edit mode; the pencil returns.
+  await cancelBtn(page).click()
+  await expect(editBtn(page)).toHaveAttribute('aria-pressed', 'false')
+  await expect(editingBar(page)).toHaveCount(0)
 })
 
 test('double-tap Enter enters edit mode; Esc exits', async ({ page }) => {
   await page.goto('/')
-  const edit = editBtn(page)
 
   await page.keyboard.press('Enter')
   await page.waitForTimeout(60)
   await page.keyboard.press('Enter')
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+  await expect(editingBar(page)).toBeVisible()
 
-  await page.keyboard.press('Escape')
-  await expect(edit).toHaveAttribute('aria-pressed', 'false')
+  await page.keyboard.press('Escape') // Esc = Cancel → exits edit
+  await expect(editBtn(page)).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('editing composes with recording: a recording can run while editing (one session)', async ({
-  page,
-}) => {
+test('recording and editing are separated in the bar', async ({ page }) => {
   await page.goto('/')
-  const edit = editBtn(page)
   const status = page.locator('.status')
 
-  // Start a recording first (not yet editing → the page's Start button works).
+  // While recording, the Edit pencil is hidden.
   await page.getByRole('button', { name: 'Start recording' }).click()
   await expect(status).toHaveClass(/recording/)
+  await expect(editBtn(page)).toHaveCount(0)
 
-  // Enter edit mode while recording — both are now active together (one session).
-  // The bar pencil is our own UI, so it's clickable even with the page inert.
-  await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
-  await expect(status).toHaveClass(/recording/)
-
-  // Stop the recording (double-tap Space — keys aren't swallowed). Editing must
-  // survive the recording's lifecycle — it's an independent dimension.
+  // Stop the recording (double-tap Space).
   await page.waitForTimeout(800)
   await page.keyboard.press('Space')
   await page.waitForTimeout(80)
   await page.keyboard.press('Space')
   await expect(status).not.toHaveClass(/recording/, { timeout: 15_000 })
-  await expect(edit).toHaveAttribute('aria-pressed', 'true') // edit mode persisted
 
-  // Esc now exits edit mode.
-  await page.keyboard.press('Escape')
-  await expect(edit).toHaveAttribute('aria-pressed', 'false')
+  // Idle again → the Edit pencil returns.
+  await expect(editBtn(page)).toBeVisible()
+
+  // Entering edit hides the bar's Rec button and shows Save/Cancel.
+  await editBtn(page).click()
+  await expect(page.locator('.screenshare-rec-record')).toHaveCount(0)
+  await expect(saveBtn(page)).toBeVisible()
+  await expect(cancelBtn(page)).toBeVisible()
 })
 
 test('selection: Cmd+click picks the exact element under the pointer', async ({ page }) => {
@@ -89,10 +114,10 @@ test('selection: Cmd+click picks the exact element under the pointer', async ({ 
   expect(Math.abs(a!.width - b!.width)).toBeLessThanOrEqual(3)
   expect(Math.abs(a!.height - b!.height)).toBeLessThanOrEqual(3)
 
-  // Escape clears the selection (the bar stays — two-stage Escape).
+  // Escape clears the selection (still editing — two-stage Escape).
   await page.keyboard.press('Escape')
   await expect(anchor).toHaveCount(0)
-  await expect(editBtn(page)).toHaveAttribute('aria-pressed', 'true')
+  await expect(editingBar(page)).toBeVisible()
 })
 
 test('selection: hovering draws a hover outline', async ({ page }) => {
@@ -165,7 +190,7 @@ test('design pane: docks on the right, shrinks the body, collapses, and restores
   // Expand again restores the width; exiting edit restores the original margin.
   await page.locator('.screenshare-pane-collapse').click()
   expect(await marginRight()).toBe('280px')
-  await editBtn(page).click() // exit edit
+  await cancelBtn(page).click() // exit edit
   await expect(pane).toHaveCount(0)
   expect(await marginRight()).toBe('')
 })
@@ -226,22 +251,21 @@ test('design pane is resizable by dragging its left edge', async ({ page }) => {
 
 test('edit mode inerts the page: a nav link does not navigate while editing', async ({ page }) => {
   await page.goto('/')
-  const edit = editBtn(page)
   const settings = page.getByRole('link', { name: 'Settings' })
 
   // Enter edit mode → the page is inert.
-  await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+  await editBtn(page).click()
+  await expect(editingBar(page)).toBeVisible()
 
   // Clicking a real route link must NOT navigate (the click is swallowed). It
-  // does select the link (selection model), so we exit via the pencil rather
-  // than Escape (Escape would just clear the selection — two-stage).
+  // does select the link (selection model), so we exit via Cancel rather than
+  // Escape (Escape would just clear the selection — two-stage).
   await settings.click()
   await expect(page).toHaveURL(/\/$/)
 
   // Exit edit mode → the same link navigates normally again.
-  await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'false')
+  await cancelBtn(page).click()
+  await expect(editBtn(page)).toHaveAttribute('aria-pressed', 'false')
   await settings.click()
   await expect(page).toHaveURL(/\/settings$/)
 })
@@ -263,6 +287,32 @@ test('design pane edits commit to the tracker and Cmd+Z undoes them', async ({ p
   // Undo (focus is off the field, so the shortcut applies).
   await page.keyboard.press('ControlOrMeta+z')
   await expect(p).toHaveText('Triage messages and assign owners.')
+})
+
+test('Save writes an edit task to the dropbox for the agent to pick up', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  // Make a real edit through the design pane (a text leaf's Content).
+  const p = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  await p.click({ modifiers: ['Meta'] })
+  const textarea = page.getByRole('textbox', { name: 'Text content' })
+  await textarea.fill('Saved copy')
+  await textarea.blur()
+  await expect(p).toHaveText('Saved copy')
+
+  // Save (diskette) → uploads the batch → the server writes it to the dropbox.
+  await saveBtn(page).click()
+  await expect(editingBar(page)).toHaveCount(0) // exits edit on success
+
+  // The agent's watch pipeline can claim it: an inbox task with the ready marker
+  // (timeline.json) + edits.json carrying our change, located by ancestor chain.
+  const id = await waitForEditTask()
+  const edits = JSON.parse(await readFile(join(INBOX_DIR, id, 'edits.json'), 'utf8'))
+  expect(Array.isArray(edits.changes)).toBe(true)
+  const textChange = edits.changes.find((c: { kind: string }) => c.kind === 'text')
+  expect(textChange?.after).toBe('Saved copy')
+  expect(textChange?.target.at(-1).tag).toBe('p') // innermost descriptor = the <p>
 })
 
 test('double-click edits text in place and commits the new text', async ({ page }) => {

@@ -28,6 +28,8 @@ function doublePressEnter() {
 }
 
 const editBtn = () => screen.getByRole('button', { name: 'Edit' })
+// In edit mode the pencil is replaced by Save/Cancel, so exiting is via Cancel.
+const cancelEditBtn = () => screen.getByRole('button', { name: 'Cancel' })
 const probeText = () => screen.getByTestId('probe').textContent
 
 afterEach(() => {
@@ -42,12 +44,14 @@ describe('edit mode — pencil toggle', () => {
     expect(probeText()).toBe('idle/view')
 
     fireEvent.click(editBtn())
-    expect(editBtn().getAttribute('aria-pressed')).toBe('true')
+    // The pencil is gone while editing (replaced by Save/Cancel).
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
     expect(probeText()).toBe('idle/editing')
     // The bar reflects the editing state for styling hooks.
     expect(document.querySelector('.screenshare-rec.editing')).not.toBeNull()
 
-    fireEvent.click(editBtn())
+    // Cancel (X) exits edit mode and the pencil returns.
+    fireEvent.click(cancelEditBtn())
     expect(editBtn().getAttribute('aria-pressed')).toBe('false')
     expect(probeText()).toBe('idle/view')
     expect(document.querySelector('.screenshare-rec.editing')).toBeNull()
@@ -71,16 +75,21 @@ describe('edit mode — keyboard', () => {
   })
 })
 
-describe('edit mode — composition with recording', () => {
-  it('edit and recording are independent: the Rec button stays available while editing', () => {
+describe('edit mode — separated from recording', () => {
+  it('hides the Rec button while editing and shows Save/Cancel instead', () => {
     renderApp()
+    // Idle: both entry points are offered.
+    expect(editBtn()).toBeTruthy()
+    expect(screen.getByTitle('Start recording (double-tap Space)')).toBeTruthy()
+
     fireEvent.click(editBtn())
     expect(probeText()).toBe('idle/editing')
-    // Recording is orthogonal — its idle entry point is still present (you can
-    // start a recording while editing; §4.3).
-    expect(screen.getByTitle('Start recording (double-tap Space)')).toBeTruthy()
-    // And the edit toggle stays available regardless of recording state.
-    expect(editBtn()).toBeTruthy()
+    // While editing, recording is hidden (separated): no Rec, no Edit pencil.
+    expect(screen.queryByTitle('Start recording (double-tap Space)')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    // Save + Cancel take their place.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
 })
 
@@ -115,8 +124,9 @@ describe('edit mode — selection', () => {
     fireEvent.click(editBtn())
     expect(anchor()).toBeNull()
 
-    // Pointerdown on our own bar (the pencil) is ignored — no selection.
-    fireEvent.pointerDown(editBtn())
+    // Pointerdown on our own bar (a control present in edit mode) is ignored —
+    // no selection.
+    fireEvent.pointerDown(cancelEditBtn())
     expect(anchor()).toBeNull()
     expect(probeText()).toBe('idle/editing')
 
@@ -129,8 +139,8 @@ describe('edit mode — selection', () => {
     expect(anchor()).toBeNull()
     expect(probeText()).toBe('idle/editing')
 
-    // Exit edit → the selection controller unmounts.
-    fireEvent.click(editBtn())
+    // Exit edit (Cancel) → the selection controller unmounts.
+    fireEvent.click(cancelEditBtn())
     expect(anchor()).toBeNull()
     expect(probeText()).toBe('idle/view')
   })
@@ -179,8 +189,8 @@ describe('edit mode — design pane', () => {
     expect(document.querySelector('.screenshare-pane-body')).toBeNull()
     expect(html.style.marginRight).toBe('0px')
 
-    // Exit edit → pane gone, body margin restored.
-    fireEvent.click(editBtn())
+    // Exit edit (Cancel) → pane gone, body margin restored.
+    fireEvent.click(cancelEditBtn())
     expect(pane()).toBeNull()
     expect(html.style.marginRight).toBe('')
   })
@@ -230,8 +240,8 @@ describe('edit mode — app inert', () => {
     fireEvent.click(pageBtn)
     expect(onPageClick).toHaveBeenCalledTimes(1) // unchanged — swallowed
 
-    // Exit edit (the bar pencil still receives its click) → the page reacts again.
-    fireEvent.click(editBtn())
+    // Exit edit (the bar's Cancel still receives its click) → the page reacts again.
+    fireEvent.click(cancelEditBtn())
     expect(probeText()).toBe('idle/view')
     fireEvent.click(pageBtn)
     expect(onPageClick).toHaveBeenCalledTimes(2)

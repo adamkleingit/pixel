@@ -141,6 +141,9 @@ function startServer(): void {
 
   const app = express()
   app.use(cors())
+  // JSON body parsing for the edit-save endpoint. Only parses application/json,
+  // so it leaves /recordings' multipart upload (handled by multer) untouched.
+  app.use(express.json({ limit: '16mb' }))
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, root: ROOT })
@@ -190,6 +193,21 @@ function startServer(): void {
       })()
     } catch (err) {
       console.error('[screenshare] save failed:', err)
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
+  // Edit-mode "Save": a JSON batch of changes. Written into the same dropbox as
+  // recordings so the agent's `watch` claims it identically — the brief is
+  // edits.json instead of timeline.json beats.
+  app.post('/edits', async (req, res) => {
+    try {
+      const payload = (req.body ?? {}) as { url?: string; createdAt?: number; changes?: unknown[] }
+      const { id, path, changeCount } = await store.saveEdits(payload)
+      console.log(`[screenshare] saved edits ${id} — ${changeCount} changes → ${path}`)
+      res.json({ id })
+    } catch (err) {
+      console.error('[screenshare] save edits failed:', err)
       res.status(500).json({ error: String(err) })
     }
   })

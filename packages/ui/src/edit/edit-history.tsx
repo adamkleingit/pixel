@@ -43,6 +43,11 @@ export interface EditHistory {
   canRedo: boolean
   /** The applied entries (start → pointer), in order — the batch for Save. */
   batch: EditEntry[]
+  /** Drop all history without touching the DOM (after a successful Save — the
+   *  edits stay applied; the agent will write them to source). */
+  clear: () => void
+  /** Revert every applied entry (newest → oldest) and drop all history (Cancel). */
+  discard: () => void
 }
 
 function applyValue(target: HTMLElement, kind: Change['kind'], name: string, value: string): void {
@@ -111,6 +116,22 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     setPointer(p + 1)
   }, [])
 
+  // Drop history, leave the DOM as-is (Save: edits persist, agent rewrites source).
+  const clear = useCallback(() => {
+    setEntries([])
+    setPointer(-1)
+  }, [])
+
+  // Revert every applied entry (newest → oldest), then drop history (Cancel).
+  const discard = useCallback(() => {
+    const applied = entriesRef.current.slice(0, pointerRef.current + 1)
+    for (let i = applied.length - 1; i >= 0; i--) {
+      for (const c of applied[i].changes) applyValue(c.target, c.kind, c.name, c.before)
+    }
+    setEntries([])
+    setPointer(-1)
+  }, [])
+
   // Bridge the tracker into the change-reporter shim so the ported design pane
   // (applyPatch → reportPatch pre-hook) and drag gestures (commitChangeBatch)
   // record through us while edit mode is mounted.
@@ -128,8 +149,10 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
       canUndo: pointer >= 0,
       canRedo: pointer < entries.length - 1,
       batch: entries.slice(0, pointer + 1),
+      clear,
+      discard,
     }),
-    [applyLive, commit, undo, redo, pointer, entries],
+    [applyLive, commit, undo, redo, clear, discard, pointer, entries],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

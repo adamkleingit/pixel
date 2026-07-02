@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { eventInOwnUI } from './own-ui'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
 import { beginInlineEdit, isTextEditable, type InlineEditSession } from './edit/inline-text-edit'
@@ -7,6 +8,7 @@ import { SpacingHandles } from './drag/SpacingHandles'
 import { CornerRadiusHandles } from './drag/CornerRadiusHandles'
 import { InsertionLine } from './drag/InsertionLine'
 import { startRepositionDrag } from './drag/reposition-drag'
+import { computeKeyboardMove, isArrowKey } from './drag/keyboard-move'
 import {
   computeDrillTarget,
   computeHoverTarget,
@@ -37,12 +39,10 @@ import {
 const TILE = 'app'
 const DOUBLE_MS = 400
 
-/** True if the event originated inside Pixel's own UI (the bar / overlay). */
-function inOwnUI(e: Event): boolean {
-  return e
-    .composedPath()
-    .some((n) => n instanceof Element && n.classList?.contains('screenshare-overlay'))
-}
+/** True if the event originated inside Pixel's own UI — the bar/overlay, or a
+ *  menu/popover portaled to document.body (e.g. the Layout gap/size dropdowns).
+ *  Shared with the provider's capture layers via `own-ui`. */
+const inOwnUI = eventInOwnUI
 
 export function Selection() {
   const store = useSelectionStore()
@@ -167,20 +167,35 @@ export function Selection() {
 
       // Double-click → inline edit. A form field (input/textarea) is a leaf you
       // never drill into, so double-clicking one edits it directly (fixes
-      // short-input edit). For everything else we keep Pixel's rule: edit only
-      // the already-selected text element; otherwise drill one level deeper.
+      // short-input edit). With a multi-selection, double-clicking any selected
+      // (text-editable) member edits *all* of them together. Otherwise Pixel's
+      // single rule: edit the already-selected text element, else drill deeper.
       if (isDouble) {
+        const selectedEls = storeRef.current.entries
+          .map((en) => en.element)
+          .filter((el): el is HTMLElement => el instanceof HTMLElement)
+        const isMulti = selectedEls.length > 1
         const isField =
           (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) &&
           isTextEditable(target)
+        // In a multi-selection, the member the double-click landed on.
+        const hitSelected = isMulti
+          ? selectedEls.find((el) => el === target || el.contains(target)) ?? null
+          : null
         const editTarget = isField
           ? (target as HTMLElement)
-          : current && isTextEditable(current) && current.contains(target)
-            ? (current as HTMLElement)
-            : null
+          : hitSelected && isTextEditable(hitSelected)
+            ? hitSelected
+            : current && isTextEditable(current) && current.contains(target)
+              ? (current as HTMLElement)
+              : null
         if (editTarget) {
-          storeRef.current.pick(TILE, editTarget)
-          const session = beginInlineEdit(editTarget, commitRef.current)
+          // The other selected elements get the same edit (peers). Keep a
+          // multi-selection intact so every member is edited + outlined; a single
+          // selection collapses onto the edited element as before.
+          const peers = selectedEls.filter((el) => el !== editTarget)
+          if (!isMulti) storeRef.current.pick(TILE, editTarget)
+          const session = beginInlineEdit(editTarget, commitRef.current, peers)
           if (session) {
             editSession = session
             storeRef.current.setHover(TILE, null)
@@ -202,14 +217,24 @@ export function Selection() {
         return
       }
 
+      // A plain press on a member of an active multi-selection keeps the set
+      // intact: moving is disabled for multi (for now), and preserving the set
+      // lets a follow-up double-click edit every member. (Clicking *outside* the
+      // selection falls through and collapses to the clicked element as usual.)
+      const entries = storeRef.current.entries
+      const pressedInsideMulti =
+        entries.length > 1 &&
+        entries.some((en) => en.element === picked || en.element.contains(target))
+      if (pressedInsideMulti) return
+
       storeRef.current.pick(TILE, picked) // replaces the whole set with [picked]
       storeRef.current.setHover(TILE, picked)
 
-      // Arm a reposition drag: if the user moves more than DRAG_THRESHOLD
-      // screen px before releasing, start a layout-aware move of `picked`
-      // (Pixel's `startRepositionDrag`). Otherwise this was a click and the
-      // selection state above already routed correctly. No multi-edit peers
-      // in-app yet → peers = []. See Pixel Selection.tsx § armRepositionDrag.
+      // Arm a reposition drag: if the user moves more than DRAG_THRESHOLD screen
+      // px before releasing, start a layout-aware move of `picked` (Pixel's
+      // `startRepositionDrag`). Otherwise this was a click and the selection
+      // state above already routed correctly. (Multi-select never reaches here —
+      // canvas resize/spacing/rotation/radius fan out to peers, but move doesn't.)
       if (picked instanceof HTMLElement) {
         armRepositionDrag(picked, e, [])
       }
@@ -245,6 +270,23 @@ export function Selection() {
         }
         return
       }
+
+      // Arrow keys move the selected anchor (Pixel's keyboard reposition):
+      // absolutely-positioned → nudge top/left (Shift = 10px); in-flow → step
+      // up/down in the parent's child order (Shift = jump to first/last). The
+      // whole gesture is consumed so the page doesn't scroll under a selection.
+      if (isArrowKey(event.key)) {
+        if (inOwnUI(event)) return // typing in our own panel — leave it alone
+        const anchorEl = storeRef.current.entries[0]?.element
+        if (anchorEl instanceof HTMLElement) {
+          event.preventDefault()
+          event.stopPropagation()
+          const result = computeKeyboardMove(anchorEl, event.key, event.shiftKey)
+          if (result) commitRef.current(result.changes, result.label)
+        }
+        return
+      }
+
       if (event.key !== 'Escape') return
       const s = storeRef.current
       if (s.entries.length || s.hover) {
@@ -281,6 +323,11 @@ function SelectionOverlays() {
   const { entries, hover } = useSelectionStore()
   const anchor = entries[0]?.element ?? null
   const matches = entries.slice(1)
+  // The matched (non-anchor) selected elements — the anchor's handle drags fan
+  // out to these so resize / spacing / rotation / radius edit all at once.
+  const peers = matches
+    .map((e) => e.element)
+    .filter((el): el is HTMLElement => el instanceof HTMLElement)
   return (
     <>
       {hover && hover.element !== anchor && <Outline el={hover.element} variant="hover" />}
@@ -292,9 +339,10 @@ function SelectionOverlays() {
           (ResizeHandles), padding/margin/gap spacing bars (SpacingHandles),
           and corner-radius dots (CornerRadiusHandles). They read commit
           through the change-reporter/patch seam directly, so they only need
-          the live element + its viewport rect. Move is handled separately by
-          armRepositionDrag (dragging the element body). */}
-      {anchor instanceof HTMLElement && <AnchorHandles element={anchor} />}
+          the live element + its viewport rect. `getMultiEditPeers` fans each
+          drag out across the rest of the selection. Move is handled separately
+          by armRepositionDrag (dragging the element body). */}
+      {anchor instanceof HTMLElement && <AnchorHandles element={anchor} peers={peers} />}
       {/* Insertion line for Cmd-mode reposition drags. */}
       <InsertionLine />
     </>
@@ -303,14 +351,16 @@ function SelectionOverlays() {
 
 /** Renders Pixel's three handle overlays for the anchor, feeding each the
  *  element's live viewport rect (tracked on rAF + `pixel-drag-frame` so the
- *  handles follow the element as a gesture grows/shrinks it). */
-function AnchorHandles({ element }: { element: HTMLElement }) {
+ *  handles follow the element as a gesture grows/shrinks it) and the selected
+ *  peers (multi-edit fan-out; read at drag start). */
+function AnchorHandles({ element, peers }: { element: HTMLElement; peers: HTMLElement[] }) {
   const rect = useTrackedRect(element)
+  const getMultiEditPeers = () => peers
   return (
     <>
-      <ResizeHandles rect={rect} element={element} />
-      <SpacingHandles rect={rect} element={element} />
-      <CornerRadiusHandles rect={rect} element={element} />
+      <ResizeHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
+      <SpacingHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
+      <CornerRadiusHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
     </>
   )
 }

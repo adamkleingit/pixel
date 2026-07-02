@@ -49,11 +49,18 @@ function liftInertness(element: HTMLElement): () => void {
  *  text caret + native selection on it (see styles `[data-pixel-editing]`). */
 const INLINE_EDITING_ATTR = 'data-pixel-editing'
 
-export function beginInlineEdit(element: HTMLElement, commit: CommitFn): InlineEditSession | null {
+export function beginInlineEdit(
+  element: HTMLElement,
+  commit: CommitFn,
+  /** Other selected elements to apply the same edit to (canvas multi-edit). The
+   *  new text/value is mirrored onto every compatible peer and recorded in the
+   *  same commit batch, so one gesture = one undo step across all of them. */
+  peers: HTMLElement[] = [],
+): InlineEditSession | null {
   const inner =
     element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
-      ? beginInputInlineEdit(element, commit)
-      : beginTextInlineEdit(element, commit)
+      ? beginInputInlineEdit(element, commit, peers)
+      : beginTextInlineEdit(element, commit, peers)
   element.setAttribute(INLINE_EDITING_ATTR, '')
   return {
     element: inner.element,
@@ -64,8 +71,22 @@ export function beginInlineEdit(element: HTMLElement, commit: CommitFn): InlineE
   }
 }
 
-function beginTextInlineEdit(element: HTMLElement, commit: CommitFn): InlineEditSession {
+function beginTextInlineEdit(
+  element: HTMLElement,
+  commit: CommitFn,
+  peers: HTMLElement[] = [],
+): InlineEditSession {
   const originalText = element.textContent ?? ''
+  // Peers that can take a text edit (text-editable, non-input): mirror the new
+  // text onto them on commit. Capture each one's pre-edit text for undo.
+  const textPeers = peers.filter(
+    (p) =>
+      p !== element &&
+      !(p instanceof HTMLInputElement) &&
+      !(p instanceof HTMLTextAreaElement) &&
+      isTextEditable(p),
+  )
+  const peerOriginalText = new Map(textPeers.map((p) => [p, p.textContent ?? '']))
   const originalContentEditable = element.getAttribute('contenteditable')
   const originalSpellcheck = element.getAttribute('spellcheck')
   let exited = false
@@ -111,8 +132,18 @@ function beginTextInlineEdit(element: HTMLElement, commit: CommitFn): InlineEdit
       return
     }
     if (newText !== originalText) {
-      // The text is already applied (we edited it live); record it so undo works.
-      commit([{ target: element, kind: 'text', name: '', before: originalText, after: newText }], 'text')
+      // The anchor's text is already applied (edited live). Mirror onto peers and
+      // record every element in one batch so undo reverts all together.
+      const changes: Change[] = [
+        { target: element, kind: 'text', name: '', before: originalText, after: newText },
+      ]
+      for (const peer of textPeers) {
+        const before = peerOriginalText.get(peer) ?? ''
+        if (before === newText) continue
+        peer.textContent = newText
+        changes.push({ target: peer, kind: 'text', name: '', before, after: newText })
+      }
+      commit(changes, 'text')
     }
   }
 
@@ -122,10 +153,20 @@ function beginTextInlineEdit(element: HTMLElement, commit: CommitFn): InlineEdit
 function beginInputInlineEdit(
   element: HTMLInputElement | HTMLTextAreaElement,
   commit: CommitFn,
+  peers: HTMLElement[] = [],
 ): InlineEditSession {
   const originalValue = element.value
   const originalPlaceholder = element.getAttribute('placeholder') ?? ''
   const target: 'value' | 'placeholder' = originalValue ? 'value' : 'placeholder'
+  // Peer inputs/textareas receive the same value/placeholder on commit.
+  const inputPeers = peers.filter(
+    (p): p is HTMLInputElement | HTMLTextAreaElement =>
+      p !== element && (p instanceof HTMLInputElement || p instanceof HTMLTextAreaElement),
+  )
+  const peerOriginalValue = new Map(inputPeers.map((p) => [p, p.value]))
+  const peerOriginalPlaceholder = new Map(
+    inputPeers.map((p) => [p, p.getAttribute('placeholder') ?? '']),
+  )
   let exited = false
   const restoreInertness = liftInertness(element)
 
@@ -177,25 +218,35 @@ function beginInputInlineEdit(
         return
       }
       element.value = typed // keep the edit visible (in-app: the commit IS the change)
-      commit(
-        [{ target: element, kind: 'attr', name: 'value', before: originalValue, after: typed }],
-        'value',
-      )
+      const changes: Change[] = [
+        { target: element, kind: 'attr', name: 'value', before: originalValue, after: typed },
+      ]
+      for (const peer of inputPeers) {
+        const before = peerOriginalValue.get(peer) ?? ''
+        if (before === typed) continue
+        peer.value = typed
+        changes.push({ target: peer, kind: 'attr', name: 'value', before, after: typed })
+      }
+      commit(changes, 'value')
     } else {
       element.value = originalValue // placeholder was seeded into value — restore runtime value
       if (typed === originalPlaceholder) return
-      commit(
-        [
-          {
-            target: element,
-            kind: 'attr',
-            name: 'placeholder',
-            before: originalPlaceholder,
-            after: typed,
-          },
-        ],
-        'placeholder',
-      )
+      const changes: Change[] = [
+        {
+          target: element,
+          kind: 'attr',
+          name: 'placeholder',
+          before: originalPlaceholder,
+          after: typed,
+        },
+      ]
+      for (const peer of inputPeers) {
+        const before = peerOriginalPlaceholder.get(peer) ?? ''
+        if (before === typed) continue
+        peer.setAttribute('placeholder', typed)
+        changes.push({ target: peer, kind: 'attr', name: 'placeholder', before, after: typed })
+      }
+      commit(changes, 'placeholder')
     }
   }
 

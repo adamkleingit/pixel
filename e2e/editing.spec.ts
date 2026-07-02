@@ -166,6 +166,80 @@ test('selection: Shift+click adds a second element (multi-select)', async ({ pag
   await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
 })
 
+test('multi-edit: double-click edits the text of every selected element', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const inboxP = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  const billingP = page.locator('.card', { hasText: 'Billing' }).locator('p')
+
+  // Select both card blurbs (same depth), then double-click one to edit ALL.
+  await inboxP.click({ modifiers: ['Meta'] })
+  await billingP.click({ modifiers: ['Shift'] })
+  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+
+  await inboxP.dblclick()
+  await page.keyboard.type('Shared copy')
+  await page.keyboard.press('Enter') // commit
+
+  await expect(inboxP).toHaveText('Shared copy')
+  await expect(billingP).toHaveText('Shared copy')
+
+  // One atomic entry — a single undo reverts both.
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(inboxP).toHaveText('Triage messages and assign owners.')
+  await expect(billingP).toHaveText('Plans, invoices, and payment methods.')
+})
+
+test('multi-edit: dragging a resize handle resizes every selected element', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const upgrade = page.getByRole('button', { name: 'Upgrade' })
+  const compose = page.getByRole('button', { name: 'Compose' })
+  await upgrade.click({ modifiers: ['Meta'] }) // anchor
+  await compose.click({ modifiers: ['Shift'] }) // peer
+  const beforeUpgrade = (await upgrade.boundingBox())!.width
+  const beforeCompose = (await compose.boundingBox())!.width
+
+  // Drag the anchor's right edge — the peer resizes with it.
+  const handle = page.locator('[data-resize-handle="edge"][data-side="right"]')
+  await expect(handle).toBeVisible()
+  const hb = (await handle.boundingBox())!
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + 60, hb.y + hb.height / 2, { steps: 6 })
+  await page.mouse.up()
+
+  expect((await upgrade.boundingBox())!.width).toBeGreaterThan(beforeUpgrade + 20)
+  expect((await compose.boundingBox())!.width).toBeGreaterThan(beforeCompose + 20)
+  expect(await compose.evaluate((b) => (b as HTMLElement).style.width)).not.toBe('')
+})
+
+test('multi-edit: moving is disabled — dragging the body keeps the selection intact', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const upgrade = page.getByRole('button', { name: 'Upgrade' })
+  await upgrade.click({ modifiers: ['Meta'] })
+  await page.getByRole('button', { name: 'Compose' }).click({ modifiers: ['Shift'] })
+  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+
+  // Press + drag the body of a selected element. Move is disabled for multi, so
+  // the selection is preserved (not collapsed to one) and nothing is repositioned.
+  const box = (await upgrade.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 40, { steps: 8 })
+  await page.mouse.up()
+
+  await expect(page.locator('.screenshare-sel-anchor')).toHaveCount(1)
+  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1) // still multi
+  expect(await upgrade.evaluate((b) => (b as HTMLElement).style.position)).not.toBe('absolute')
+})
+
 test('design pane: docks on the right, shrinks the body, collapses, and restores on exit', async ({
   page,
 }) => {
@@ -441,6 +515,120 @@ test('edit mode normalizes cursors (no pointer on buttons, no not-allowed on dis
   await editBtn(page).click()
   // Editing: neutralized to default everywhere on the app.
   expect(await btn.evaluate((b) => getComputedStyle(b).cursor)).toBe('default')
+})
+
+test('the edit log lists changes and its undo/redo + row-jump navigate history', async ({ page }) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  // Make an edit through the pane (a text leaf).
+  const p = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  await p.click({ modifiers: ['Meta'] })
+  const textarea = page.getByRole('textbox', { name: 'Text content' })
+  await textarea.fill('Edited copy')
+  await textarea.blur()
+  await expect(p).toHaveText('Edited copy')
+
+  // Open the edit-log popup from the bar — it lists the one change.
+  await page.locator('.screenshare-rec').getByRole('button', { name: 'Change history' }).click()
+  const log = page.locator('.screenshare-editlog')
+  await expect(log).toBeVisible()
+  await expect(log.locator('.screenshare-editlog-item')).toHaveCount(1)
+  await expect(log.locator('.screenshare-editlog-label')).toContainText('text')
+
+  // Undo from the popup reverts the DOM and dims the entry.
+  await log.getByRole('button', { name: /Undo/ }).click()
+  await expect(p).toHaveText('Triage messages and assign owners.')
+  await expect(log.locator('.screenshare-editlog-item.undone')).toHaveCount(1)
+
+  // Clicking the (undone) row jumps back to it via goto → re-applies.
+  await log.locator('.screenshare-editlog-row').first().click()
+  await expect(p).toHaveText('Edited copy')
+  await expect(log.locator('.screenshare-editlog-item.undone')).toHaveCount(0)
+})
+
+test('clicking in the design pane does not close an open app dialog (click-outside contained)', async ({
+  page,
+}) => {
+  await page.goto('/')
+  // Open the app's own dialog — it closes on a document `pointerdown` outside it.
+  await page.getByRole('button', { name: 'Open dialog' }).click()
+  await expect(page.getByText('Test dialog')).toBeVisible()
+
+  // Enter edit mode via the bar (its own clicks are contained → dialog stays).
+  await editBtn(page).click()
+  await expect(page.locator('.screenshare-pane')).toBeVisible()
+  await expect(page.getByText('Test dialog')).toBeVisible()
+
+  // Click inside the design pane chrome — must NOT bubble to the app's
+  // document-level click-outside handler and close the dialog.
+  await page.locator('.screenshare-pane-title').click()
+  await expect(page.getByText('Test dialog')).toBeVisible()
+})
+
+test('gap: dragging an automatic value cycles spread modes; ⌘-drag sets a pixel gap', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  const p = page.locator('.card', { hasText: 'Inbox' }).locator('p')
+  await p.click({ modifiers: ['Meta'] })
+  await page.locator('.screenshare-pane').getByTitle('Horizontal (flex row)').click()
+  const justify = () => p.evaluate((el) => getComputedStyle(el).justifyContent)
+
+  // Start on an automatic value: space-between (the right-most spread mode).
+  await page.locator('.screenshare-pane').getByRole('button', { name: 'Open gap menu' }).click()
+  await page.getByRole('button', { name: 'Space between' }).click()
+  await expect.poll(justify).toBe('space-between')
+
+  const prefix = page.locator('.screenshare-pane [aria-label="Drag to change gap distribution"]')
+
+  // Drag the gap prefix LEFT → cycles toward the least spread (space-evenly).
+  const b1 = (await prefix.boundingBox())!
+  const cy = b1.y + b1.height / 2
+  await page.mouse.move(b1.x + b1.width / 2, cy)
+  await page.mouse.down()
+  await page.mouse.move(b1.x - 70, cy, { steps: 8 })
+  await page.mouse.up()
+  await expect.poll(justify).toBe('space-evenly')
+
+  // ⌘-drag → converts the automatic gap to an explicit px value (exits spread).
+  const b2 = (await prefix.boundingBox())!
+  const cy2 = b2.y + b2.height / 2
+  await page.keyboard.down('Meta')
+  await page.mouse.move(b2.x + b2.width / 2, cy2)
+  await page.mouse.down()
+  await page.mouse.move(b2.x + 40, cy2, { steps: 6 })
+  await page.mouse.up()
+  await page.keyboard.up('Meta')
+
+  await expect.poll(justify).toBe('flex-start')
+  await expect
+    .poll(() => p.evaluate((el) => parseFloat(getComputedStyle(el).columnGap) || 0))
+    .toBeGreaterThan(0)
+})
+
+test('Layout gap dropdown applies a spread mode (body-portaled menu works in edit mode)', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await editBtn(page).click()
+
+  // Select a leaf and make it a flex container so the Gap control appears.
+  const p = page.locator('.card', { hasText: 'Billing' }).locator('p')
+  await p.click({ modifiers: ['Meta'] })
+  await page.locator('.screenshare-pane').getByTitle('Horizontal (flex row)').click()
+
+  // Open the gap dropdown — its menu is portaled to <body>, OUTSIDE the overlay.
+  // The edit-mode click-swallow must not eat the menu item's click (the bug).
+  await page.locator('.screenshare-pane').getByRole('button', { name: 'Open gap menu' }).click()
+  await page.getByRole('button', { name: 'Space between' }).click()
+
+  // The selection got justify-content: space-between → the menu click reached it.
+  await expect
+    .poll(() => p.evaluate((el) => getComputedStyle(el).justifyContent))
+    .toBe('space-between')
 })
 
 test('double-clicking a text input edits it in place', async ({ page }) => {

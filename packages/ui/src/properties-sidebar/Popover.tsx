@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode, RefObject } from 'react'
+import { OWN_UI_PROPS } from '../own-ui'
 import { COLORS, Z_INDEX } from './tokens'
 
 export interface PopoverProps {
@@ -91,6 +92,7 @@ export function Popover({
   const node = (
     <div
       ref={ref}
+      {...OWN_UI_PROPS}
       style={{
         position: 'fixed',
         left: pos.left,

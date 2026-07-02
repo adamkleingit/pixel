@@ -1,15 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconButton } from './IconButton'
 import { NumericInput } from './NumericInput'
 import { Row } from './Row'
 import { Section } from './Section'
 import { SegmentedButtonGroup } from './SegmentedButtonGroup'
+import { tokenDisplayLabel } from './token-mapping'
 import { COLORS, SIZES, Z_INDEX } from './tokens'
 import { checkIcon, lockIcon } from './icons'
 import type { Token } from '../pixel-common'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
+import { OWN_UI_PROPS } from '../own-ui'
 import { useScrubbable, type ScrubExtras, type ScrubModifiers, type SnapTarget } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
 import { mirrorPropertiesFor } from '../drag/spacing-mirror'
@@ -75,6 +77,9 @@ type MainMode = AlignKey | SpreadMode
 
 const ALIGN_INDEX: AlignKey[] = ['start', 'center', 'end']
 const SPREAD_MODES: SpreadMode[] = ['space-between', 'space-around', 'space-evenly']
+/** Left→right order for dragging the gap through the spread modes: least spread
+ *  (space-evenly) on the left, most spread (space-between) on the right. */
+const SPREAD_ORDER: SpreadMode[] = ['space-evenly', 'space-around', 'space-between']
 
 const SPREAD_LABEL: Record<SpreadMode, string> = {
   'space-between': 'Space between',
@@ -314,6 +319,16 @@ export function LayoutSection({ elements = [] }: LayoutSectionProps = {}) {
   function onCustomGap() {
     setJustify('start')
     applyPatchAll(elements, { kind: 'setStyle', property: 'justify-content', value: 'flex-start' })
+  }
+
+  /** Convert an automatic (spread) gap into an explicit px gap: leave the spread
+   *  distribution for a clustered flex-start and write the pixel value. Used by
+   *  the gap prefix's ⌘-drag — "set a pixel value and it actually sets that,
+   *  instead of staying on the automatic value". */
+  function onGapToPixel(px: number) {
+    setJustify('start')
+    applyPatchAll(elements, { kind: 'setStyle', property: 'justify-content', value: 'flex-start' })
+    onGap(gapPrimaryProp, String(px))
   }
 
   /** Update either gap field's display value from a written property name —
@@ -596,6 +611,7 @@ export function LayoutSection({ elements = [] }: LayoutSectionProps = {}) {
             onNumeric={onGapPrimary}
             onSpread={onDistribute}
             onCustom={onCustomGap}
+            onToPixel={onGapToPixel}
             snapTargets={spacingMatch.snapTargets}
             tokenLabel={tokenLabelFor(gapPrimary.value, spacingMatch)}
           />
@@ -638,7 +654,7 @@ function emptyFields(): Record<BoxProperty, FieldState> {
 /** Token label for a spacing input — looks up by formatted px value. */
 function tokenLabelFor(value: string, match: ReturnType<typeof useTokenMatch>): string | null {
   if (!value) return null
-  return match.matchToken(`${value}px`)?.name ?? null
+  return tokenDisplayLabel(match.matchToken(`${value}px`))
 }
 
 interface DimensionInputProps {
@@ -702,9 +718,14 @@ interface GapFieldProps {
   onNumeric: (value: string, mods?: ScrubModifiers, extras?: ScrubExtras) => void
   onSpread: (mode: SpreadMode) => void
   onCustom: () => void
+  /** Convert the automatic (spread) gap into an explicit px gap (⌘-drag). */
+  onToPixel: (px: number) => void
   snapTargets?: SnapTarget[]
   tokenLabel?: string | null
 }
+
+/** px of horizontal drag per step when cycling the spread modes. */
+const SPREAD_DRAG_STEP = 26
 
 function GapField({
   mode,
@@ -712,6 +733,7 @@ function GapField({
   onNumeric,
   onSpread,
   onCustom,
+  onToPixel,
   snapTargets,
   tokenLabel = null,
 }: GapFieldProps) {
@@ -722,13 +744,62 @@ function GapField({
   const spreadActive = mode !== 'numeric'
   const isMultiple = field.placeholder === MULTIPLE_PLACEHOLDER
   // Always create the scrub binding so hook order stays stable. In spread mode
-  // we just don't spread its props onto the prefix.
+  // we drive the prefix with the spread-drag handlers below instead.
   const scrub = useScrubbable({
     value: field.value || field.placeholder,
     onChange: onNumeric,
     min: 0,
     snap: snapTargets && snapTargets.length > 0 ? { targets: snapTargets, threshold: 3 } : undefined,
   })
+
+  // Dragging the prefix while the gap is on an automatic (spread) value cycles
+  // through the spread modes — space-evenly (left) → space-around → space-between
+  // (right). Holding ⌘/Ctrl instead converts it to an explicit px gap and scrubs
+  // that. `dragActive` keeps our handlers attached across the spread→pixel
+  // switch (which flips `mode` to 'numeric' mid-drag) so the gesture stays ours
+  // until pointer-up.
+  const [dragActive, setDragActive] = useState(false)
+  const spreadDrag = useRef<{ x: number; startIndex: number } | null>(null)
+  const spreadPrefixProps: HTMLAttributes<HTMLSpanElement> = {
+    onPointerDown: (e) => {
+      if (e.button !== 0) return
+      spreadDrag.current = {
+        x: e.clientX,
+        startIndex: Math.max(0, SPREAD_ORDER.indexOf(mode as SpreadMode)),
+      }
+      setDragActive(true)
+      e.currentTarget.setPointerCapture(e.pointerId)
+      e.preventDefault()
+    },
+    onPointerMove: (e) => {
+      const d = spreadDrag.current
+      if (!d) return
+      const dx = e.clientX - d.x
+      if (e.metaKey || e.ctrlKey) {
+        // ⌘-drag → explicit px gap (scrubbed from 0, since spread cleared it).
+        onToPixel(Math.max(0, Math.round(dx)))
+        return
+      }
+      const idx = Math.max(0, Math.min(SPREAD_ORDER.length - 1, d.startIndex + Math.round(dx / SPREAD_DRAG_STEP)))
+      const next = SPREAD_ORDER[idx]
+      if (next !== mode) onSpread(next)
+    },
+    onPointerUp: (e) => {
+      spreadDrag.current = null
+      setDragActive(false)
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    },
+    onPointerCancel: (e) => {
+      spreadDrag.current = null
+      setDragActive(false)
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    },
+    style: { cursor: 'ew-resize', touchAction: 'none', userSelect: 'none' },
+  }
+  // Use the spread-drag handlers whenever the gap is automatic, and keep them
+  // through an in-progress ⌘-drag conversion; otherwise the numeric scrubber.
+  const useSpreadDrag = spreadActive || dragActive
+  const prefixProps = useSpreadDrag ? spreadPrefixProps : scrub.prefixProps
 
   // Mirror Dropdown's portal positioning: open below the trigger, flip up if
   // it would overflow the viewport.
@@ -802,6 +873,7 @@ function GapField({
     ? createPortal(
         <div
           ref={menuRef}
+          {...OWN_UI_PROPS}
           style={{
             position: 'fixed',
             left: pos.left,
@@ -862,7 +934,8 @@ function GapField({
       }}
     >
       <span
-        {...(spreadActive ? {} : scrub.prefixProps)}
+        {...prefixProps}
+        aria-label={spreadActive ? 'Drag to change gap distribution' : 'Drag to change gap'}
         style={{
           color: COLORS.muted,
           display: 'inline-flex',
@@ -870,7 +943,7 @@ function GapField({
           justifyContent: 'center',
           width: 12,
           flexShrink: 0,
-          ...(spreadActive ? {} : scrub.prefixProps.style ?? {}),
+          ...(prefixProps.style ?? {}),
         }}
       >
         {gapMainIcon}
@@ -1035,6 +1108,7 @@ function MenuPopover({ triggerRef, open, onClose, children }: MenuPopoverProps) 
   return createPortal(
     <div
       ref={menuRef}
+      {...OWN_UI_PROPS}
       style={{
         position: 'fixed',
         left: pos.left,

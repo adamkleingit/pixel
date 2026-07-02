@@ -11,6 +11,7 @@ import { StrokeSettingsPopover } from './StrokeSettingsPopover'
 import { TokenButton } from './TokenButton'
 import { plusIcon, slidersIcon } from './icons'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
+import { tokenDisplayLabel } from './token-mapping'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
 import { composeBorder, normalizeHex, readBorder, rgbStringToHexAlpha } from '../edit/color'
@@ -162,7 +163,7 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
   }
 
   const widthMatch = useTokenMatch('border-width')
-  const widthTokenLabel = weightShared === 'single' ? widthMatch.matchToken(weight ? `${weight}px` : '')?.name ?? null : null
+  const widthTokenLabel = weightShared === 'single' ? tokenDisplayLabel(widthMatch.matchToken(weight ? `${weight}px` : '')) : null
   const scrubWeight = useScrubbable({
     value: weight,
     onChange: onWeight,

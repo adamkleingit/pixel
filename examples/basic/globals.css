@@ -1,0 +1,50 @@
+/*
+ * Example design tokens (shadcn/ui convention). The Pixel server detects this
+ * file, extracts these custom properties as design tokens, and serves them at
+ * GET /tokens — so the in-app design pane's pickers and on-canvas drag-snap
+ * reflect a real design system. Edit a value and the server's file watcher
+ * re-extracts automatically.
+ *
+ * The example's own `styles.css` consumes these (colors via `hsl(var(--x))`,
+ * spacing/radius via the scales below), so selecting an element in edit mode
+ * shows the matching token and snapping has real targets to land on.
+ */
+:root {
+  /* Colors — shadcn HSL shorthand (the adapter normalizes to hsl(...)). Tuned
+     to the example's purple theme so the app looks the same once it consumes
+     them. */
+  --background: 0 0% 100%;            /* card / surface white */
+  --foreground: 250 26% 14%;         /* primary text (#1e1b2e) */
+  --primary: 262 83% 58%;            /* brand purple (#7c3aed) */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 258 90% 66%;          /* lighter purple (#8b5cf6) */
+  --secondary-foreground: 263 70% 50%; /* purple text on tints (#6d28d9) */
+  --muted: 252 70% 95%;              /* lavender tint (#ede9fe) */
+  --muted-foreground: 254 12% 45%;   /* secondary text (#6b6580) */
+  --accent: 174 72% 56%;             /* teal accent */
+  --border: 258 38% 92%;             /* hairline borders (#e7e2f3) */
+  --ring: 262 83% 58%;
+  --page: 257 47% 97%;               /* page background (#f6f4fb) */
+
+  /* Radius scale — drives border-radius drag-snap + the radius picker. */
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+
+  /* Spacing scale — drives padding/margin/gap drag-snap on the canvas. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+}

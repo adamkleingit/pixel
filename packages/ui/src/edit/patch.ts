@@ -39,9 +39,8 @@ export function setPatchPreHook(hook: PatchPreHook | null): void {
  * Two callers flip this:
  *  - **Drag gestures** (tech-specs/drag-to-resize.md §3) silence the reporter
  *    for per-frame patches via `setPatchSilent` and commit once on pointer up.
- *  - **`applyPatchAll`** silences the reporter while fanning a multi-edit
- *    patch over peer elements so the gesture produces N DOM mutations but
- *    exactly one agent call (multi-edit.md §6).
+ *  - **Drag gestures** are the only remaining caller; `applyPatchAll` itself no
+ *    longer forces silence (see its doc).
  */
 let silent = false
 
@@ -61,26 +60,15 @@ export function applyPatch(element: Element, patch: Patch): void {
 }
 
 /**
- * Apply the same patch to every element in `elements`. The first element
- * goes through whatever silent state is already in effect (so a drag that's
- * silenced its frames keeps every fan-out call silent too); subsequent
- * elements always run silent so they don't each open their own session.
- * The flag is saved + restored so `applyPatchAll` is safe to run inside an
- * outer drag without leaking the silent state on exit.
+ * Apply the same patch to every element in `elements`, each through the current
+ * silent state. Every element is reported (unless an outer drag has silenced the
+ * reporter), so the change tracker captures a before/after for *each* peer — the
+ * reporter coalesces same-property reports from one gesture into a single,
+ * atomic undo entry (see `flushPending`). That keeps multi-edit undo correct: one
+ * undo reverts the change on every selected element, not just the first.
  */
 export function applyPatchAll(elements: readonly Element[], patch: Patch): void {
-  if (elements.length === 0) return
-  applyPatch(elements[0], patch)
-  if (elements.length === 1) return
-  const prev = silent
-  silent = true
-  try {
-    for (let i = 1; i < elements.length; i++) {
-      applyPatch(elements[i], patch)
-    }
-  } finally {
-    silent = prev
-  }
+  for (const el of elements) applyPatch(el, patch)
 }
 
 function applyPatchInternal(element: Element, patch: Patch): void {

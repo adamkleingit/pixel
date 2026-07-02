@@ -1,6 +1,8 @@
 import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { getViewportScale } from '../canvas/viewport'
 import { COLORS, FONT_SIZE, FONTS, RADIUS } from '../design-system'
+import type { Token } from '../pixel-common'
+import { tokenDisplayLabel } from '../properties-sidebar/token-mapping'
 import { useTokenMatch } from '../properties-sidebar/useTokenMatch'
 import type { Rect } from '../selection/selection-utils'
 import { isDragging as isResizeOrRotateDragging } from './drag-session'
@@ -198,7 +200,7 @@ function Dot({
   scale: number
   drag: ReturnType<typeof getActiveRadiusDrag>
   getMultiEditPeers?: () => HTMLElement[]
-  matchToken: (value: string) => { name: string } | null
+  matchToken: (value: string) => Token | null
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -217,7 +219,7 @@ function Dot({
 
   const showLabel = (hovered && !dragSomethingElse) || draggingThis
 
-  const tokenName = matchToken(`${Math.round(radius)}px`)?.name ?? null
+  const tokenName = tokenDisplayLabel(matchToken(`${Math.round(radius)}px`))
 
   return (
     <>

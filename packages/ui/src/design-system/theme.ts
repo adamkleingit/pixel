@@ -117,12 +117,16 @@ export const Z_INDEX = {
   /** Floating canvas controls (zoom buttons). */
   canvasControls: 1100,
   /** Sidebar dropdowns / popovers — portal to <body>, so they need their own
-   *  z-index above the chrome to clear the pane they open from. */
-  popover:        1150,
+   *  z-index above the chrome to clear the pane they open from. In the
+   *  screenshare host the whole Pixel UI lives in `.screenshare-overlay` at
+   *  z 2147483000+, so these body-portaled menus must clear THAT, not the old
+   *  ~1050 canvas chrome — otherwise the overlay paints over them and their
+   *  clicks land on the pane instead of the menu item. */
+  popover:        2147483010,
   /** Full-app modals: setup wizard, inner-component alert. */
-  modal:          1200,
+  modal:          2147483020,
   /** Top-level transient overlays: shortcuts help. */
-  overlay:        2000,
+  overlay:        2147483030,
 } as const
 
 /** Common row/control sizing for the chrome. */

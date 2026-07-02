@@ -6,7 +6,17 @@ import { isDragging as isResizeOrRotateDragging } from './drag-session'
 import { maybeBeginInlineEditFromHandle } from './handle-inline-edit'
 import { getActiveSpacingDrag, startSpacingDrag, type SpacingAxis } from './spacing-drag'
 import { setSnapTargets } from './token-snap'
+import { tokenDisplayLabel } from '../properties-sidebar/token-mapping'
 import { useTokenMatch } from '../properties-sidebar/useTokenMatch'
+import type { Token } from '../pixel-common'
+
+/** Match a raw px value to a spacing token and return the picker-consistent
+ *  bare display name (e.g. `space-3`), or null. Shared by the padding/margin
+ *  and gap labels so the on-canvas badge matches the design pane + radius. */
+type MatchToken = (value: string) => Token | null
+function spacingTokenLabel(matchToken: MatchToken, value: number): string | null {
+  return tokenDisplayLabel(matchToken(`${Math.round(value)}px`))
+}
 
 /**
  * Figma-style spacing handles drawn over the selected element:
@@ -210,6 +220,7 @@ export function SpacingHandles({
           H={H}
           scale={scale}
           element={element}
+          matchToken={spacingMatch.matchToken}
           getMultiEditPeers={getMultiEditPeers}
         />
       ))}
@@ -224,6 +235,7 @@ export function SpacingHandles({
           H={H}
           scale={scale}
           element={element}
+          matchToken={spacingMatch.matchToken}
           getMultiEditPeers={getMultiEditPeers}
         />
       ))}
@@ -232,6 +244,7 @@ export function SpacingHandles({
         element={element}
         cs={cs}
         scale={scale}
+        matchToken={spacingMatch.matchToken}
         getMultiEditPeers={getMultiEditPeers}
       />
     </div>
@@ -340,6 +353,7 @@ function Bar({
   H,
   scale,
   element,
+  matchToken,
   getMultiEditPeers,
 }: {
   kind: Kind
@@ -350,6 +364,7 @@ function Bar({
   H: number
   scale: number
   element: HTMLElement
+  matchToken: MatchToken
   getMultiEditPeers?: () => HTMLElement[]
 }) {
   const [hovered, setHovered] = useState(false)
@@ -447,6 +462,7 @@ function Bar({
           point={point}
           len={len}
           value={Math.round(liveValue)}
+          tokenName={spacingTokenLabel(matchToken, liveValue)}
           color={color}
         />
       )}
@@ -469,6 +485,7 @@ function SpacingLabel({
   point,
   len,
   value,
+  tokenName,
   color,
 }: {
   kind: Kind
@@ -477,6 +494,8 @@ function SpacingLabel({
   /** Visible bar length (along its long axis). */
   len: number
   value: number
+  /** Bare token name when the value coincides with a spacing token, else null. */
+  tokenName: string | null
   color: string
 }) {
   // Place the label adjacent to the bar in its long-axis direction, outside
@@ -524,7 +543,7 @@ function SpacingLabel({
         fontVariantNumeric: 'tabular-nums',
       }}
     >
-      {kind} {value}
+      {kind} {value}{tokenName ? ` · ${tokenName}` : ''}
     </div>
   )
 }
@@ -534,12 +553,14 @@ function GapHandles({
   element,
   cs,
   scale,
+  matchToken,
   getMultiEditPeers,
 }: {
   rect: Rect
   element: HTMLElement
   cs: CSSStyleDeclaration
   scale: number
+  matchToken: MatchToken
   getMultiEditPeers?: () => HTMLElement[]
 }) {
   if (!cs.display.includes('flex')) return null
@@ -558,6 +579,19 @@ function GapHandles({
   // (e.g. dragging row-gap with alt also drives column-gap).
   const draggingThis = !!drag && drag.element === element && drag.properties.has(property)
   const liveValue = draggingThis ? drag!.value : gapValue
+  // The label shows the automatic value (the spread mode) instead of a px value
+  // whenever the container's gap is automatic — on hover from the container's
+  // current justify-content, and while dragging from the live cycling mode. A
+  // ⌘-drag that converts to px clears `drag.spreadMode`, so px shows through.
+  const jc = cs.justifyContent
+  const restingSpread = jc.includes('between')
+    ? 'space-between'
+    : jc.includes('around')
+      ? 'space-around'
+      : jc.includes('evenly')
+        ? 'space-evenly'
+        : null
+  const spreadMode = draggingThis ? drag!.spreadMode : restingSpread
 
   return (
     <>
@@ -575,12 +609,14 @@ function GapHandles({
             column={column}
             len={len}
             value={liveValue}
+            spreadMode={spreadMode}
             property={property}
             cursor={cursor}
             element={element}
             draggingThis={draggingThis}
             dragSomethingElse={!!drag && !draggingThis}
             scale={scale}
+            matchToken={matchToken}
             getMultiEditPeers={getMultiEditPeers}
           />
         )
@@ -590,12 +626,14 @@ function GapHandles({
 }
 
 function GapBar({
-  x, y, column, len, value, property, cursor, element,
-  draggingThis, dragSomethingElse, scale, getMultiEditPeers,
+  x, y, column, len, value, spreadMode, property, cursor, element,
+  draggingThis, dragSomethingElse, scale, matchToken, getMultiEditPeers,
 }: {
   x: number; y: number; column: boolean; len: number; value: number;
+  spreadMode: string | null;
   property: string; cursor: string; element: HTMLElement;
   draggingThis: boolean; dragSomethingElse: boolean; scale: number;
+  matchToken: MatchToken;
   getMultiEditPeers?: () => HTMLElement[];
 }) {
   const [hovered, setHovered] = useState(false)
@@ -683,7 +721,9 @@ function GapBar({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          gap {Math.round(value)}
+          {spreadMode
+            ? spreadMode
+            : `gap ${Math.round(value)}${(() => { const t = spacingTokenLabel(matchToken, value); return t ? ` · ${t}` : '' })()}`}
         </div>
       )}
     </>

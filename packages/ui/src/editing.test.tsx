@@ -146,6 +146,54 @@ describe('edit mode — selection', () => {
   })
 })
 
+describe('edit mode — keyboard move', () => {
+  it('arrow keys nudge an absolutely-positioned selection (Shift = 10px)', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <div data-testid="abs" style={{ position: 'absolute', left: '20px', top: '40px' }}>
+          box
+        </div>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const abs = screen.getByTestId('abs')
+    fireEvent.click(editBtn())
+    fireEvent.pointerDown(abs, { metaKey: true })
+
+    // jsdom has no layout (offsetLeft/Top are 0), so the nudge is relative to 0;
+    // the point is that the right axis moves by the right step.
+    fireEvent.keyDown(document, { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(abs.style.left).toBe('1px')
+    fireEvent.keyDown(document, { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true })
+    expect(abs.style.top).toBe('10px')
+  })
+
+  it('arrow keys reorder an in-flow selection within its parent', () => {
+    render(
+      <ScreenshareProvider config={{ bar: { always: true } }}>
+        <div data-testid="row">
+          <div id="a">a</div>
+          <div id="b">b</div>
+          <div id="c">c</div>
+        </div>
+        <Probe />
+        <Overlay />
+      </ScreenshareProvider>,
+    )
+    const row = screen.getByTestId('row')
+    const order = () => Array.from(row.children).map((c) => c.id)
+    fireEvent.click(editBtn())
+    fireEvent.pointerDown(document.getElementById('a')!, { metaKey: true })
+
+    fireEvent.keyDown(document, { key: 'ArrowDown', code: 'ArrowDown' })
+    expect(order()).toEqual(['b', 'a', 'c'])
+    // Shift jumps to the last slot.
+    fireEvent.keyDown(document, { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true })
+    expect(order()).toEqual(['b', 'c', 'a'])
+  })
+})
+
 describe('edit mode — design pane', () => {
   const pane = () => document.querySelector('.screenshare-pane')
 

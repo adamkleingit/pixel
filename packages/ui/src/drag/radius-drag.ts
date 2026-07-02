@@ -315,6 +315,9 @@ function finalizeCommit(): void {
       element: session.element,
       htmlBefore: session.htmlBefore,
       changes,
+      peers: session.peers,
+      peerBefore: (peer, property) =>
+        session!.peerPreviousInline.get(peer as HTMLElement)?.get(property) ?? '',
     })
   }
 }

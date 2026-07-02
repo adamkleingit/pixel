@@ -7,9 +7,12 @@ import { DrawStroke } from './draw/stroke'
 import { DesignPane } from './DesignPane'
 import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
-import { EditHistoryProvider, useEditHistory } from './edit/edit-history'
+import { EditHistoryProvider, useEditHistory, type EditEntry } from './edit/edit-history'
 import { setEditActionHandlers } from './edit/edit-actions'
+import { drainPendingChanges } from './edit/change-reporter'
 import { buildEditPayload } from './edit/edit-payload'
+import { TokensProvider } from './tokens-context'
+import { useContainEvents } from './useContainEvents'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -34,48 +37,18 @@ const ICONS = {
   expand: 'M12 6v12M6 12h12',
   mouse: 'M5 2 L5 19 L9.5 14.5 L12.5 20 L14.5 19 L11.5 13.5 L18 13 Z',
   edit: 'M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z',
+  // Microphone — a screen recording (voice + clicks).
+  mic: 'M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zM6 11a6 6 0 0 0 12 0M12 17v4',
   // Floppy-disk "save": outer body + 5px corner, the label slot, the slider.
   save: 'M5 3h11l3 3v15H5zM8 3v5h7V3M8 21v-7h8v7',
+  // History clock (edit log): a counter-clockwise arc with a clock hand.
+  editLog: 'M3.5 9 A 8 8 0 1 0 6.2 4.2 M3.5 4.5 V9 H8 M12 8.5 V12.5 L15 14.3',
+  // Undo / redo: arrowhead + a curved arc back the other way.
+  undo: 'M9 6 L4 11 L9 16 M4 11 H13 A5 5 0 1 1 13 21 H9',
+  redo: 'M15 6 L20 11 L15 16 M20 11 H11 A5 5 0 1 0 11 21 H15',
 }
 
 const VERTICAL_POSITIONS = new Set(['center-left', 'center-right'])
-
-/**
- * Keeps bar-originated events from reaching the host page's document-level
- * listeners, which dialogs/popovers use for click-outside & Esc dismissal.
- *
- * Native (not React) listeners in the BUBBLE phase: the button's own onClick
- * has already run (target phase fires first), so buttons keep working — the
- * event just never bubbles on to `document`.
- *
- * We intentionally do NOT stop `click`: the buttons fire on React's synthetic
- * onClick, and React may delegate `click` at `document` (React 16) or the root
- * container (17+). Stopping native `click` here could break the buttons in some
- * host React versions. Outside-click libraries key off pointer/mouse-down
- * anyway. Capture-phase host listeners (rare) fire before the event reaches the
- * bar and can't be contained here — use the library's own escape hatch for those.
- */
-function useContainEvents<T extends HTMLElement>() {
-  const ref = useRef<T>(null)
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return
-    const stop = (e: Event) => e.stopPropagation()
-    const stopEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') e.stopPropagation()
-    }
-    const pointer = ['pointerdown', 'mousedown', 'pointerup', 'mouseup'] as const
-    for (const t of pointer) node.addEventListener(t, stop)
-    node.addEventListener('keydown', stopEscape)
-    node.addEventListener('keyup', stopEscape)
-    return () => {
-      for (const t of pointer) node.removeEventListener(t, stop)
-      node.removeEventListener('keydown', stopEscape)
-      node.removeEventListener('keyup', stopEscape)
-    }
-  }, [])
-  return ref
-}
 
 function IconButton({
   icon,
@@ -239,6 +212,113 @@ function TaskIndicator({
  * Composes with recording: you can edit and record at once (§4.3). Also bound to
  * double-tap Enter (enter) / Esc (exit).
  */
+/** One-line summary of a history entry for the edit-log list. */
+function summarizeEntry(entry: EditEntry): string {
+  const c = entry.changes[0]
+  if (!c) return entry.label || 'edit'
+  const label = entry.label || c.name || c.kind
+  if (entry.changes.length > 1) return `${label} · ${entry.changes.length} changes`
+  const short = (s: string) => (s.length > 16 ? `${s.slice(0, 15)}…` : s)
+  if (c.kind === 'text') return `text: “${short(c.after)}”`
+  if (c.kind === 'move') return 'reorder'
+  return `${label}: ${short(c.after || '—')}`
+}
+
+/**
+ * Edit-log button + popup: a history clock icon (shown only while editing) that
+ * opens a list of every change in the current session — applied ones highlighted,
+ * undone (redoable) ones dimmed — with undo/redo controls in the header. Clicking
+ * a row jumps the history pointer there (`goto`). Rendered inside the bar so it's
+ * event-contained; the popup anchors to the bar via `panelAnchor` (a static
+ * wrapper keeps the bar as the positioning context).
+ */
+function EditLog() {
+  const { entries, pointer, undo, redo, goto, canUndo, canRedo } = useEditHistory()
+  const { bar } = useScreenshareContext()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLSpanElement>(null)
+
+  // Close on a click outside the log (bar containment means in-bar clicks don't
+  // reach `window`, so this only fires for page/pane clicks).
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  const navBtn = (icon: keyof typeof ICONS, label: string, onClick: () => void, disabled: boolean) => (
+    <button
+      type="button"
+      className="screenshare-editlog-nav-btn"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <path d={ICONS[icon]} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  )
+
+  return (
+    <span ref={rootRef} style={{ display: 'inline-flex' }}>
+      <button
+        type="button"
+        className={`screenshare-rec-btn${open ? ' active' : ''}`}
+        title="Change history"
+        aria-label="Change history"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path d={ICONS.editLog} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="screenshare-editlog" style={panelAnchor(bar.position)} role="dialog" aria-label="Change history">
+          <div className="screenshare-editlog-head">
+            <span>Changes</span>
+            <span className="screenshare-editlog-nav">
+              {navBtn('undo', 'Undo (⌘Z)', undo, !canUndo)}
+              {navBtn('redo', 'Redo (⇧⌘Z)', redo, !canRedo)}
+            </span>
+          </div>
+          {entries.length === 0 ? (
+            <div className="screenshare-editlog-empty">No changes yet.</div>
+          ) : (
+            <ul className="screenshare-editlog-list">
+              {entries.map((entry, i) => (
+                <li
+                  key={i}
+                  className={
+                    'screenshare-editlog-item' +
+                    (i > pointer ? ' undone' : '') +
+                    (i === pointer ? ' current' : '')
+                  }
+                >
+                  <button
+                    type="button"
+                    className="screenshare-editlog-row"
+                    title={i > pointer ? 'Redo to here' : 'Undo to here'}
+                    onClick={() => goto(i)}
+                  >
+                    <span className="screenshare-editlog-num">{i + 1}</span>
+                    <span className="screenshare-editlog-label">{summarizeEntry(entry)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </span>
+  )
+}
+
 /**
  * Edit-mode bar controls: Save (diskette) + Cancel (X). Save persists the change
  * batch through the sink (→ dropbox → the agent picks it up like a recording)
@@ -252,14 +332,24 @@ function EditControls() {
   const { saveEdits, exitEdit, saving } = useScreenshareContext()
 
   const save = useCallback(async () => {
-    const batch = history.batch
+    // Fold any in-flight (debounced) edit into the batch so a change made just
+    // before hitting Save is still sent — and can't fire a stray late commit
+    // after exit. (Cancel's revert handles the same window the other way.)
+    const drained = drainPendingChanges()
+    const batch = drained.length ? [...history.batch, { changes: drained, label: 'edit' }] : history.batch
     if (batch.length === 0) {
-      exitEdit() // nothing to persist
+      // Nothing to persist — but still reset history so an undone-but-redoable
+      // tail from this session can't be redone in the next one.
+      history.clear()
+      exitEdit()
       return
     }
     try {
       await saveEdits(buildEditPayload(batch))
-      history.clear() // edits stay applied in the DOM; the agent rewrites source
+      // Reset undo/redo: the batch has gone to the agent, so these edits must
+      // not be undoable in a later session (we'd be reverting work already sent).
+      // The edits stay applied in the live DOM; the agent rewrites source.
+      history.clear()
       exitEdit()
     } catch {
       /* stay in edit mode — the provider already surfaced the error */
@@ -279,6 +369,7 @@ function EditControls() {
 
   return (
     <>
+      <EditLog />
       <button
         type="button"
         className="screenshare-rec-btn screenshare-rec-save"
@@ -344,7 +435,30 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
-/** Popup listing the recordings the server is tracking and their status. */
+/** Leading glyph marking a changelog row as an edit (pencil) or a recording (mic). */
+function TaskKindIcon({ kind }: { kind: Task['kind'] }) {
+  const edit = kind === 'edit'
+  return (
+    <span
+      className={`screenshare-tasks-kind ${edit ? 'edit' : 'recording'}`}
+      title={edit ? 'Saved edit' : 'Recording'}
+      aria-label={edit ? 'Saved edit' : 'Recording'}
+    >
+      <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+        <path
+          d={edit ? ICONS.edit : ICONS.mic}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  )
+}
+
+/** Popup listing the recordings + saved edits the server is tracking, and their status. */
 function TasksPanel({
   tasks,
   anchor,
@@ -355,10 +469,10 @@ function TasksPanel({
   onOpen: (id: string) => void
 }) {
   return (
-    <div className="screenshare-tasks" style={anchor} role="dialog" aria-label="Recording tasks">
-      <div className="screenshare-tasks-head">Recordings</div>
+    <div className="screenshare-tasks" style={anchor} role="dialog" aria-label="Changelog">
+      <div className="screenshare-tasks-head">Changelog</div>
       {tasks.length === 0 ? (
-        <div className="screenshare-tasks-empty">No recordings yet.</div>
+        <div className="screenshare-tasks-empty">Nothing yet.</div>
       ) : (
         <ul className="screenshare-tasks-list">
           {tasks.map((t) => (
@@ -369,7 +483,10 @@ function TasksPanel({
                 title={`Open folder — ${t.id}`}
                 onClick={() => onOpen(t.id)}
               >
-                <span className="screenshare-tasks-id">{formatStamp(t)}</span>
+                <span className="screenshare-tasks-label">
+                  <TaskKindIcon kind={t.kind} />
+                  <span className="screenshare-tasks-id">{formatStamp(t)}</span>
+                </span>
                 <span className={`screenshare-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
               </button>
             </li>
@@ -402,7 +519,7 @@ function RecBar() {
   const idle = state === 'idle'
   const [minimized, setMinimized] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
-  const containRef = useContainEvents<HTMLDivElement>()
+  const containRef = useContainEvents<HTMLDivElement>(true) // bar also contains Esc
 
   const activeCount = tasks.filter(isActive).length
   // The indicator earns a slot whenever there's something to show — active
@@ -610,6 +727,7 @@ export function Overlay({ className }: OverlayProps) {
     tasks,
     serverDown,
     editing,
+    designTokens,
   } = useScreenshareContext()
 
   if (typeof document === 'undefined') return null
@@ -624,8 +742,13 @@ export function Overlay({ className }: OverlayProps) {
       <SelectionProvider>
       <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
         {showBar && <RecBar />}
-        {editing && <Selection />}
-        {editing && <DesignPane />}
+        {/* One TokensProvider over BOTH the selection overlay (whose drag handles
+            publish snap targets) and the design pane (whose pickers read them),
+            so design-token snapping and the pickers share the same token set. */}
+        <TokensProvider tokens={designTokens}>
+          {editing && <Selection />}
+          {editing && <DesignPane />}
+        </TokensProvider>
         <SaveError />
         {rectFlashes.map((r) => (
           <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

@@ -10,6 +10,7 @@ import { SegmentedButtonGroup } from './SegmentedButtonGroup'
 import { TokenButton } from './TokenButton'
 import { slidersIcon } from './icons'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
+import { tokenDisplayLabel } from './token-mapping'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
 import { useTokensOf } from '../tokens-context'
@@ -216,9 +217,9 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
   const sizeMatch = useTokenMatch('font-size')
   const lineHeightMatch = useTokenMatch('line-height')
   const letterSpacingMatch = useTokenMatch('letter-spacing')
-  const sizeTokenLabel = sizeShared === 'single' ? sizeMatch.matchToken(size ? `${size}px` : '')?.name ?? null : null
-  const lineHeightTokenLabel = lineHeightMatch.matchToken(lineHeight)?.name ?? null
-  const letterSpacingTokenLabel = letterSpacingMatch.matchToken(letterSpacing)?.name ?? null
+  const sizeTokenLabel = sizeShared === 'single' ? tokenDisplayLabel(sizeMatch.matchToken(size ? `${size}px` : '')) : null
+  const lineHeightTokenLabel = tokenDisplayLabel(lineHeightMatch.matchToken(lineHeight))
+  const letterSpacingTokenLabel = tokenDisplayLabel(letterSpacingMatch.matchToken(letterSpacing))
   const scrubSize = useScrubbable({
     value: size,
     onChange: onSize,

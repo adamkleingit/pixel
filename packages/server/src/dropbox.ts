@@ -115,6 +115,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
+  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
+  kind?: 'recording' | 'edit'
   /** Epoch ms the recording was written (from meta.json), if available. */
   createdAt?: number
   durationMs?: number
@@ -153,7 +155,14 @@ export function taskDir(root: string, id: string): string | null {
   return null
 }
 
-type Meta = { createdAt?: number; durationMs?: number; eventCount?: number }
+type Meta = { kind?: string; createdAt?: number; durationMs?: number; eventCount?: number }
+
+/** Normalize a meta block into the fields the bar's task list wants, mapping the
+ *  on-disk `kind` ("edit" | absent) to the closed union the UI renders. */
+function taskMeta(m: Meta): Omit<Task, 'id' | 'status'> {
+  const { kind, ...rest } = m
+  return { kind: kind === 'edit' ? 'edit' : 'recording', ...rest }
+}
 
 /**
  * Snapshot the recordings the server knows about, tagged with the lifecycle
@@ -162,8 +171,8 @@ type Meta = { createdAt?: number; durationMs?: number; eventCount?: number }
  * entries so the history stays bounded.
  */
 export function listTasks(root = resolveRoot(), { limit = 10 }: { limit?: number } = {}): Task[] {
-  const meta = (bucket: string, id: string): Meta =>
-    readJsonSync<Meta>(join(root, bucket, id, 'meta.json')) ?? {}
+  const meta = (bucket: string, id: string): Omit<Task, 'id' | 'status'> =>
+    taskMeta(readJsonSync<Meta>(join(root, bucket, id, 'meta.json')) ?? {})
 
   const active: Task[] = [
     ...listBucket(root, 'inbox').map((id): Task => ({ id, status: 'pending', ...meta('inbox', id) })),

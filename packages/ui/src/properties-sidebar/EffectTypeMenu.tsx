@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { RefObject } from 'react'
 import { checkIcon } from './icons'
+import { OWN_UI_PROPS } from '../own-ui'
 import { COLORS, Z_INDEX } from './tokens'
 
 export interface EffectTypeMenuProps {
@@ -89,6 +90,7 @@ export function EffectTypeMenu({
   const node = (
     <div
       ref={ref}
+      {...OWN_UI_PROPS}
       style={{
         position: 'fixed',
         left: pos.left,

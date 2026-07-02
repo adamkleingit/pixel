@@ -1,5 +1,7 @@
 // Public data model for a Screenshare recording.
 
+import type { Token, TokenSource } from './pixel-common'
+
 /** One element in the ancestor chain of a click target. */
 export interface ElementInfo {
   /** Lowercase tag name, e.g. 'button'. */
@@ -118,6 +120,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
+  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
+  kind?: 'recording' | 'edit'
   createdAt?: number
   durationMs?: number
   eventCount?: number
@@ -139,6 +143,10 @@ export interface EditChangeRecord {
   name: string
   before: string
   after: string
+  /** Present when `after` was bound to a design token (picker or snap). The
+   *  agent writes the token's symbolic spelling (`usage`) in source instead of
+   *  the resolved `after` value. Absent for raw edits. */
+  source?: TokenSource
 }
 
 /** A saved batch of edit-mode changes — the "Save" analog of a Recording. */
@@ -170,6 +178,13 @@ export interface RecordingSink {
    * with a local sink. Wired to row clicks in the tasks popup when present.
    */
   openTask?(id: string): Promise<void>
+  /**
+   * Optional: fetch the project's design tokens, which the server (`@getpixel/
+   * server`) extracts from the project and serves at GET /tokens. Drives the
+   * design-pane token pickers and the on-canvas drag snap-to-token. Omit to run
+   * without tokens (pickers stay empty, drags scrub freely).
+   */
+  fetchTokens?(): Promise<{ tokens: Token[] }>
 }
 
 export interface ActivationConfig {

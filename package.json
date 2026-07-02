@@ -9,9 +9,10 @@
   ],
   "scripts": {
     "build": "npm run build -w @getpixel/ui && npm run build -w @getpixel/server",
+    "ui": "npm run dev -w @getpixel/ui",
     "server": "npm run dev -w @getpixel/server",
     "example": "npm run dev -w @getpixel/example",
-    "dev": "npm-run-all --parallel server example",
+    "dev": "npm-run-all --parallel ui server example",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

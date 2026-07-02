@@ -459,7 +459,14 @@ function finalizeCommit(): void {
   } else if (session.kind === 'rotate') {
     collectRotateChanges(session, changes)
   }
-  commitChangeBatch({ element: session.element, htmlBefore: session.htmlBefore, changes })
+  commitChangeBatch({
+    element: session.element,
+    htmlBefore: session.htmlBefore,
+    changes,
+    peers: session.peers,
+    peerBefore: (peer, property) =>
+      session!.peerPreviousInline.get(peer as HTMLElement)?.get(property) ?? '',
+  })
 }
 
 function collectResizeChanges(s: BaseFields & ResizeFields, changes: Change[]): void {

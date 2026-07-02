@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { EditHistoryProvider, useEditHistory, type Change } from './edit-history'
+import { applyPatch } from './patch'
+import { drainPendingChanges } from './change-reporter'
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <EditHistoryProvider>{children}</EditHistoryProvider>
@@ -76,6 +78,55 @@ describe('edit-history', () => {
     act(() => result.current.commit([styleChange(target, 'opacity', '1', '1')]))
     expect(result.current.canUndo).toBe(false)
     expect(result.current.batch).toHaveLength(0)
+  })
+
+  it('clear() resets undo/redo so saved edits cannot be undone in a later session', () => {
+    const target = el()
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+
+    act(() => result.current.commit([styleChange(target, 'padding', '', '10px')]))
+    act(() => result.current.commit([styleChange(target, 'padding', '10px', '20px')]))
+    act(() => result.current.undo()) // 20→10, leaving 20 redoable
+
+    // Save → the batch went to the agent; history must reset.
+    act(() => result.current.clear())
+    expect(result.current.canUndo).toBe(false)
+    expect(result.current.canRedo).toBe(false)
+    expect(result.current.batch).toHaveLength(0)
+
+    // The applied value stays in the DOM (the agent rewrites source); undo/redo
+    // are now no-ops, so the sent edit can't be reverted.
+    act(() => result.current.undo())
+    act(() => result.current.redo())
+    expect(target.style.padding).toBe('10px')
+  })
+
+  it('discard reverts an in-flight (debounced, not-yet-committed) pane edit too', () => {
+    const target = el()
+    target.style.padding = '5px' // a pre-existing inline value to revert back to
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+
+    // A design-pane edit mutates the DOM immediately but its commit is debounced,
+    // so right now it's a pending session — not yet a history entry.
+    act(() => applyPatch(target, { kind: 'setStyle', property: 'padding', value: '20px' }))
+    expect(target.style.padding).toBe('20px')
+    expect(result.current.batch).toHaveLength(0)
+
+    // Cancel must still undo it (this is the bug: discard used to revert only
+    // committed entries, leaving the in-flight edit applied).
+    act(() => result.current.discard())
+    expect(target.style.padding).toBe('5px')
+    expect(result.current.canUndo).toBe(false)
+  })
+
+  it('drainPendingChanges folds an in-flight edit into the Save batch', () => {
+    const target = el()
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+    act(() => applyPatch(target, { kind: 'setStyle', property: 'gap', value: '8px' }))
+    void result // provider mounted → reporter wired
+    const drained = drainPendingChanges()
+    expect(drained).toHaveLength(1)
+    expect(drained[0]).toMatchObject({ kind: 'style', name: 'gap', after: '8px' })
   })
 
   it('records text edits', () => {

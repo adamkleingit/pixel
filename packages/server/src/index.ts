@@ -10,6 +10,14 @@ import { Store } from './store.js'
 import { fileTranscriber, transcribeRecording, whisperTranscriber } from './transcribe.js'
 import { correlateRecording } from './correlate.js'
 import { finish, listTasks, resolveRoot, taskDir, watchAndClaim } from './dropbox.js'
+import {
+  emptyCache,
+  extractAndCacheTokens,
+  readTokenCache,
+  resolveProjectDir,
+  TOKENS_FILE,
+  watchTokenSources,
+} from './tokens/extract.js'
 
 /** Open a directory in the OS file manager (Finder / Explorer / xdg). */
 function openInFileManager(dir: string): void {
@@ -155,6 +163,13 @@ function startServer(): void {
     res.json({ tasks: listTasks(ROOT) })
   })
 
+  // The project's design tokens, for the in-app design pane's pickers + drag
+  // snap. Served from the cache the boot-time extractor + file watcher maintain
+  // (below). Returns an empty set until the first extraction completes.
+  app.get('/tokens', (_req, res) => {
+    res.json(readTokenCache(ROOT) ?? emptyCache())
+  })
+
   // Open a recording's folder in the OS file manager. Clicking a task in the
   // client hits this — the browser can't open Finder/Explorer itself.
   app.post('/tasks/:id/reveal', (req, res) => {
@@ -217,4 +232,27 @@ function startServer(): void {
     console.log(`  recordings → ${join(ROOT, 'inbox')}`)
     console.log(`  transcription: ${TRANSCRIBE ? 'on' : 'off (SCREENSHARE_TRANSCRIBE=0)'}`)
   })
+
+  // Design tokens: extract once on boot, then watch the project's token source
+  // files (globals.css / tailwind.config / @theme CSS) and re-extract on change.
+  // This is the "watcher creates the design-tokens file and watches for changes"
+  // half of the feature; the in-app pane reads it over GET /tokens.
+  const projectDir = resolveProjectDir(ROOT)
+  void (async () => {
+    try {
+      const cache = await extractAndCacheTokens(projectDir, ROOT)
+      if (cache) {
+        console.log(
+          `  design tokens: ${cache.tokens.length} (${cache.adapterId}) → ${join(ROOT, TOKENS_FILE)}`,
+        )
+        watchTokenSources(projectDir, ROOT, cache, (next) =>
+          console.log(`  design tokens re-extracted: ${next.tokens.length} (${next.adapterId})`),
+        )
+      } else {
+        console.log('  design tokens: none detected')
+      }
+    } catch (err) {
+      console.error('[screenshare] token extraction failed:', err)
+    }
+  })()
 }

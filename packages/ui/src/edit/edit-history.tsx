@@ -12,7 +12,8 @@
  * apply `after` — mirroring Pixel's `DesignEntry`.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { setReporterCommit } from './change-reporter'
+import type { TokenSource } from '../pixel-common'
+import { revertPendingSessions, setReporterCommit } from './change-reporter'
 
 export interface Change {
   target: HTMLElement
@@ -24,6 +25,11 @@ export interface Change {
   name: string
   before: string
   after: string
+  /** Set when `after` came from a design-token pick / snap / bind. Carried so the
+   *  Save payload (and ultimately the coding agent) writes the symbolic spelling
+   *  in source instead of the resolved value. Undo/redo ignore it — it only
+   *  describes how `after` should be written back, not how it applies to the DOM. */
+  source?: TokenSource
 }
 
 export interface EditEntry {
@@ -39,8 +45,16 @@ export interface EditHistory {
   commit: (changes: Change[], label?: string) => void
   undo: () => void
   redo: () => void
+  /** Jump the history pointer to `target` (−1 = before all edits), applying the
+   *  net undo/redo to the live DOM. Used by the edit-log to click-to-navigate. */
+  goto: (target: number) => void
   canUndo: boolean
   canRedo: boolean
+  /** The full change log, oldest → newest (applied AND redoable). */
+  entries: EditEntry[]
+  /** Index of the last APPLIED entry (−1 = none applied). Entries after it are
+   *  the redo tail. */
+  pointer: number
   /** The applied entries (start → pointer), in order — the batch for Save. */
   batch: EditEntry[]
   /** Drop all history without touching the DOM (after a successful Save — the
@@ -89,15 +103,20 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  // entriesRef/pointerRef are advanced synchronously (not just on the next
+  // render) so multiple commits within one flush — e.g. a multi-property gesture
+  // that commits one entry per property — chain off each other instead of each
+  // reading a stale pointer and clobbering the previous entry.
   const commit = useCallback((changes: Change[], label = '') => {
     const effective = changes.filter((c) => c.before !== c.after)
     if (effective.length === 0) return
     for (const c of effective) applyValue(c.target, c.kind, c.name, c.after)
-    setEntries((prev) => {
-      const kept = prev.slice(0, pointerRef.current + 1) // drop redo tail
-      return [...kept, { changes: effective, label: label || effective[0].name || 'edit' }]
-    })
-    setPointer((p) => p + 1)
+    const entry: EditEntry = { changes: effective, label: label || effective[0].name || 'edit' }
+    const next = [...entriesRef.current.slice(0, pointerRef.current + 1), entry] // drop redo tail
+    entriesRef.current = next
+    pointerRef.current = next.length - 1
+    setEntries(next)
+    setPointer(next.length - 1)
   }, [])
 
   const undo = useCallback(() => {
@@ -105,6 +124,7 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     if (p < 0) return
     const entry = entriesRef.current[p]
     for (const c of entry.changes) applyValue(c.target, c.kind, c.name, c.before)
+    pointerRef.current = p - 1
     setPointer(p - 1)
   }, [])
 
@@ -113,17 +133,46 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     const next = entriesRef.current[p + 1]
     if (!next) return
     for (const c of next.changes) applyValue(c.target, c.kind, c.name, c.after)
+    pointerRef.current = p + 1
     setPointer(p + 1)
+  }, [])
+
+  // Jump to an arbitrary point in the log: undo down to `target`, or redo up to
+  // it. `target` is the desired pointer (−1 = before all edits, entries.length−1
+  // = all applied). Same DOM ops as step-wise undo/redo, just batched.
+  const goto = useCallback((target: number) => {
+    let p = pointerRef.current
+    const clamped = Math.max(-1, Math.min(target, entriesRef.current.length - 1))
+    while (p > clamped) {
+      const entry = entriesRef.current[p]
+      for (const c of entry.changes) applyValue(c.target, c.kind, c.name, c.before)
+      p--
+    }
+    while (p < clamped) {
+      const next = entriesRef.current[p + 1]
+      if (!next) break
+      for (const c of next.changes) applyValue(c.target, c.kind, c.name, c.after)
+      p++
+    }
+    pointerRef.current = p
+    setPointer(p)
   }, [])
 
   // Drop history, leave the DOM as-is (Save: edits persist, agent rewrites source).
   const clear = useCallback(() => {
+    entriesRef.current = []
+    pointerRef.current = -1
     setEntries([])
     setPointer(-1)
   }, [])
 
-  // Revert every applied entry (newest → oldest), then drop history (Cancel).
+  // Revert the whole session (Cancel): first any in-flight (debounced) edit not
+  // yet committed, then every applied entry newest → oldest. Doing pending first
+  // means a property edited more than once unwinds in the right order (its
+  // in-flight delta back to the committed value, then the committed value back
+  // to the original). Then drop history.
   const discard = useCallback(() => {
+    revertPendingSessions()
     const applied = entriesRef.current.slice(0, pointerRef.current + 1)
     for (let i = applied.length - 1; i >= 0; i--) {
       for (const c of applied[i].changes) applyValue(c.target, c.kind, c.name, c.before)
@@ -146,13 +195,16 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
       commit,
       undo,
       redo,
+      goto,
       canUndo: pointer >= 0,
       canRedo: pointer < entries.length - 1,
+      entries,
+      pointer,
       batch: entries.slice(0, pointer + 1),
       clear,
       discard,
     }),
-    [applyLive, commit, undo, redo, clear, discard, pointer, entries],
+    [applyLive, commit, undo, redo, goto, clear, discard, pointer, entries],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

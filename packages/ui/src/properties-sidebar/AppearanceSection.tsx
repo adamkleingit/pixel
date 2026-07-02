@@ -18,6 +18,7 @@ import {
   zIndexIcon,
 } from './icons'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
+import { tokenDisplayLabel } from './token-mapping'
 import { COLORS, SIZES } from './tokens'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
@@ -173,7 +174,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
     }
     return null
   }
-  const opacityTokenLabel = opacityShared === 'single' ? matchOpacityToken(opacity)?.name ?? null : null
+  const opacityTokenLabel = opacityShared === 'single' ? tokenDisplayLabel(matchOpacityToken(opacity)) : null
   const scrubOpacity = useScrubbable({
     value: opacity,
     onChange: onOpacity,
@@ -207,7 +208,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
     const m = /^(-?\d+)/.exec(token.value.trim())
     if (m) setZIndex(m[1])
   }
-  const zIndexTokenLabel = zIndexShared === 'single' ? zIndexMatch.matchToken(zIndex)?.name ?? null : null
+  const zIndexTokenLabel = zIndexShared === 'single' ? tokenDisplayLabel(zIndexMatch.matchToken(zIndex)) : null
   const scrubZIndex = useScrubbable({
     value: zIndex,
     onChange: onZIndex,
@@ -221,7 +222,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
   const allCornersSingle = RADIUS_CORNERS.every(c => cornersShared[c.key] === 'single')
   const uniformRadius = allCornersSingle && RADIUS_CORNERS.every(c => corners[c.key] === corners.tl)
   const allValue = uniformRadius ? corners.tl : ''
-  const allTokenLabel = uniformRadius ? radiusMatch.matchToken(allValue ? `${allValue}px` : '')?.name ?? null : null
+  const allTokenLabel = uniformRadius ? tokenDisplayLabel(radiusMatch.matchToken(allValue ? `${allValue}px` : '')) : null
 
   const actions = (
     <>
@@ -319,7 +320,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
                   snapTargets={radiusMatch.snapTargets}
                   tokenLabel={
                     cornersShared[c.key] === 'single'
-                      ? radiusMatch.matchToken(corners[c.key] ? `${corners[c.key]}px` : '')?.name ?? null
+                      ? tokenDisplayLabel(radiusMatch.matchToken(corners[c.key] ? `${corners[c.key]}px` : ''))
                       : null
                   }
                 />

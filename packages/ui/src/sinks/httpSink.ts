@@ -1,3 +1,4 @@
+import type { Token } from '../pixel-common'
 import type { EditPayload, Recording, RecordingSink, Task } from '../types'
 
 export const DEFAULT_SERVER_URL = 'http://localhost:41789'
@@ -41,6 +42,16 @@ export function httpSink(
       if (!res.ok) {
         throw new Error(`screenshare server responded ${res.status}`)
       }
+    },
+    async fetchTokens(): Promise<{ tokens: Token[] }> {
+      const res = await fetch(`${root}/tokens`, {
+        signal: tasksTimeoutMs > 0 ? AbortSignal.timeout(tasksTimeoutMs) : undefined,
+      })
+      if (!res.ok) {
+        throw new Error(`screenshare server responded ${res.status}`)
+      }
+      const body = (await res.json()) as { tokens?: Token[] }
+      return { tokens: body.tokens ?? [] }
     },
     async save(rec: Recording): Promise<{ id: string }> {
       const form = new FormData()

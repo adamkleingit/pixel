@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
+import type { Token } from './pixel-common'
 import type { BarPosition, EditPayload, Recording, ScreenshareState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
@@ -67,6 +68,10 @@ export interface ScreenshareContextValue {
   serverDown: boolean
   /** Reveal a recording's folder in the OS file manager (no-op if the sink can't). */
   openTask: (id: string) => void
+  /** The project's design tokens, fetched from the sink (GET /tokens). Empty when
+   *  the sink can't fetch or none are detected. Feeds the design-pane pickers and
+   *  the on-canvas drag snap-to-token. */
+  designTokens: Token[]
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void

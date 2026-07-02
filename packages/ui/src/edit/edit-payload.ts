@@ -17,6 +17,10 @@ export function buildEditPayload(batch: EditEntry[]): EditPayload {
       name: c.name,
       before: c.before,
       after: c.after,
+      // Present when `after` came from a design-token pick/snap — tells the agent
+      // to write the symbolic spelling (var(--x) / bg-primary / palette.x) in
+      // source instead of the resolved value.
+      ...(c.source ? { source: c.source } : {}),
     })),
   )
   return {

@@ -1,7 +1,13 @@
+/*
+ * Example app styles — deliberately authored against the design tokens in
+ * globals.css so edit mode has something to bind to: colors use
+ * `hsl(var(--token))`, and spacing/radius land on the token scales so the
+ * design pane shows the matching token (and on-canvas drag snaps to it).
+ */
 :root {
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-  color: #1e1b2e;
-  background: #f6f4fb;
+  color: hsl(var(--foreground));
+  background: hsl(var(--page));
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -9,36 +15,36 @@ body { margin: 0; }
 .page {
   max-width: 820px;
   margin: 0 auto;
-  padding: 48px 24px 96px;
+  padding: var(--space-12) var(--space-6) 96px;
 }
 
 .hero h1 {
   font-size: 30px;
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   letter-spacing: -0.5px;
 }
-.hero p { margin: 0; color: #5b5572; line-height: 1.5; }
+.hero p { margin: 0; color: hsl(var(--muted-foreground)); line-height: 1.5; }
 
 .kbd {
   display: inline-block;
   padding: 1px 7px;
-  border-radius: 6px;
-  background: #ede9fe;
-  border: 1px solid #ddd6fe;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   box-shadow: 0 1px 0 #c4b5fd;
   font: 600 12px ui-monospace, monospace;
-  color: #6d28d9;
+  color: hsl(var(--secondary-foreground));
 }
 
 .status {
-  margin: 20px 0 32px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid #e7e2f3;
+  margin: var(--space-5) 0 var(--space-8);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
   box-shadow: 0 2px 12px rgba(124, 58, 237, 0.06);
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -47,82 +53,82 @@ body { margin: 0; }
   background: #c4b5fd;
 }
 .status.recording .dot { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
-.status code { color: #6d28d9; }
+.status code { color: hsl(var(--secondary-foreground)); }
 
 .btn {
   appearance: none;
   border: none;
-  border-radius: 10px;
-  padding: 10px 18px;
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-5);
   font: 600 14px ui-sans-serif, system-ui;
   cursor: pointer;
-  background: linear-gradient(180deg, #8b5cf6, #7c3aed);
-  color: white;
+  background: linear-gradient(180deg, hsl(var(--secondary)), hsl(var(--primary)));
+  color: hsl(var(--primary-foreground));
   box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
 }
 .btn.secondary {
-  background: #fff;
-  color: #6d28d9;
-  border: 1px solid #ddd6fe;
+  background: hsl(var(--background));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
   box-shadow: none;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 24px;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
 }
 .card {
-  background: #fff;
-  border: 1px solid #e7e2f3;
-  border-radius: 14px;
-  padding: 18px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
   box-shadow: 0 2px 12px rgba(30, 27, 46, 0.05);
 }
-.card h3 { margin: 0 0 6px; font-size: 16px; }
-.card p { margin: 0 0 14px; color: #6b6580; font-size: 14px; line-height: 1.45; }
+.card h3 { margin: 0 0 var(--space-2); font-size: 16px; }
+.card p { margin: 0 0 var(--space-4); color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.45; }
 
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.toolbar { display: flex; gap: var(--space-3); row-gap: 40px; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; margin-top: var(--space-2); }
 
 .nav {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 8px 0 20px;
-  border-bottom: 1px solid #e7e2f3;
-  padding-bottom: 8px;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-5);
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: var(--space-2);
 }
 .nav-link {
   appearance: none;
   border: none;
   background: transparent;
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
   font: 600 14px ui-sans-serif, system-ui;
-  color: #6b6580;
+  color: hsl(var(--muted-foreground));
   cursor: pointer;
 }
-.nav-link.active { background: #ede9fe; color: #6d28d9; }
-.nav-note { margin-left: auto; font-size: 12px; color: #9b94ad; }
+.nav-link.active { background: hsl(var(--muted)); color: hsl(var(--secondary-foreground)); }
+.nav-note { margin-left: auto; font-size: 12px; color: hsl(var(--muted-foreground)); }
 
 .form-card {
-  background: #fff;
-  border: 1px solid #e7e2f3;
-  border-radius: 14px;
-  padding: 22px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
   max-width: 460px;
   box-shadow: 0 2px 12px rgba(30, 27, 46, 0.05);
 }
-.field { display: block; margin-bottom: 16px; font-size: 14px; color: #4b455e; }
-.field > span { display: block; margin-bottom: 6px; font-weight: 600; }
-.field.row { display: flex; align-items: center; gap: 8px; }
+.field { display: block; margin-bottom: var(--space-4); font-size: 14px; color: hsl(var(--muted-foreground)); }
+.field > span { display: block; margin-bottom: var(--space-2); font-weight: 600; }
+.field.row { display: flex; align-items: center; gap: var(--space-2); }
 .field.row > span { margin: 0; font-weight: 500; }
 .field input[type="text"], .field select {
   width: 100%;
-  padding: 9px 11px;
-  border: 1px solid #ddd6fe;
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font: 14px ui-sans-serif, system-ui;
 }
 
@@ -134,7 +140,7 @@ body { margin: 0; }
 .dialog-test {
   display: flex;
   align-items: center;
-  margin: 0 0 20px;
+  margin: 0 0 var(--space-5);
 }
 
 /* Route transition — replays whenever the keyed .route-view remounts. */
@@ -160,9 +166,9 @@ body { margin: 0; }
   animation: routeIn 0.16s ease;
 }
 .dialog-panel {
-  background: #fff;
-  border-radius: 16px;
-  padding: 24px;
+  background: hsl(var(--background));
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
   width: min(440px, calc(100vw - 32px));
   box-shadow: 0 20px 60px rgba(30, 27, 46, 0.25);
 }

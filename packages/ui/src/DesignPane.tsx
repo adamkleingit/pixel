@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
 import { DesignPanel } from './properties-sidebar/DesignPanel'
-import { TokensProvider } from './tokens-context'
 
 /**
  * DesignPane — the right-docked inspector shown in edit mode. Unlike the
@@ -154,14 +153,15 @@ export function DesignPane() {
           {el ? (
             <>
               <div className="screenshare-pane-tag">{tag}</div>
-              <TokensProvider>
-                <DesignPanel
-                  selectedTag={el.tagName.toLowerCase()}
-                  headerTag={el.tagName.toLowerCase()}
-                  selectedElement={el}
-                  elements={els.length ? els : [el]}
-                />
-              </TokensProvider>
+              {/* TokensProvider is mounted once in Overlay over both the design
+                  pane and the selection overlay, so the pickers here and the
+                  drag-handle snapping share one token set. */}
+              <DesignPanel
+                selectedTag={el.tagName.toLowerCase()}
+                headerTag={el.tagName.toLowerCase()}
+                selectedElement={el}
+                elements={els.length ? els : [el]}
+              />
             </>
           ) : (
             <div className="screenshare-pane-empty">

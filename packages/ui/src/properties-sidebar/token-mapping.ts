@@ -166,3 +166,15 @@ export function bareDisplayName(token: Token): string {
   if (token.usage.kind === 'utility') return stripVerb(token.usage.className) || token.name
   return token.name
 }
+
+/**
+ * Inline "bound to token" label for a numeric input — the same bare,
+ * verb-stripped name the token picker shows (`bareDisplayName`), so the label
+ * matches what the user clicked in the popover. This matters for radius: the
+ * CSS var is `--radius` (name `radius`) but its Tailwind spelling is `rounded`,
+ * and the scale reads `sm`/`md`/`lg`/`xl` rather than `radius-sm`/… Returns
+ * null for no match, so call sites can drop the `?.name ?? null` dance.
+ */
+export function tokenDisplayLabel(token: Token | null | undefined): string | null {
+  return token ? bareDisplayName(token) : null
+}

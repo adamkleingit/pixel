@@ -36,6 +36,26 @@ import {
 
 export type SpacingAxis = 'x' | 'y'
 
+/** Left→right (or top→bottom) order for cycling a gap through the spread modes:
+ *  least spread (space-evenly) first, most spread (space-between) last. */
+const SPREAD_ORDER = ['space-evenly', 'space-around', 'space-between'] as const
+type SpreadMode = (typeof SPREAD_ORDER)[number]
+/** px of drag along the gap axis per spread-mode step. */
+const SPREAD_DRAG_STEP = 28
+
+function isGapProperty(property: string): boolean {
+  return property === 'column-gap' || property === 'row-gap'
+}
+
+/** The container's justify-content as a spread mode, or null if it's clustered. */
+function readSpreadMode(el: HTMLElement): SpreadMode | null {
+  const jc = getComputedStyle(el).justifyContent
+  if (jc.includes('between')) return 'space-between'
+  if (jc.includes('around')) return 'space-around'
+  if (jc.includes('evenly')) return 'space-evenly'
+  return null
+}
+
 interface SpacingSession {
   element: HTMLElement
   peers: HTMLElement[]
@@ -70,6 +90,19 @@ interface SpacingSession {
   htmlBefore: string
   prevDocCursor: string
   prevBodyUserSelect: string
+  // --- gap-on-a-spread-container: cycle justify-content instead of scrubbing px
+  /** True while dragging the gap of a container whose justify-content is a
+   *  spread mode — the drag cycles the modes rather than scrubbing px. Cleared
+   *  (permanently, for this drag) once ⌘ converts it to an explicit px gap. */
+  spread: boolean
+  /** SPREAD_ORDER index of the mode at gesture start. */
+  spreadStartIndex: number
+  /** The spread mode written on the most recent frame (for the on-canvas label
+   *  and change dedup). Null once converted to a px gap. */
+  spreadMode: SpreadMode | null
+  /** Last value-space delta along the axis, so a modifier keydown/keyup can
+   *  re-evaluate the frame without a fresh pointer position. */
+  lastDelta: number
 }
 
 let session: SpacingSession | null = null
@@ -92,6 +125,9 @@ export function getActiveSpacingDrag(): {
   /** The property the user originally grabbed. */
   baseProperty: string
   value: number
+  /** Set while dragging a gap through the spread modes — the on-canvas label
+   *  shows this instead of a px value. */
+  spreadMode: SpreadMode | null
 } | null {
   if (!session) return null
   const inline = readInline(session.element, session.baseProperty)
@@ -104,6 +140,7 @@ export function getActiveSpacingDrag(): {
     properties: new Set(session.activeProperties),
     baseProperty: session.baseProperty,
     value,
+    spreadMode: session.spreadMode,
   }
 }
 
@@ -124,6 +161,8 @@ export function startSpacingDrag(input: SpacingStartInput): void {
   const el = input.element
 
   const startValue = parseFloat(readComputed(el, input.property)) || 0
+  // Gap on a spread container → cycle justify-content instead of scrubbing px.
+  const startSpread = isGapProperty(input.property) ? readSpreadMode(el) : null
 
   setPatchSilent(true)
   const docEl = document.documentElement
@@ -162,11 +201,18 @@ export function startSpacingDrag(input: SpacingStartInput): void {
     htmlBefore,
     prevDocCursor,
     prevBodyUserSelect,
+    spread: startSpread !== null,
+    spreadStartIndex: startSpread ? SPREAD_ORDER.indexOf(startSpread) : 0,
+    spreadMode: startSpread,
+    lastDelta: 0,
   }
 
   // Capture the base property's pre-drag value immediately so the very first
   // commit (no movement, no modifier) still has a previousResolved to report.
   captureFor(session, input.property)
+  // For a spread-gap drag we mutate justify-content — capture its pre-drag value
+  // too so undo/commit and revert can restore it.
+  if (startSpread) captureFor(session, 'justify-content')
 
   attachListeners()
   emitFrame()
@@ -188,16 +234,15 @@ function onPointerMove(e: PointerEvent): void {
   const scale = getViewportScale() || 1
   const coord = session.axis === 'x' ? e.clientX : e.clientY
   const delta = ((coord - session.startCoord) / scale) * session.sign
-  const raw = Math.max(session.min, session.startValue + delta)
-  session.lastRaw = raw
-  const next = snapValue(session, raw, e)
-  applyToActiveSet(session, e.altKey, e.shiftKey, next)
+  session.lastDelta = delta
+  session.lastRaw = Math.max(session.min, session.startValue + delta)
+  applyFrame(session, e, delta)
   emitFrame()
 }
 
-/** Modifier-only keydown/keyup: re-apply the current value through the new
- *  mirror set so labels and on-screen bars update the instant alt is pressed
- *  or released, without waiting for the next pointermove. */
+/** Modifier-only keydown/keyup: re-apply the current frame through the new
+ *  mirror set / mode so labels and on-screen bars update the instant a modifier
+ *  is pressed or released, without waiting for the next pointermove. */
 function onKeyDown(e: KeyboardEvent): void {
   if (!session) return
   if (e.key === 'Escape' && e.type === 'keydown') {
@@ -207,14 +252,41 @@ function onKeyDown(e: KeyboardEvent): void {
     cleanup()
     return
   }
-  // Re-run the active set when alt/shift/meta state changes. Shift and ⌘ also
-  // flip the snap mode, so re-snap from the last raw cursor value (not the
-  // already-snapped one) and widen/narrow the mirror set in one pass.
   if (e.key === 'Alt' || e.key === 'Shift' || e.key === 'Meta' || e.key === 'Control') {
-    const next = snapValue(session, session.lastRaw, e)
-    applyToActiveSet(session, e.altKey, e.shiftKey, next)
+    applyFrame(session, e, session.lastDelta)
     emitFrame()
   }
+}
+
+/**
+ * Apply one drag frame. For a gap on a spread container (`session.spread`) a
+ * plain drag cycles the spread modes along the axis (space-evenly → -around →
+ * -between); holding ⌘/Ctrl converts it to an explicit px gap — clearing the
+ * spread to a clustered flex-start and scrubbing the pixel value from there,
+ * matching the design pane. Everything else scrubs px as before.
+ */
+function applyFrame(s: SpacingSession, e: PointerEvent | KeyboardEvent, delta: number): void {
+  const meta = e.metaKey || e.ctrlKey
+  if (s.spread && !meta) {
+    const idx = Math.max(0, Math.min(SPREAD_ORDER.length - 1, s.spreadStartIndex + Math.round(delta / SPREAD_DRAG_STEP)))
+    const mode = SPREAD_ORDER[idx]
+    if (mode !== s.spreadMode) {
+      s.spreadMode = mode
+      s.touched.add('justify-content')
+      apply(s, { kind: 'setStyle', property: 'justify-content', value: mode })
+    }
+    return
+  }
+  if (s.spread && meta) {
+    // ⌘ pressed → leave spread for a clustered flex-start + explicit px gap,
+    // then fall through to normal px scrubbing for the rest of the drag.
+    s.spread = false
+    s.spreadMode = null
+    s.touched.add('justify-content')
+    apply(s, { kind: 'setStyle', property: 'justify-content', value: 'flex-start' })
+  }
+  const next = snapValue(s, s.lastRaw, e)
+  applyToActiveSet(s, e.altKey, e.shiftKey, next)
 }
 
 /** Snap a raw value to the spacing tokens per the live modifier mode, rounded
@@ -296,6 +368,9 @@ function finalizeCommit(): void {
       element: session.element,
       htmlBefore: session.htmlBefore,
       changes,
+      peers: session.peers,
+      peerBefore: (peer, property) =>
+        session!.peerPreviousInline.get(peer as HTMLElement)?.get(property) ?? '',
     })
   }
 }

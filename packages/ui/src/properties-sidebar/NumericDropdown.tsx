@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { HTMLAttributes, ReactNode } from 'react'
+import { OWN_UI_PROPS } from '../own-ui'
 import { COLORS, SIZES, Z_INDEX } from './tokens'
 
 export interface NumericDropdownProps {
@@ -206,6 +207,7 @@ export function NumericDropdown({
         createPortal(
           <div
             ref={menuRef}
+            {...OWN_UI_PROPS}
             style={{
               position: 'fixed',
               left: pos.left,

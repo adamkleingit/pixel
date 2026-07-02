@@ -18,5 +18,9 @@ export const EXAMPLE_URL = `http://localhost:${EXAMPLE_PORT}`
 export const SCREENSHARE_DIR = join(HERE, '.artifacts', 'screenshare')
 export const INBOX_DIR = join(SCREENSHARE_DIR, 'inbox')
 
+/** The example app dir — its `globals.css` is the token source the server
+ *  extracts from (pointed at via SCREENSHARE_PROJECT_DIR in the harness). */
+export const EXAMPLE_DIR = join(HERE, '..', 'examples', 'basic')
+
 /** The fixed transcript the mock transcriber returns instead of running Whisper. */
 export const TRANSCRIPT_FIXTURE = join(HERE, 'transcript.fixture.json')

@@ -21,6 +21,8 @@ import {
 } from './session'
 import { injectStyles } from './styles'
 import type { BlipData } from './draw/blip'
+import { eventInOwnUI } from './own-ui'
+import type { Token } from './pixel-common'
 import type { EditPayload, Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
@@ -109,6 +111,9 @@ export function ScreenshareProvider({
   // Task status polled from the sink, driving the floating-bar indicator.
   const [tasks, setTasks] = useState<Task[]>([])
   const [serverDown, setServerDown] = useState(false)
+  // The project's design tokens, fetched from the sink (GET /tokens). Feeds the
+  // design pane's pickers + the on-canvas drag snap-to-token.
+  const [designTokens, setDesignTokens] = useState<Token[]>([])
 
   // Adopt the in-flight recorder if there is one; otherwise start null. useRef's
   // initializer only runs on first render, so this is the adoption hook.
@@ -158,6 +163,32 @@ export function ScreenshareProvider({
     if (isEnabled) injectStyles()
   }, [isEnabled])
 
+  // Keep Pixel's own UI (bar, design pane, and body-portaled menus) from tripping
+  // the app's document-level click-outside handlers, which would close its dialogs
+  // when the user clicks our chrome.
+  //
+  // We can't stopPropagation at the Pixel container: the pane's resize/scrub
+  // handlers are React pointer events delivered via React's own document-level
+  // delegation, so stopping at the container kills them too. Instead we cancel at
+  // `document` in the bubble phase, for own-UI targets only. Listener order on
+  // `document` makes this safe: React's delegation is registered at `createRoot`
+  // (before this provider mounts) so it has already dispatched to our pane by the
+  // time we run; the app's outside-click listener is registered when its dialog
+  // opens (after this), so `stopImmediatePropagation` suppresses it. Page clicks
+  // (not own-UI) pass through untouched.
+  useEffect(() => {
+    if (!isEnabled) return
+    const guard = (e: Event) => {
+      if (eventInOwnUI(e)) e.stopImmediatePropagation()
+    }
+    document.addEventListener('pointerdown', guard)
+    document.addEventListener('mousedown', guard)
+    return () => {
+      document.removeEventListener('pointerdown', guard)
+      document.removeEventListener('mousedown', guard)
+    }
+  }, [isEnabled])
+
   // Poll the sink for task status so the floating bar can show how many
   // recordings are pending/executing, and flag the server as down when the poll
   // fails. Reads the sink from configRef so a re-created sink object (common when
@@ -190,6 +221,28 @@ export function ScreenshareProvider({
       window.clearInterval(timer)
     }
   }, [isEnabled, canPoll, config.taskPollMs])
+
+  // Fetch the project's design tokens from the sink: once on mount and again on
+  // each entry into edit mode, so a re-extraction by the server's file watcher is
+  // picked up the next time the user opens the editor. Cheap and infrequent —
+  // tokens change rarely — so no continuous polling. A failure leaves the last
+  // good set (or empty); the pickers degrade gracefully.
+  const canFetchTokens = Boolean(config.sink?.fetchTokens)
+  useEffect(() => {
+    if (!isEnabled || !canFetchTokens) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const { tokens } = await configRef.current.sink!.fetchTokens!()
+        if (!cancelled) setDesignTokens(tokens)
+      } catch {
+        /* leave the existing tokens; pickers/snap degrade to empty */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isEnabled, canFetchTokens, editing])
 
   // Full-viewport screenshot (with coordinate grid) on start and resume.
   const captureFrame = useCallback(async (reason: 'start' | 'resume') => {
@@ -420,12 +473,9 @@ export function ScreenshareProvider({
     const block = !passthrough
     const activationKey = configRef.current.activation?.key ?? 'Space'
 
-    // Events targeting our own overlay/control bar must never be blocked or
-    // recorded as page interactions.
-    const isOwnUI = (e: Event): boolean => {
-      const t = e.target
-      return t instanceof Element && !!t.closest('.screenshare-overlay')
-    }
+    // Events targeting our own overlay/control bar (or a body-portaled Pixel
+    // menu) must never be blocked or recorded as page interactions.
+    const isOwnUI = eventInOwnUI
 
     // A gesture in progress. `pen` (Cmd+drag, tool-on only) draws a freehand
     // stroke; otherwise it's a click / rectangle.
@@ -608,12 +658,11 @@ export function ScreenshareProvider({
   // working — and with clicks blocked, no app field can be focused to type into.
   useEffect(() => {
     if (!editing || state === 'recording') return
-    const isOwnUI = (e: Event): boolean => {
-      const t = e.target
-      return t instanceof Element && !!t.closest('.screenshare-overlay')
-    }
     const swallow = (e: Event) => {
-      if (isOwnUI(e)) return
+      // Leave Pixel's own UI live — the overlay surface AND body-portaled menus
+      // (gap/size dropdowns, token pickers); otherwise their item clicks get
+      // swallowed here and the dropdowns look broken.
+      if (eventInOwnUI(e)) return
       e.preventDefault()
       e.stopPropagation()
     }
@@ -659,6 +708,7 @@ export function ScreenshareProvider({
       tasks,
       serverDown,
       openTask,
+      designTokens,
       blips,
       removeBlip,
       dragRect,
@@ -667,7 +717,7 @@ export function ScreenshareProvider({
       drawStroke,
       drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

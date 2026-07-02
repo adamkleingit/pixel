@@ -3,7 +3,6 @@ import { IconButton } from './IconButton'
 import { NumericInput } from './NumericInput'
 import { Row } from './Row'
 import { Section } from './Section'
-import { SegmentedButtonGroup } from './SegmentedButtonGroup'
 import { applyPatchAll, MULTIPLE_PLACEHOLDER, readShared, sharedDisplayValue } from './read-shared'
 import { useScrubbable } from './useScrubbable'
 import { applyPatch } from '../edit/patch'
@@ -14,9 +13,6 @@ export interface PositionSectionProps {
    *  out reads (via `readShared`) and writes (loop applyPatch) over the array. */
   elements?: Element[]
 }
-
-type HAlign = 'left' | 'center' | 'right'
-type VAlign = 'top' | 'middle' | 'bottom'
 
 /** True when the element's parent is an auto-layout container (flex/grid), so
  *  the child's X/Y is governed by the layout rather than free positioning. */
@@ -63,8 +59,6 @@ function readTranslate(el: Element): string {
 export function PositionSection({
   elements = [],
 }: PositionSectionProps = {}) {
-  const [hAlign, setHAlign] = useState<HAlign | null>(null)
-  const [vAlign, setVAlign] = useState<VAlign | null>(null)
   const [x, setX] = useState('')
   const [y, setY] = useState('')
   const [rotation, setRotation] = useState('0')
@@ -225,40 +219,6 @@ export function PositionSection({
 
   return (
     <Section title="Position">
-      <Row label="Alignment">
-        <SegmentedButtonGroup
-          value={hAlign}
-          onChange={v => setHAlign(v as HAlign)}
-          options={[
-            { value: 'left', title: 'Align left', icon: alignHLeft },
-            { value: 'center', title: 'Align horizontal center', icon: alignHCenter },
-            { value: 'right', title: 'Align right', icon: alignHRight },
-          ]}
-        />
-        <div style={{ width: 4 }} />
-        <SegmentedButtonGroup
-          value={vAlign}
-          onChange={v => setVAlign(v as VAlign)}
-          options={[
-            { value: 'top', title: 'Align top', icon: alignVTop },
-            { value: 'middle', title: 'Align vertical center', icon: alignVMiddle },
-            { value: 'bottom', title: 'Align bottom', icon: alignVBottom },
-          ]}
-        />
-        {inAutoLayout && (
-          <>
-            <div style={{ flex: 1 }} />
-            <IconButton
-              title="Set absolute position"
-              isActive={isIgnoring}
-              onClick={onToggleIgnore}
-            >
-              {ignoreAutoLayoutIcon}
-            </IconButton>
-          </>
-        )}
-      </Row>
-
       <Row label="Position">
         <NumericInput
           prefix="X"
@@ -276,6 +236,11 @@ export function PositionSection({
           disabled={positionDisabled}
           prefixProps={scrubY.prefixProps}
         />
+        {inAutoLayout && (
+          <IconButton title="Set absolute position" isActive={isIgnoring} onClick={onToggleIgnore}>
+            {ignoreAutoLayoutIcon}
+          </IconButton>
+        )}
         <IconButton
           title="Constrain proportions / absolute position"
           isActive={isConstrained}
@@ -336,54 +301,6 @@ export function PositionSection({
 
 // -- Inlined icon markup -----------------------------------------------------
 // Kept as JSX values (not components) so we stay within one-component-per-file.
-
-const alignHLeft = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="2" y="2" width="1.25" height="12" rx="0.4" />
-    <rect x="4.5" y="3.5" width="9" height="3" rx="0.5" />
-    <rect x="4.5" y="9.5" width="5.5" height="3" rx="0.5" />
-  </svg>
-)
-
-const alignHCenter = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="7.375" y="2" width="1.25" height="12" rx="0.4" />
-    <rect x="3" y="3.5" width="10" height="3" rx="0.5" />
-    <rect x="5.25" y="9.5" width="5.5" height="3" rx="0.5" />
-  </svg>
-)
-
-const alignHRight = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="12.75" y="2" width="1.25" height="12" rx="0.4" />
-    <rect x="2.5" y="3.5" width="9" height="3" rx="0.5" />
-    <rect x="6" y="9.5" width="5.5" height="3" rx="0.5" />
-  </svg>
-)
-
-const alignVTop = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="2" y="2" width="12" height="1.25" rx="0.4" />
-    <rect x="3.5" y="4.5" width="3" height="9" rx="0.5" />
-    <rect x="9.5" y="4.5" width="3" height="5.5" rx="0.5" />
-  </svg>
-)
-
-const alignVMiddle = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="2" y="7.375" width="12" height="1.25" rx="0.4" />
-    <rect x="3.5" y="3" width="3" height="10" rx="0.5" />
-    <rect x="9.5" y="5.25" width="3" height="5.5" rx="0.5" />
-  </svg>
-)
-
-const alignVBottom = (
-  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-    <rect x="2" y="12.75" width="12" height="1.25" rx="0.4" />
-    <rect x="3.5" y="2.5" width="3" height="9" rx="0.5" />
-    <rect x="9.5" y="6" width="3" height="5.5" rx="0.5" />
-  </svg>
-)
 
 // Four-way arrows — nudging the element from its in-flow position via translate.
 const offsetIcon = (

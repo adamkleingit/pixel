@@ -696,16 +696,27 @@ function finalizeCommit(): void {
 
   const changes: Change[] = []
 
-  // Style changes — left / top / position. We only commit a change when the
-  // *post-drag* inline value differs from the pre-drag (resolved) value, since
-  // the change pipeline coalesces by property and a no-op write would still
-  // produce a redundant agent call.
   const snap = s.previousInline.get(s.element)
+
+  // An in-flow drag wrote `position: relative` transiently (for z-index
+  // stacking). If the element did NOT end up absolutely positioned, that
+  // relative is layout-neutral leftover — strip it so a no-op drag records
+  // nothing (and so it isn't captured as a spurious change below).
+  if ((snap?.get('position') ?? '') === '' && readInline(s.element, 'position') === 'relative') {
+    s.element.style.removeProperty('position')
+  }
+
+  // Commit the net inline geometry changes (position / left / top / width /
+  // height) by comparing the CURRENT inline value against the PRE-DRAG inline
+  // value captured at gesture start. Comparing inline-to-inline (rather than
+  // falling back to the *post-mutation* computed value) is what makes a
+  // Ctrl-toggle to absolute reversible: `before` is the empty pre-drag inline,
+  // so undo removes position/left/top/width/height and the element returns to
+  // flow. An empty `before` with an empty `after` is skipped (no-op).
   if (snap) {
-    for (const property of ['position', 'left', 'top'] as const) {
-      const before = snap.get(property) || readComputed(s.element, property)
-      const after =
-        readInline(s.element, property) || readComputed(s.element, property)
+    for (const property of ['position', 'left', 'top', 'width', 'height'] as const) {
+      const before = snap.get(property) ?? ''
+      const after = readInline(s.element, property)
       if (after !== before) {
         changes.push({ property, previousValue: before, newValue: after })
       }

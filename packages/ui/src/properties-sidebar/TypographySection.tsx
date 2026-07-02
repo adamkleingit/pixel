@@ -171,7 +171,11 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
       applyTokenAll(elements, 'letter-spacing', typed)
       return
     }
-    applyPatchAll(elements, { kind: 'setStyle', property: 'letter-spacing', value: v })
+    // A bare number needs a unit — `letter-spacing: 3` is invalid and ignored;
+    // `letter-spacing: 3px` is what the numeric field means. Leave keywords
+    // (e.g. `normal`) and already-united values as-is; empty clears the prop.
+    const value = v.trim() === '' ? '' : /^-?\d*\.?\d+$/.test(v.trim()) ? `${v.trim()}px` : v
+    applyPatchAll(elements, { kind: 'setStyle', property: 'letter-spacing', value })
   }
   function onHAlign(v: HTextAlign) {
     setHAlign(v)

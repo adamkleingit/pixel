@@ -1,4 +1,5 @@
-import type { Recording, RecordingSink, Task } from '../types'
+import type { Token } from '../pixel-common'
+import type { EditPayload, Recording, RecordingSink, Task } from '../types'
 
 export const DEFAULT_SERVER_URL = 'http://localhost:41789'
 
@@ -42,6 +43,16 @@ export function httpSink(
         throw new Error(`screenshare server responded ${res.status}`)
       }
     },
+    async fetchTokens(): Promise<{ tokens: Token[] }> {
+      const res = await fetch(`${root}/tokens`, {
+        signal: tasksTimeoutMs > 0 ? AbortSignal.timeout(tasksTimeoutMs) : undefined,
+      })
+      if (!res.ok) {
+        throw new Error(`screenshare server responded ${res.status}`)
+      }
+      const body = (await res.json()) as { tokens?: Token[] }
+      return { tokens: body.tokens ?? [] }
+    },
     async save(rec: Recording): Promise<{ id: string }> {
       const form = new FormData()
       form.append(
@@ -63,6 +74,17 @@ export function httpSink(
       const res = await fetch(`${root}/recordings`, {
         method: 'POST',
         body: form,
+      })
+      if (!res.ok) {
+        throw new Error(`screenshare server responded ${res.status}`)
+      }
+      return (await res.json()) as { id: string }
+    },
+    async saveEdits(payload: EditPayload): Promise<{ id: string }> {
+      const res = await fetch(`${root}/edits`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         throw new Error(`screenshare server responded ${res.status}`)

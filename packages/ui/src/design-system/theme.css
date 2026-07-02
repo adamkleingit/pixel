@@ -1,0 +1,109 @@
+/**
+ * Pixel design tokens — single source of truth for color/spacing/typography.
+ *
+ * Loaded once at the document root by main.tsx. Every chrome surface should
+ * read these via var(--token-name) instead of hardcoding hex values.
+ *
+ * Mirrored as TypeScript constants in theme.ts for inline-style consumers.
+ */
+
+:root {
+  /* Surfaces */
+  --pixel-bg-base:       #e8e8e8;  /* canvas backdrop                 */
+  --pixel-bg-surface:    #ffffff;  /* sidebars, toolbar               */
+  --pixel-bg-elevated:   #f5f5f5;  /* hover, tooltips, code blocks    */
+  --pixel-bg-hover:      #f0f0f0;
+  --pixel-bg-active:     #ebebeb;
+
+  /* Borders */
+  --pixel-border:        #e0e0e0;
+  --pixel-border-subtle: #ebebeb;
+
+  /* Text */
+  --pixel-text-primary:   #1a1a1a;
+  --pixel-text-secondary: #4a4a4a;
+  --pixel-text-muted:     #999999;
+
+  /* Accent (Pixel purple) */
+  --pixel-accent:       #7c3aed;
+  --pixel-accent-hover: #6d28d9;
+  --pixel-accent-dim:   rgba(124, 58, 237, 0.12);
+  --pixel-accent-glow:  rgba(124, 58, 237, 0.06);
+  --pixel-select:       #4f46e5;
+  --pixel-select-match: #818cf8;
+  --pixel-select-multi: #3730a3;
+
+  /* Hover (element pre-pick) — distinct hue from selection */
+  --pixel-hover-element:     #0d9488;
+  --pixel-hover-element-bg:  rgba(13, 148, 136, 0.10);
+
+  /* Inner-component boundary tint (see tech-specs/inner-components.md §2.3) */
+  --pixel-inner-component:    #ea580c;
+  --pixel-inner-component-bg: rgba(234, 88, 12, 0.08);
+
+  /* Semantic */
+  --pixel-green:  #16a34a;
+  --pixel-red:    #dc2626;
+  --pixel-yellow: #d97706;
+  --pixel-blue:   #2563eb;
+
+  /* Typography */
+  --pixel-font-ui:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pixel-font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --pixel-fs-xs:   10px;  /* labels, badges               */
+  --pixel-fs-sm:   11px;  /* secondary UI text            */
+  --pixel-fs-base: 12px;  /* body, panels                 */
+  --pixel-fs-md:   13px;  /* section headings             */
+  --pixel-fs-lg:   14px;  /* panel titles                 */
+  --pixel-fs-xl:   16px;  /* page headings                */
+
+  /* Radii */
+  --pixel-radius-sm: 4px;
+  --pixel-radius-md: 6px;
+  --pixel-radius-lg: 8px;
+
+  /* Elevation */
+  --pixel-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --pixel-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --pixel-shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
+  --pixel-shadow-frame: 0 2px 24px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+
+/* Reset + base */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+body {
+  background: #c8c8c8;
+  color: var(--pixel-text-primary);
+  font-family: var(--pixel-font-ui);
+  font-size: var(--pixel-fs-base);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  align-items: stretch;
+  padding: 5px;
+}
+#root {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+button { font-family: inherit; font-size: inherit; }
+
+/* Slim scrollbars (Figma-like) */
+::-webkit-scrollbar      { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #c8c8c8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #aaaaaa; }
+
+::selection { background: var(--pixel-accent-dim); }
+
+@keyframes pixel-spin {
+  to { transform: rotate(360deg); }
+}
+.pixel-spin {
+  animation: pixel-spin 0.8s linear infinite;
+  transform-origin: 50% 50%;
+}

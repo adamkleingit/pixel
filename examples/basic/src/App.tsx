@@ -237,7 +237,7 @@ function LastRecording({ rec }: { rec: Recording }) {
 const CARDS = [
   { title: 'Inbox', body: 'Triage messages and assign owners.', primary: 'Compose' },
   { title: 'Billing', body: 'Plans, invoices, and payment methods.', primary: 'Upgrade' },
-  { title: 'Team', body: 'Invite teammates and manage roles.', primary: 'Invite' },
+  { title: 'Teams', body: 'Invite teammates and manage roles.', primary: 'Invite' },
 ]
 
 function Shell({
@@ -291,7 +291,7 @@ function Shell({
         </p>
         <label className="field">
           <span>A field to focus</span>
-          <input type="text" defaultValue="type here…" />
+          <input type="text" defaultValue="type here something…" />
         </label>
         <div className="toolbar">
           <button className="btn" onClick={closeDialog}>

@@ -80,4 +80,56 @@ export class Store {
 
     return { id, path: dest, hasAudio: Boolean(audio) }
   }
+
+  /**
+   * Persist a batch of edit-mode changes (the "Save" button) into the same
+   * dropbox recordings use, so the agent's `watch` claims it identically. The
+   * brief is `edits.json` (no audio/transcript); a small `timeline.json` marker
+   * makes the task "ready". Assembled in tmp/ and atomically renamed into inbox/.
+   */
+  async saveEdits(payload: EditSaveInput): Promise<SaveEditsResult> {
+    const id = this.newId()
+    const tmpDir = join(this.root, 'tmp', id)
+    await mkdir(tmpDir, { recursive: true })
+
+    const changes = Array.isArray(payload.changes) ? payload.changes : []
+    const createdAt = Date.now()
+    const metaOut = {
+      id,
+      kind: 'edit' as const,
+      url: payload.url ?? null,
+      // Mapped to `eventCount` so the existing bar/tasks UI shows a count.
+      eventCount: changes.length,
+      changeCount: changes.length,
+      createdAt,
+    }
+    const editsOut = { url: payload.url ?? null, createdAt: payload.createdAt ?? createdAt, changes }
+
+    await writeFile(join(tmpDir, 'meta.json'), JSON.stringify(metaOut, null, 2))
+    await writeFile(join(tmpDir, 'edits.json'), JSON.stringify(editsOut, null, 2))
+    // Readiness marker for the watch/claim pipeline (edits have no beats).
+    await writeFile(
+      join(tmpDir, 'timeline.json'),
+      JSON.stringify({ kind: 'edit', changeCount: changes.length, createdAt }, null, 2),
+    )
+
+    const inboxDir = join(this.root, 'inbox')
+    await mkdir(inboxDir, { recursive: true })
+    const dest = join(inboxDir, id)
+    await rename(tmpDir, dest)
+
+    return { id, path: dest, changeCount: changes.length }
+  }
+}
+
+export interface EditSaveInput {
+  url?: string
+  createdAt?: number
+  changes?: unknown[]
+}
+
+export interface SaveEditsResult {
+  id: string
+  path: string
+  changeCount: number
 }

@@ -1,5 +1,7 @@
 // Public data model for a Screenshare recording.
 
+import type { Token, TokenSource } from './pixel-common'
+
 /** One element in the ancestor chain of a click target. */
 export interface ElementInfo {
   /** Lowercase tag name, e.g. 'button'. */
@@ -118,6 +120,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
+  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
+  kind?: 'recording' | 'edit'
   createdAt?: number
   durationMs?: number
   eventCount?: number
@@ -126,9 +130,42 @@ export interface Task {
   message?: string
 }
 
+/** One committed change from edit mode, serialized for the agent to apply to
+ *  source. `target` is the DOM ancestor chain (outermost → innermost) of the
+ *  edited element — the same shape as a recording click target, so the agent
+ *  resolves it the same way. */
+export interface EditChangeRecord {
+  target: ElementInfo[]
+  /** What surface changed. `move` reorders within the parent (before/after are
+   *  child indices). */
+  kind: 'style' | 'text' | 'attr' | 'move'
+  /** CSS property / attribute name; '' for text and move. */
+  name: string
+  before: string
+  after: string
+  /** Present when `after` was bound to a design token (picker or snap). The
+   *  agent writes the token's symbolic spelling (`usage`) in source instead of
+   *  the resolved `after` value. Absent for raw edits. */
+  source?: TokenSource
+}
+
+/** A saved batch of edit-mode changes — the "Save" analog of a Recording. */
+export interface EditPayload {
+  /** The page the edits were made on. */
+  url: string
+  createdAt: number
+  changes: EditChangeRecord[]
+}
+
 /** Where a finished recording is sent. The default is an HTTP sink (see `httpSink`). */
 export interface RecordingSink {
   save(rec: Recording): Promise<{ id: string }>
+  /**
+   * Optional: persist a batch of edit-mode changes (the "Save" button / double-
+   * Enter). Written to the same dropbox the agent watches, so it's picked up
+   * exactly like a recording. Omit to disable saving edits.
+   */
+  saveEdits?(payload: EditPayload): Promise<{ id: string }>
   /**
    * Optional: list the recordings the server currently knows about, for the
    * floating-bar status indicator. The provider polls this when present; a
@@ -141,6 +178,13 @@ export interface RecordingSink {
    * with a local sink. Wired to row clicks in the tasks popup when present.
    */
   openTask?(id: string): Promise<void>
+  /**
+   * Optional: fetch the project's design tokens, which the server (`@getpixel/
+   * server`) extracts from the project and serves at GET /tokens. Drives the
+   * design-pane token pickers and the on-canvas drag snap-to-token. Omit to run
+   * without tokens (pickers stay empty, drags scrub freely).
+   */
+  fetchTokens?(): Promise<{ tokens: Token[] }>
 }
 
 export interface ActivationConfig {

@@ -10,6 +10,14 @@ import { Store } from './store.js'
 import { fileTranscriber, transcribeRecording, whisperTranscriber } from './transcribe.js'
 import { correlateRecording } from './correlate.js'
 import { finish, listTasks, resolveRoot, taskDir, watchAndClaim } from './dropbox.js'
+import {
+  emptyCache,
+  extractAndCacheTokens,
+  readTokenCache,
+  resolveProjectDir,
+  TOKENS_FILE,
+  watchTokenSources,
+} from './tokens/extract.js'
 
 /** Open a directory in the OS file manager (Finder / Explorer / xdg). */
 function openInFileManager(dir: string): void {
@@ -141,6 +149,9 @@ function startServer(): void {
 
   const app = express()
   app.use(cors())
+  // JSON body parsing for the edit-save endpoint. Only parses application/json,
+  // so it leaves /recordings' multipart upload (handled by multer) untouched.
+  app.use(express.json({ limit: '16mb' }))
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, root: ROOT })
@@ -150,6 +161,13 @@ function startServer(): void {
   // floating-bar indicator. Cheap enough to poll (a directory scan + small reads).
   app.get('/tasks', (_req, res) => {
     res.json({ tasks: listTasks(ROOT) })
+  })
+
+  // The project's design tokens, for the in-app design pane's pickers + drag
+  // snap. Served from the cache the boot-time extractor + file watcher maintain
+  // (below). Returns an empty set until the first extraction completes.
+  app.get('/tokens', (_req, res) => {
+    res.json(readTokenCache(ROOT) ?? emptyCache())
   })
 
   // Open a recording's folder in the OS file manager. Clicking a task in the
@@ -194,9 +212,47 @@ function startServer(): void {
     }
   })
 
+  // Edit-mode "Save": a JSON batch of changes. Written into the same dropbox as
+  // recordings so the agent's `watch` claims it identically — the brief is
+  // edits.json instead of timeline.json beats.
+  app.post('/edits', async (req, res) => {
+    try {
+      const payload = (req.body ?? {}) as { url?: string; createdAt?: number; changes?: unknown[] }
+      const { id, path, changeCount } = await store.saveEdits(payload)
+      console.log(`[screenshare] saved edits ${id} — ${changeCount} changes → ${path}`)
+      res.json({ id })
+    } catch (err) {
+      console.error('[screenshare] save edits failed:', err)
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
   app.listen(PORT, () => {
     console.log(`@getpixel/server listening on http://localhost:${PORT}`)
     console.log(`  recordings → ${join(ROOT, 'inbox')}`)
     console.log(`  transcription: ${TRANSCRIBE ? 'on' : 'off (SCREENSHARE_TRANSCRIBE=0)'}`)
   })
+
+  // Design tokens: extract once on boot, then watch the project's token source
+  // files (globals.css / tailwind.config / @theme CSS) and re-extract on change.
+  // This is the "watcher creates the design-tokens file and watches for changes"
+  // half of the feature; the in-app pane reads it over GET /tokens.
+  const projectDir = resolveProjectDir(ROOT)
+  void (async () => {
+    try {
+      const cache = await extractAndCacheTokens(projectDir, ROOT)
+      if (cache) {
+        console.log(
+          `  design tokens: ${cache.tokens.length} (${cache.adapterId}) → ${join(ROOT, TOKENS_FILE)}`,
+        )
+        watchTokenSources(projectDir, ROOT, cache, (next) =>
+          console.log(`  design tokens re-extracted: ${next.tokens.length} (${next.adapterId})`),
+        )
+      } else {
+        console.log('  design tokens: none detected')
+      }
+    } catch (err) {
+      console.error('[screenshare] token extraction failed:', err)
+    }
+  })()
 }

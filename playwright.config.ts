@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import {
+  EXAMPLE_DIR,
   EXAMPLE_PORT,
   EXAMPLE_URL,
   SCREENSHARE_DIR,
@@ -43,6 +44,9 @@ export default defineConfig({
         SCREENSHARE_DIR,
         SCREENSHARE_PORT: String(SERVER_PORT),
         SCREENSHARE_TRANSCRIBE_MOCK: TRANSCRIPT_FIXTURE,
+        // Extract design tokens from the example app's globals.css (not the
+        // .artifacts dropbox parent), so GET /tokens serves a real token set.
+        SCREENSHARE_PROJECT_DIR: EXAMPLE_DIR,
       },
     },
     {

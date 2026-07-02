@@ -2,6 +2,9 @@
 // Injected once into <head>; scoped under .screenshare-* class names so they
 // never collide with the host app.
 
+import { THEME_CSS } from './design-system/theme-css'
+import { HANDLES_CSS } from './drag/handles-css'
+
 const STYLE_ID = 'screenshare-styles'
 
 const CSS = `
@@ -124,6 +127,19 @@ const CSS = `
   animation: none;
   opacity: 0.5;
 }
+/* Edit-mode indicator: a steady (non-pulsing) blue dot, distinct from the
+   recording dot, so the bar reads as "editing" at a glance. */
+.screenshare-rec .screenshare-rec-edit-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+}
+/* Save (diskette) tinted green to read as the primary/confirm action. */
+.screenshare-rec .screenshare-rec-save {
+  color: #4ade80;
+}
 .screenshare-rec .screenshare-rec-time {
   min-width: 58px;
 }
@@ -244,6 +260,20 @@ const CSS = `
   text-align: left;
   cursor: pointer;
 }
+.screenshare-tasks-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.screenshare-tasks-kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.screenshare-tasks-kind.recording { color: #c4b5fd; }
+.screenshare-tasks-kind.edit { color: #f0abfc; }
 .screenshare-tasks-id {
   font: 500 11px ui-monospace, monospace;
   color: #e9d5ff;
@@ -267,6 +297,82 @@ const CSS = `
 }
 .screenshare-tasks-pill.done { background: rgba(74, 222, 128, 0.18); color: #86efac; }
 .screenshare-tasks-pill.error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
+
+.screenshare-editlog {
+  position: absolute;
+  z-index: 1;
+  width: 248px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(24, 12, 38, 0.97);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  color: #f3e8ff;
+  cursor: default;
+}
+.screenshare-editlog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  padding: 2px 4px 8px 6px;
+}
+.screenshare-editlog-nav { display: inline-flex; gap: 2px; }
+.screenshare-editlog-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #e9d5ff;
+  cursor: pointer;
+}
+.screenshare-editlog-nav-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.22); }
+.screenshare-editlog-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.screenshare-editlog-empty { font-size: 12px; color: #b9a9d6; padding: 4px 6px 8px; }
+.screenshare-editlog-list { list-style: none; margin: 0; padding: 0; }
+.screenshare-editlog-item { border-radius: 8px; }
+.screenshare-editlog-item + .screenshare-editlog-item { margin-top: 2px; }
+.screenshare-editlog-item:hover { background: rgba(168, 85, 247, 0.14); }
+.screenshare-editlog-item.undone { opacity: 0.4; }
+.screenshare-editlog-item.current { background: rgba(168, 85, 247, 0.2); }
+.screenshare-editlog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.screenshare-editlog-num {
+  flex: none;
+  min-width: 16px;
+  font: 600 10px ui-monospace, monospace;
+  color: #a78bda;
+}
+.screenshare-editlog-label {
+  font: 500 12px ui-monospace, monospace;
+  color: #e9d5ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .screenshare-rect {
   position: fixed;
@@ -361,6 +467,34 @@ const CSS = `
 }
 .screenshare-sel-hover {
   border: 1.5px dashed rgba(168, 85, 247, 0.8);
+}
+
+/* Edit-mode cursor/selection normalization (in-app port of Pixel's edit-mode
+   stylesheet — its :host * scoping becomes "the app, excluding Pixel's own
+   UI"). The designer is picking elements, not interacting, so neutralize the
+   app's cursors (no pointer on buttons, no not-allowed on disabled inputs) and
+   disable text selection.
+
+   Scoping is the whole trick. In Pixel the rule lived inside the tile shadow
+   root, so the :host * scope could never reach the chrome. Here everything is
+   light DOM, so we must explicitly exclude Pixel's own UI — and the
+   class-substring :not() is NOT enough: it only skips elements that themselves
+   carry a screenshare- class, not the inline-styled controls deep inside the
+   design pane (DesignPanel buttons / inputs / scrub handles). Those would
+   inherit cursor:default !important, clobbering their pointer / ew-resize
+   cursors. The extra :not(.screenshare-overlay *) excludes the entire overlay
+   subtree, so Pixel's UI keeps its own cursors. The element under an inline
+   edit re-enables a text caret below. */
+html.screenshare-editing body *:not([class*='screenshare-']):not(.screenshare-overlay *) {
+  cursor: default !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+html.screenshare-editing [data-pixel-editing],
+html.screenshare-editing [data-pixel-editing] * {
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 /* Design pane — docks on the right and reserves layout width (the body is
@@ -476,6 +610,6 @@ export function injectStyles(): void {
   if (document.getElementById(STYLE_ID)) return
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = CSS
+  style.textContent = CSS + THEME_CSS + HANDLES_CSS
   document.head.appendChild(style)
 }

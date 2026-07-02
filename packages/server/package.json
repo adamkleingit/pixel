@@ -26,13 +26,14 @@
   "scripts": {
     "build": "tsup && node scripts/bundle-skill.mjs",
     "start": "node dist/index.js",
-    "dev": "SCREENSHARE_PORT=41889 tsx watch src/index.ts",
+    "dev": "SCREENSHARE_PORT=41889 SCREENSHARE_PROJECT_DIR=../../examples/basic tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "prepack": "cp ../../README.md README.md",
     "postpack": "rm -f README.md"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",
+    "chokidar": "^4.0.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "ffmpeg-static": "^5.2.0",

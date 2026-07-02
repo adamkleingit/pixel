@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState, StrokePoint, Task } from './types'
+import type { Token } from './pixel-common'
+import type { BarPosition, EditPayload, Recording, ScreenshareState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -46,6 +47,9 @@ export interface ScreenshareContextValue {
   enterEdit: () => void
   exitEdit: () => void
   toggleEdit: () => void
+  /** Persist a batch of edit-mode changes to the sink (Save). Rejects on failure
+   *  so the caller can keep the user in edit mode. No-op sink → rejects. */
+  saveEdits: (payload: EditPayload) => Promise<{ id: string }>
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void
@@ -64,6 +68,10 @@ export interface ScreenshareContextValue {
   serverDown: boolean
   /** Reveal a recording's folder in the OS file manager (no-op if the sink can't). */
   openTask: (id: string) => void
+  /** The project's design tokens, fetched from the sink (GET /tokens). Empty when
+   *  the sink can't fetch or none are detected. Feeds the design-pane pickers and
+   *  the on-canvas drag snap-to-token. */
+  designTokens: Token[]
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void

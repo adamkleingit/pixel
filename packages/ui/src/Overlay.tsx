@@ -13,6 +13,7 @@ import { drainPendingChanges } from './edit/change-reporter'
 import { buildEditPayload } from './edit/edit-payload'
 import { TokensProvider } from './tokens-context'
 import { useContainEvents } from './useContainEvents'
+import { startBugRecording, uploadBugReport, type BugRecording } from './bug-report'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -46,6 +47,9 @@ const ICONS = {
   // Undo / redo: arrowhead + a curved arc back the other way.
   undo: 'M9 6 L4 11 L9 16 M4 11 H13 A5 5 0 1 1 13 21 H9',
   redo: 'M15 6 L20 11 L15 16 M20 11 H11 A5 5 0 1 0 11 21 H15',
+  // Bug (Lucide "bug"): body + legs + antennae.
+  bug: 'm8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4',
+  check: 'M5 12l5 5L20 7',
 }
 
 const VERTICAL_POSITIONS = new Set(['center-left', 'center-right'])
@@ -170,8 +174,8 @@ function TaskIndicator({
         (serverDown ? ' error' : '') +
         (open ? ' active' : '')
       }
-      title={serverDown ? 'Pixel server unreachable — click for details' : 'Recording tasks'}
-      aria-label={serverDown ? 'Pixel server unreachable' : 'Recording tasks'}
+      title={serverDown ? 'Pixel server unreachable — click for details' : 'Task log'}
+      aria-label={serverDown ? 'Pixel server unreachable' : 'Task log'}
       onClick={onClick}
     >
       {serverDown ? (
@@ -369,7 +373,6 @@ function EditControls() {
 
   return (
     <>
-      <EditLog />
       <button
         type="button"
         className="screenshare-rec-btn screenshare-rec-save"
@@ -424,6 +427,101 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
         <path
           d={ICONS.edit}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * "Report a bug" button (bug icon) — records the screen + mic via getDisplayMedia
+ * and uploads it (with a metadata sidecar: url, browser, console errors) to the
+ * configured Vercel Blob token route. Only renders when `config.bugReport` is
+ * set. Self-contained: it doesn't touch the screenshare/edit state machine.
+ */
+function BugButton() {
+  const { bugReport } = useScreenshareContext()
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'uploading' | 'sent' | 'error'>('idle')
+  const recRef = useRef<BugRecording | null>(null)
+
+  const finalize = useCallback(async () => {
+    const rec = recRef.current
+    if (!rec || !bugReport) return
+    recRef.current = null
+    setPhase('uploading')
+    try {
+      const blob = await rec.blob
+      await uploadBugReport(blob, { endpoint: bugReport.endpoint, startedAt: rec.startedAt, meta: bugReport.meta })
+      setPhase('sent')
+      window.setTimeout(() => setPhase((p) => (p === 'sent' ? 'idle' : p)), 2500)
+    } catch (err) {
+      console.error('[pixel] bug report upload failed', err)
+      setPhase('error')
+      window.setTimeout(() => setPhase((p) => (p === 'error' ? 'idle' : p)), 3500)
+    }
+  }, [bugReport])
+
+  const start = useCallback(async () => {
+    try {
+      const rec = await startBugRecording()
+      recRef.current = rec
+      rec.onEnded(() => void finalize()) // browser's own "Stop sharing"
+      setPhase('recording')
+    } catch {
+      setPhase('idle') // user cancelled / denied the screen-share prompt
+    }
+  }, [finalize])
+
+  const stop = useCallback(() => {
+    recRef.current?.stop()
+    void finalize()
+  }, [finalize])
+
+  if (!bugReport) return null
+
+  if (phase === 'recording') {
+    return (
+      <button
+        type="button"
+        className="screenshare-rec-btn screenshare-bug-recording"
+        title="Stop & send bug report"
+        aria-label="Stop bug recording"
+        onClick={stop}
+      >
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+        </svg>
+      </button>
+    )
+  }
+
+  const tint = phase === 'sent' ? '#4ade80' : phase === 'error' ? '#f87171' : undefined
+  const title =
+    phase === 'uploading'
+      ? 'Uploading bug report…'
+      : phase === 'sent'
+        ? 'Bug report sent'
+        : phase === 'error'
+          ? 'Bug report failed — try again'
+          : 'Report a bug (records your screen)'
+  return (
+    <button
+      type="button"
+      className="screenshare-rec-btn"
+      title={title}
+      aria-label="Report a bug"
+      onClick={() => void start()}
+      disabled={phase === 'uploading'}
+      style={tint ? { color: tint } : undefined}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path
+          d={phase === 'sent' ? ICONS.check : ICONS.bug}
           fill="none"
           stroke="currentColor"
           strokeWidth={2}
@@ -651,14 +749,20 @@ function RecBar() {
         </>
       )}
 
-      {showIndicator && (
+      {/* Task log section: the change-history (edit-log) clock sits at the top,
+          above the server task indicator. */}
+      {(editing || showIndicator) && (
         <>
           <span className="screenshare-rec-sep" />
+          {editing && <EditLog />}
           {indicator}
         </>
       )}
 
       <span className="screenshare-rec-sep" />
+      {/* Always available (any mode) so a bug can be reported whenever it happens.
+          Renders nothing unless `config.bugReport` is set. */}
+      <BugButton />
       <IconButton icon="minimize" label="Minimize" onClick={() => setMinimized(true)} stroke />
       {tasksPopup}
     </div>

@@ -19,9 +19,10 @@ export interface Change {
   target: HTMLElement
   /** What surface the value lives on. `move` reorders the element within its
    *  parent — `before`/`after` are DOM child indices (see reposition-drag's
-   *  `pixel-move-node`). */
-  kind: 'style' | 'text' | 'attr' | 'move'
-  /** style property (e.g. `padding-left`), attribute name, or '' for text/move. */
+   *  `pixel-move-node`). `html` replaces the element's innerHTML (mixed-content
+   *  inline edit — a <p> with <span>/<strong> runs edited as raw markup). */
+  kind: 'style' | 'text' | 'attr' | 'move' | 'html'
+  /** style property (e.g. `padding-left`), attribute name, or '' for text/move/html. */
   name: string
   before: string
   after: string
@@ -70,6 +71,8 @@ function applyValue(target: HTMLElement, kind: Change['kind'], name: string, val
     else target.style.setProperty(name, value)
   } else if (kind === 'text') {
     target.textContent = value
+  } else if (kind === 'html') {
+    target.innerHTML = value
   } else if (kind === 'move') {
     // Reposition `target` to child index `value` within its parent. Compute the
     // reference against the siblings *excluding* target so the resulting index

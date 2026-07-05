@@ -40,12 +40,6 @@ export const eyeOffIcon = (
   </svg>
 )
 
-export const dropletIcon = (
-  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-    <path d="M 8 2 C 8 2 3.5 7 3.5 10 A 4.5 4.5 0 0 0 12.5 10 C 12.5 7 8 2 8 2 Z" />
-  </svg>
-)
-
 export const chevronIcon = (
   <svg viewBox="0 0 10 10" width="10" height="10" fill="currentColor">
     <path d="M 2 4 L 5 7 L 8 4 Z" />

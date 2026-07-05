@@ -12,8 +12,13 @@ export function Section({
   actions = null,
   children = null,
 }: SectionProps = {}) {
+  // A stable, slugified hook so tests (and any future automation) can target a
+  // specific section — e.g. `[data-section="background"]` — since several
+  // sections reuse the same generic controls (PaintRow's "Edit paint" swatch).
+  const sectionId = title ? title.toLowerCase().replace(/\s+/g, '-') : undefined
   return (
     <div
+      data-section={sectionId}
       style={{
         padding: `${SIZES.sectionPadY}px ${SIZES.sectionPadX}px`,
         borderBottom: `1px solid ${COLORS.border}`,

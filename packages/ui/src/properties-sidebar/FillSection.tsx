@@ -1,150 +1,219 @@
 import { useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import type { Token } from '../pixel-common'
 import { FillPopover } from './FillPopover'
 import { IconButton } from './IconButton'
 import { PaintRow } from './PaintRow'
 import { Section } from './Section'
 import { plusIcon } from './icons'
+import { COLORS } from './tokens'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
-import { hexAlphaToRgba, normalizeHex, rgbStringToHexAlpha } from '../edit/color'
+import { normalizeHex, rgbStringToHexAlpha } from '../edit/color'
+import {
+  defaultSolid,
+  paintsSignature,
+  paintsToStyles,
+  paintToPreview,
+  readPaints,
+  type BackgroundPaint,
+} from '../edit/background-paint'
 
 export interface FillSectionProps {
   elements?: Element[]
 }
 
-type Fill = {
-  id: string
-  hex: string
-  alpha: string
-  isVisible: boolean
+/** A blank (fully-transparent) solid — the "no background" placeholder row. */
+function isBlank(p: BackgroundPaint): boolean {
+  return p.kind === 'solid' && (!p.hex || p.alpha === '0')
 }
 
-let nextId = 1
-const mkId = () => `fill-${nextId++}`
+/** Move the item at `from` to index `to`, returning a new array. */
+function moveItem<T>(arr: T[], from: number, to: number): T[] {
+  const next = arr.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
 
+/**
+ * The element's background as an ordered stack of paints (order matters — the
+ * first row is the topmost layer). Each layer can be a solid color, a gradient,
+ * or an image; solids are editable inline, and every layer opens the full
+ * FillPopover editor from its swatch. Add via the section "+", remove with the
+ * minus, reorder by dragging the grip handle. Writes fan out over the selection.
+ */
 export function FillSection({ elements = [] }: FillSectionProps = {}) {
-  const [fills, setFills] = useState<Fill[]>([
-    { id: mkId(), hex: '050505', alpha: '100', isVisible: true },
-  ])
+  const [paints, setPaints] = useState<BackgroundPaint[]>(() => [defaultSolid('050505')])
   const [shared, setShared] = useState<'single' | 'multiple'>('single')
-  const [activePopover, setActivePopover] = useState<string | null>(null)
-  const anchorsRef = useRef<Record<string, HTMLElement | null>>({})
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  // Live drag-to-reorder state: `from` is the row picked up, `over` is the slot
+  // it would drop into. Null when no drag is in progress.
+  const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
+  const anchorsRef = useRef<Record<number, HTMLElement | null>>({})
 
-  // Sync the first fill from the elements' computed background-color whenever
-  // selection changes. When multi-edit elements disagree, mark the row as
-  // "Multiple" so the designer sees they'd be overwriting different values.
   useEffect(() => {
     if (elements.length === 0) return
-    const bg = readShared(elements, el => getComputedStyle(el).getPropertyValue('background-color'))
-    if (bg.kind === 'multiple') {
+    const sig = readShared(elements, el => paintsSignature(readPaints(el)))
+    if (sig.kind === 'multiple') {
       setShared('multiple')
-      setFills([{ id: mkId(), hex: '', alpha: '', isVisible: true }])
+      setOpenIndex(null)
       return
     }
-    const value = bg.kind === 'single' ? bg.value : ''
-    const { hex, alphaPercent } = rgbStringToHexAlpha(value)
     setShared('single')
-    setFills([{ id: mkId(), hex, alpha: alphaPercent, isVisible: alphaPercent !== '0' }])
+    setPaints(readPaints(elements[0]))
   }, [elements])
 
-  function applyToElement(nextFills: Fill[]) {
-    const visible = nextFills.find(f => f.isVisible)
-    const value = visible && visible.hex ? hexAlphaToRgba(visible.hex, visible.alpha || '100') : ''
-    applyPatchAll(elements, { kind: 'setStyle', property: 'background-color', value })
+  /** Set the stack and write it to every selected element. */
+  function apply(next: BackgroundPaint[]) {
+    const stack = next.length ? next : [defaultSolid('', '0')]
+    setShared('single')
+    setPaints(stack)
+    for (const { property, value } of paintsToStyles(stack)) {
+      applyPatchAll(elements, { kind: 'setStyle', property, value })
+    }
   }
 
-  function updateFill(id: string, patch: Partial<Fill>) {
-    setShared('single')
-    setFills(prev => {
-      const next = prev.map(f => {
-        if (f.id !== id) return f
-        const merged = { ...f, ...patch }
-        if (typeof patch.hex === 'string') merged.hex = normalizeHex(patch.hex)
-        return merged
+  const updateLayer = (i: number, paint: BackgroundPaint) => apply(paints.map((p, j) => (j === i ? paint : p)))
+  function removeLayer(i: number) {
+    setOpenIndex(null)
+    apply(paints.filter((_, j) => j !== i))
+  }
+  /** Begin a pointer drag on row `from` (the grip handle). Tracks the nearest
+   *  row under the pointer as `over`, and on release moves the layer into that
+   *  slot. Listens in capture so the edit-mode inert layer (which swallows
+   *  page mouse events) can't eat the move/up. */
+  function startDrag(from: number, e: React.PointerEvent) {
+    e.preventDefault()
+    setOpenIndex(null)
+    setDrag({ from, over: from })
+
+    const nearestRow = (clientY: number): number => {
+      let best = from
+      let bestDist = Infinity
+      for (const [k, el] of Object.entries(anchorsRef.current)) {
+        if (!el) continue
+        const r = el.getBoundingClientRect()
+        const dist = Math.abs(clientY - (r.top + r.height / 2))
+        if (dist < bestDist) { bestDist = dist; best = Number(k) }
+      }
+      return best
+    }
+    const onMove = (ev: PointerEvent) => setDrag(d => (d ? { ...d, over: nearestRow(ev.clientY) } : d))
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onUp, true)
+      setDrag(d => {
+        if (d && d.from !== d.over) apply(moveItem(paints, d.from, d.over))
+        return null
       })
-      applyToElement(next)
-      return next
-    })
+    }
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onUp, true)
   }
-  function removeFill(id: string) {
-    setFills(prev => {
-      const next = prev.filter(f => f.id !== id)
-      applyToElement(next)
-      return next
-    })
-    if (activePopover === id) setActivePopover(null)
+  function addLayer() {
+    const cleaned = paints.filter(p => !isBlank(p))
+    apply([defaultSolid('CCCCCC', '100'), ...cleaned])
+    setOpenIndex(0)
   }
-  function addFill() {
-    setFills(prev => {
-      const next = [...prev, { id: mkId(), hex: '000000', alpha: '100', isVisible: true }]
-      applyToElement(next)
-      return next
-    })
+  function onColorToken(i: number, token: Token) {
+    // Single solid layer: keep the symbolic token binding via applyTokenAll and
+    // re-read. Multi-layer: fall back to the resolved color on that layer.
+    if (paints.length === 1 && i === 0) {
+      applyPatchAll(elements, { kind: 'setStyle', property: 'background-image', value: '' })
+      applyTokenAll(elements, 'background-color', token)
+      setShared('single')
+      if (elements[0]) setPaints(readPaints(elements[0]))
+      return
+    }
+    const { hex, alphaPercent } = rgbStringToHexAlpha(token.value)
+    updateLayer(i, { kind: 'solid', hex, alpha: alphaPercent })
   }
-  function onColorTokenForRow(id: string, token: Token) {
-    // Token-bound write — the token's resolved value is the CSS color (hex /
-    // rgba / oklch / hsl); applyTokenAll carries the source payload so the
-    // agent rewrites source to the symbolic spelling. Only updates *this* row's
-    // displayed hex/alpha; other rows are unchanged.
-    applyTokenAll(elements, 'background-color', token)
-    setShared('single')
-    const parsed = rgbStringToHexAlpha(token.value)
-    setFills(prev => prev.map(f =>
-      f.id === id ? { ...f, hex: parsed.hex, alpha: parsed.alphaPercent, isVisible: true } : f,
-    ))
+
+  const activeAnchor = {
+    get current() {
+      return openIndex != null ? anchorsRef.current[openIndex] ?? null : null
+    },
   }
 
   const actions = (
-    <IconButton title="Add fill" onClick={addFill}>{plusIcon}</IconButton>
+    <IconButton title="Add background" onClick={addLayer}>{plusIcon}</IconButton>
   )
 
-  const activeAnchorRef = {
-    get current() {
-      return activePopover ? anchorsRef.current[activePopover] ?? null : null
-    },
-  }
-  const activeFill = activePopover ? fills.find(f => f.id === activePopover) ?? null : null
-
   return (
-    <Section title="Fill" actions={actions}>
-      {fills.map(fill => (
-        <div
-          key={fill.id}
-          ref={el => {
-            anchorsRef.current[fill.id] = el
-          }}
-        >
-          <PaintRow
-            hex={fill.hex}
-            hexPlaceholder={shared === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
-            swatchColor={shared === 'multiple' ? 'transparent' : `#${fill.hex}`}
-            swatchBackground={shared === 'multiple' ? 'transparent' : `#${fill.hex}`}
-            alpha={fill.alpha}
-            alphaPlaceholder={shared === 'multiple' ? '–' : ''}
-            isVisible={fill.isVisible}
-            disabled={shared === 'multiple'}
-            onHexChange={v => updateFill(fill.id, { hex: v })}
-            onAlphaChange={v => updateFill(fill.id, { alpha: v })}
-            onVisibilityChange={v => updateFill(fill.id, { isVisible: v })}
-            onSwatchClick={() =>
-              setActivePopover(prev => (prev === fill.id ? null : fill.id))
-            }
-            onRemove={() => removeFill(fill.id)}
-            tokenProperty="background-color"
-            onTokenSelect={t => onColorTokenForRow(fill.id, t)}
-          />
-        </div>
-      ))}
+    <Section title="Background" actions={actions}>
+      {shared === 'multiple' ? (
+        <PaintRow
+          hex=""
+          hexPlaceholder={MULTIPLE_PLACEHOLDER}
+          swatchColor="transparent"
+          swatchBackground="transparent"
+          alpha=""
+          alphaPlaceholder="–"
+          disabled
+          hideVisibility
+        />
+      ) : (
+        paints.map((p, i) => {
+          const preview = paintToPreview(p)
+          // Only a stack of 2+ layers is reorderable; a lone layer has nowhere
+          // to go, so it shows no grip.
+          const draggable = paints.length > 1
+          const reorder = draggable
+            ? { onDragHandleDown: (e: React.PointerEvent) => startDrag(i, e), isDragging: drag?.from === i }
+            : {}
+          // Show a drop indicator on the row the drag is currently over.
+          const isDropTarget = drag != null && drag.over === i && drag.from !== i
+          return (
+            <div
+              key={i}
+              ref={el => { anchorsRef.current[i] = el }}
+              style={{
+                borderRadius: 4,
+                boxShadow: isDropTarget ? `0 0 0 1.5px ${COLORS.accent}` : undefined,
+              }}
+            >
+              {p.kind === 'solid' ? (
+                <PaintRow
+                  hex={p.hex}
+                  swatchColor={`#${p.hex}`}
+                  swatchBackground={preview}
+                  alpha={p.alpha}
+                  hideVisibility
+                  onHexChange={v => updateLayer(i, { ...p, hex: normalizeHex(v) })}
+                  onAlphaChange={v => updateLayer(i, { ...p, alpha: v })}
+                  onSwatchClick={() => setOpenIndex(o => (o === i ? null : i))}
+                  onRemove={() => removeLayer(i)}
+                  {...reorder}
+                  tokenProperty="background-color"
+                  onTokenSelect={t => onColorToken(i, t)}
+                />
+              ) : (
+                <PaintRow
+                  label={p.kind === 'gradient' ? 'Gradient' : 'Image'}
+                  swatchColor={preview}
+                  swatchBackground={preview}
+                  hideAlpha
+                  hideToken
+                  hideVisibility
+                  onSwatchClick={() => setOpenIndex(o => (o === i ? null : i))}
+                  onRemove={() => removeLayer(i)}
+                  {...reorder}
+                />
+              )}
+            </div>
+          )
+        })
+      )}
 
       <FillPopover
-        isOpen={activePopover !== null}
-        onClose={() => setActivePopover(null)}
-        anchorRef={activeAnchorRef}
-        hex={activeFill?.hex ?? '000000'}
-        alpha={activeFill?.alpha ?? '100'}
-        onChangeColor={(hex, alpha) => {
-          if (activePopover) updateFill(activePopover, { hex, alpha })
-        }}
+        isOpen={openIndex != null && shared === 'single'}
+        onClose={() => setOpenIndex(null)}
+        anchorRef={activeAnchor}
+        paint={openIndex != null ? paints[openIndex] ?? null : null}
+        onPaintChange={p => { if (openIndex != null) updateLayer(openIndex, p) }}
+        onTokenSelect={t => { if (openIndex != null) onColorToken(openIndex, t) }}
       />
     </Section>
   )

@@ -20,6 +20,15 @@ import { applyPatch, setPatchSilent, type Patch } from '../edit/patch'
 import { readRotationDeg } from '../edit/read-computed'
 import type { HandleCorner, HandleSide } from './handle-layout'
 import { snapModeFromEvent, snapToStep } from './token-snap'
+import {
+  clearActiveGuides,
+  collectSnapModel,
+  computeSnap,
+  setActiveGuides,
+  SNAP_THRESHOLD,
+  type SnapModel,
+  type SnapRect,
+} from './alignment-snap'
 
 interface AxisSign {
   active: boolean
@@ -66,6 +75,10 @@ interface ResizeFields {
   startTop: number
   startLeft: number
   rotationRad: number
+  /** Pre-drag screen rect + sibling/parent snap model, for alignment guides.
+   *  Snapping is skipped for rotated elements (guides assume axis-aligned box). */
+  startScreenRect: SnapRect
+  snapModel: SnapModel
 }
 
 interface RotateFields {
@@ -187,6 +200,8 @@ export function startResizeDrag(input: ResizeStartInput): void {
     startTop,
     startLeft,
     rotationRad: (input.rotationDeg * Math.PI) / 180,
+    startScreenRect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+    snapModel: collectSnapModel(input.element),
   }
 
   attachListeners()
@@ -324,6 +339,7 @@ function onKeyDown(e: KeyboardEvent): void {
 
 function cleanup(): void {
   if (!session) return
+  clearActiveGuides()
   setPatchSilent(false)
   document.documentElement.style.cursor = session.prevDocCursor
   document.body.style.userSelect = session.prevBodyUserSelect
@@ -387,6 +403,45 @@ function moveResize(e: PointerEvent, s: BaseFields & ResizeFields): void {
     // Re-clamp after coupling so neither dim goes negative.
     widthDelta = Math.max(widthDelta, -s.startWidth)
     heightDelta = Math.max(heightDelta, -s.startHeight)
+  }
+
+  // Figma-style alignment snapping — pull the moving edge(s) onto a sibling /
+  // parent edge within SNAP_THRESHOLD. Only the edge moveResize actually writes
+  // is a snap probe: the left/top edge when out-of-flow with a -1 handle, else
+  // the right/bottom edge (in-flow width/height grows from the layout origin).
+  // Skipped under Shift (aspect lock) and for rotated boxes (axis-aligned model).
+  if (!e.shiftKey && s.rotationRad === 0) {
+    const leftMoves = s.outOfFlow && s.axes.width.sign === -1
+    const topMoves = s.outOfFlow && s.axes.height.sign === -1
+    let predLeft = s.startScreenRect.left
+    let predRight = s.startScreenRect.right
+    let predTop = s.startScreenRect.top
+    let predBottom = s.startScreenRect.bottom
+    const xs: number[] = []
+    const ys: number[] = []
+    if (s.axes.width.active) {
+      if (leftMoves) { predLeft = s.startScreenRect.left - widthDelta * scale; xs.push(predLeft) }
+      else { predRight = s.startScreenRect.right + widthDelta * scale; xs.push(predRight) }
+    }
+    if (s.axes.height.active) {
+      if (topMoves) { predTop = s.startScreenRect.top - heightDelta * scale; ys.push(predTop) }
+      else { predBottom = s.startScreenRect.bottom + heightDelta * scale; ys.push(predBottom) }
+    }
+    const snap = computeSnap(
+      { left: predLeft, top: predTop, right: predRight, bottom: predBottom },
+      s.snapModel,
+      SNAP_THRESHOLD,
+      { xs, ys },
+    )
+    if (s.axes.width.active && snap.dx !== 0) {
+      widthDelta = Math.max((leftMoves ? -1 : 1) * (snap.dx / scale) + widthDelta, -s.startWidth)
+    }
+    if (s.axes.height.active && snap.dy !== 0) {
+      heightDelta = Math.max((topMoves ? -1 : 1) * (snap.dy / scale) + heightDelta, -s.startHeight)
+    }
+    setActiveGuides(snap.guides)
+  } else {
+    setActiveGuides([])
   }
 
   if (s.axes.width.active) {

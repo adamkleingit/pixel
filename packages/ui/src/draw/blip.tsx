@@ -23,10 +23,10 @@ export function Blip({ data, onDone, lifetimeMs = 1100 }: BlipProps) {
   }, [data.id, lifetimeMs, onDone])
 
   return (
-    <div className="screenshare-blip" style={{ left: data.x, top: data.y }}>
-      <div className="screenshare-blip-ring" />
-      <div className="screenshare-blip-ring delay" />
-      <div className="screenshare-blip-dot" />
+    <div className="pixel-blip" style={{ left: data.x, top: data.y }}>
+      <div className="pixel-blip-ring" />
+      <div className="pixel-blip-ring delay" />
+      <div className="pixel-blip-dot" />
     </div>
   )
 }

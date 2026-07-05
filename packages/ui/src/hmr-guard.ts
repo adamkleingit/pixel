@@ -72,7 +72,7 @@ export function installHmrGuard(hot: HotContext | undefined | null | false): voi
     if (shouldDeferHmr()) {
       // Throwing here aborts Vite's pending update / full reload. The deferred
       // change is replayed as one location.reload() when the session ends.
-      throw new Error(`[screenshare] ${what} deferred until the edit/recording session ends`)
+      throw new Error(`[pixel] ${what} deferred until the edit/recording session ends`)
     }
   }
   hot.on('vite:beforeUpdate', defer('HMR update'))

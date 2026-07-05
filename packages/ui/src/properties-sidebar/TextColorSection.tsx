@@ -100,6 +100,7 @@ export function TextColorSection({ elements = [] }: TextColorSectionProps = {}) 
         hex={hex}
         alpha={alpha}
         onChangeColor={onColorFromPopover}
+        onTokenSelect={onColorToken}
       />
     </Section>
   )

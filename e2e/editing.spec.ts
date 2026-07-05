@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { INBOX_DIR, SCREENSHARE_DIR } from './fixtures'
+import { INBOX_DIR, PIXEL_DIR } from './fixtures'
 
 /** Poll the dropbox until an edit task (edits.json + ready timeline.json) lands. */
 async function waitForEditTask(timeoutMs = 30_000): Promise<string> {
@@ -23,20 +23,20 @@ async function waitForEditTask(timeoutMs = 30_000): Promise<string> {
   throw new Error(`no edit task appeared in ${INBOX_DIR} within ${timeoutMs}ms`)
 }
 
-// Scope to the screenshare bar — the example app has its own "Edit" button.
+// Scope to the pixel bar — the example app has its own "Edit" button.
 type PWPage = import('@playwright/test').Page
 const editBtn = (page: PWPage) =>
-  page.locator('.screenshare-rec').getByRole('button', { name: 'Edit' })
+  page.locator('.pixel-rec').getByRole('button', { name: 'Edit' })
 // In edit mode the pencil is replaced by Save/Cancel (editing/recording are
 // separated). These are the bar's edit-mode controls + the "is editing" marker.
-const saveBtn = (page: PWPage) => page.locator('.screenshare-rec').getByRole('button', { name: 'Save' })
+const saveBtn = (page: PWPage) => page.locator('.pixel-rec').getByRole('button', { name: 'Save' })
 const cancelBtn = (page: PWPage) =>
-  page.locator('.screenshare-rec').getByRole('button', { name: 'Cancel' })
-const editingBar = (page: PWPage) => page.locator('.screenshare-rec.editing')
+  page.locator('.pixel-rec').getByRole('button', { name: 'Cancel' })
+const editingBar = (page: PWPage) => page.locator('.pixel-rec.editing')
 
 test.beforeEach(async () => {
   // The composition test records (and uploads) — start from a clean dropbox.
-  await rm(SCREENSHARE_DIR, { recursive: true, force: true })
+  await rm(PIXEL_DIR, { recursive: true, force: true })
 })
 
 test('the Edit pencil enters and exits edit mode', async ({ page }) => {
@@ -89,7 +89,7 @@ test('recording and editing are separated in the bar', async ({ page }) => {
 
   // Entering edit hides the bar's Rec button and shows Save/Cancel.
   await editBtn(page).click()
-  await expect(page.locator('.screenshare-rec-record')).toHaveCount(0)
+  await expect(page.locator('.pixel-rec-record')).toHaveCount(0)
   await expect(saveBtn(page)).toBeVisible()
   await expect(cancelBtn(page)).toBeVisible()
 })
@@ -101,7 +101,7 @@ test('selection: Cmd+click picks the exact element under the pointer', async ({ 
   const target = page.getByRole('button', { name: 'Upgrade' })
   await target.click({ modifiers: ['Meta'] }) // Cmd → exact leaf
 
-  const anchor = page.locator('.screenshare-sel-anchor')
+  const anchor = page.locator('.pixel-sel-anchor')
   await expect(anchor).toBeVisible()
 
   // The anchor outline overlays the clicked element's box.
@@ -125,7 +125,7 @@ test('selection: hovering draws a hover outline', async ({ page }) => {
   await editBtn(page).click()
 
   await page.getByRole('button', { name: 'Upgrade' }).hover()
-  await expect(page.locator('.screenshare-sel-hover')).toBeVisible()
+  await expect(page.locator('.pixel-sel-hover')).toBeVisible()
 })
 
 test('selection: double-click drills inward (outside → inside)', async ({ page }) => {
@@ -133,7 +133,7 @@ test('selection: double-click drills inward (outside → inside)', async ({ page
   await editBtn(page).click()
 
   const target = page.getByRole('button', { name: 'Upgrade' })
-  const anchor = page.locator('.screenshare-sel-anchor')
+  const anchor = page.locator('.pixel-sel-anchor')
 
   // Plain click → selects the outermost level (anchored at the app root).
   await target.click()
@@ -162,8 +162,8 @@ test('selection: Shift+click adds a second element (multi-select)', async ({ pag
   await page.getByRole('button', { name: 'Upgrade' }).click({ modifiers: ['Meta'] })
   await page.getByRole('button', { name: 'Compose' }).click({ modifiers: ['Shift'] })
 
-  await expect(page.locator('.screenshare-sel-anchor')).toHaveCount(1)
-  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-anchor')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-match')).toHaveCount(1)
 })
 
 test('multi-edit: double-click edits the text of every selected element', async ({ page }) => {
@@ -176,7 +176,7 @@ test('multi-edit: double-click edits the text of every selected element', async 
   // Select both card blurbs (same depth), then double-click one to edit ALL.
   await inboxP.click({ modifiers: ['Meta'] })
   await billingP.click({ modifiers: ['Shift'] })
-  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-match')).toHaveCount(1)
 
   await inboxP.dblclick()
   await page.keyboard.type('Shared copy')
@@ -225,7 +225,7 @@ test('multi-edit: moving is disabled — dragging the body keeps the selection i
   const upgrade = page.getByRole('button', { name: 'Upgrade' })
   await upgrade.click({ modifiers: ['Meta'] })
   await page.getByRole('button', { name: 'Compose' }).click({ modifiers: ['Shift'] })
-  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-match')).toHaveCount(1)
 
   // Press + drag the body of a selected element. Move is disabled for multi, so
   // the selection is preserved (not collapsed to one) and nothing is repositioned.
@@ -235,8 +235,8 @@ test('multi-edit: moving is disabled — dragging the body keeps the selection i
   await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 40, { steps: 8 })
   await page.mouse.up()
 
-  await expect(page.locator('.screenshare-sel-anchor')).toHaveCount(1)
-  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1) // still multi
+  await expect(page.locator('.pixel-sel-anchor')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-match')).toHaveCount(1) // still multi
   expect(await upgrade.evaluate((b) => (b as HTMLElement).style.position)).not.toBe('absolute')
 })
 
@@ -244,7 +244,7 @@ test('design pane: docks on the right, shrinks the body, collapses, and restores
   page,
 }) => {
   await page.goto('/')
-  const pane = page.locator('.screenshare-pane')
+  const pane = page.locator('[aria-label="Design pane"]')
   const marginRight = () => page.evaluate(() => document.documentElement.style.marginRight)
 
   // Appears immediately on entering edit mode, and shrinks the body (not float).
@@ -254,15 +254,15 @@ test('design pane: docks on the right, shrinks the body, collapses, and restores
 
   // Inspects the selected element.
   await page.getByRole('button', { name: 'Upgrade' }).click({ modifiers: ['Meta'] })
-  await expect(page.locator('.screenshare-pane-tag')).toBeVisible()
+  await expect(page.locator('.pixel-pane-tag')).toBeVisible()
 
   // Collapse → frees the reserved width (like the recording menu's minimize).
-  await page.locator('.screenshare-pane-collapse').click()
-  await expect(page.locator('.screenshare-pane.collapsed')).toBeVisible()
+  await page.locator('[aria-label="Design pane"] .pixel-pane-collapse').click()
+  await expect(page.locator('[aria-label="Design pane"].collapsed')).toBeVisible()
   expect(await marginRight()).toBe('0px')
 
   // Expand again restores the width; exiting edit restores the original margin.
-  await page.locator('.screenshare-pane-collapse').click()
+  await page.locator('[aria-label="Design pane"] .pixel-pane-collapse').click()
   expect(await marginRight()).toBe('280px')
   await cancelBtn(page).click() // exit edit
   await expect(pane).toHaveCount(0)
@@ -272,7 +272,7 @@ test('design pane: docks on the right, shrinks the body, collapses, and restores
 test('the mouse tool is hidden when not recording', async ({ page }) => {
   await page.goto('/')
   // Idle: the bar is shown but the mouse tool (a recording-only control) isn't.
-  await expect(page.locator('.screenshare-rec')).toBeVisible()
+  await expect(page.locator('.pixel-rec')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Mouse tool' })).toHaveCount(0)
 })
 
@@ -284,12 +284,12 @@ test('selection outline recalculates when the design pane collapses (body reflow
 
   const target = page.getByRole('button', { name: 'Upgrade' })
   await target.click({ modifiers: ['Meta'] })
-  const anchor = page.locator('.screenshare-sel-anchor')
+  const anchor = page.locator('.pixel-sel-anchor')
   await expect(anchor).toBeVisible()
 
   // Collapse the pane → the body widens and the element shifts. The outline
   // must follow it (this is the bug fix — it used to go stale).
-  await page.locator('.screenshare-pane-collapse').click()
+  await page.locator('[aria-label="Design pane"] .pixel-pane-collapse').click()
   await page.waitForTimeout(300) // margin transition + reflow
 
   const t = await target.boundingBox()
@@ -305,11 +305,11 @@ test('design pane is resizable by dragging its left edge', async ({ page }) => {
   await page.goto('/')
   await editBtn(page).click()
 
-  const pane = page.locator('.screenshare-pane')
+  const pane = page.locator('[aria-label="Design pane"]')
   const before = (await pane.boundingBox())!.width
   expect(Math.round(before)).toBe(280)
 
-  const hb = (await page.locator('.screenshare-pane-resize').boundingBox())!
+  const hb = (await page.locator('[aria-label="Design pane"] .pixel-pane-resize').boundingBox())!
   await page.mouse.move(hb.x + hb.width / 2, hb.y + 120)
   await page.mouse.down()
   await page.mouse.move(hb.x - 80, hb.y + 120, { steps: 6 }) // drag left → wider
@@ -530,21 +530,21 @@ test('the edit log lists changes and its undo/redo + row-jump navigate history',
   await expect(p).toHaveText('Edited copy')
 
   // Open the edit-log popup from the bar — it lists the one change.
-  await page.locator('.screenshare-rec').getByRole('button', { name: 'Change history' }).click()
-  const log = page.locator('.screenshare-editlog')
+  await page.locator('.pixel-rec').getByRole('button', { name: 'Change history' }).click()
+  const log = page.locator('.pixel-editlog')
   await expect(log).toBeVisible()
-  await expect(log.locator('.screenshare-editlog-item')).toHaveCount(1)
-  await expect(log.locator('.screenshare-editlog-label')).toContainText('text')
+  await expect(log.locator('.pixel-editlog-item')).toHaveCount(1)
+  await expect(log.locator('.pixel-editlog-label')).toContainText('text')
 
   // Undo from the popup reverts the DOM and dims the entry.
   await log.getByRole('button', { name: /Undo/ }).click()
   await expect(p).toHaveText('Triage messages and assign owners.')
-  await expect(log.locator('.screenshare-editlog-item.undone')).toHaveCount(1)
+  await expect(log.locator('.pixel-editlog-item.undone')).toHaveCount(1)
 
   // Clicking the (undone) row jumps back to it via goto → re-applies.
-  await log.locator('.screenshare-editlog-row').first().click()
+  await log.locator('.pixel-editlog-row').first().click()
   await expect(p).toHaveText('Edited copy')
-  await expect(log.locator('.screenshare-editlog-item.undone')).toHaveCount(0)
+  await expect(log.locator('.pixel-editlog-item.undone')).toHaveCount(0)
 })
 
 test('clicking in the design pane does not close an open app dialog (click-outside contained)', async ({
@@ -557,12 +557,12 @@ test('clicking in the design pane does not close an open app dialog (click-outsi
 
   // Enter edit mode via the bar (its own clicks are contained → dialog stays).
   await editBtn(page).click()
-  await expect(page.locator('.screenshare-pane')).toBeVisible()
+  await expect(page.locator('[aria-label="Design pane"]')).toBeVisible()
   await expect(page.getByText('Test dialog')).toBeVisible()
 
   // Click inside the design pane chrome — must NOT bubble to the app's
   // document-level click-outside handler and close the dialog.
-  await page.locator('.screenshare-pane-title').click()
+  await page.locator('[aria-label="Design pane"] .pixel-pane-title').click()
   await expect(page.getByText('Test dialog')).toBeVisible()
 })
 
@@ -574,15 +574,15 @@ test('gap: dragging an automatic value cycles spread modes; ⌘-drag sets a pixe
 
   const p = page.locator('.card', { hasText: 'Inbox' }).locator('p')
   await p.click({ modifiers: ['Meta'] })
-  await page.locator('.screenshare-pane').getByTitle('Horizontal (flex row)').click()
+  await page.locator('[aria-label="Design pane"]').getByTitle('Horizontal (flex row)').click()
   const justify = () => p.evaluate((el) => getComputedStyle(el).justifyContent)
 
   // Start on an automatic value: space-between (the right-most spread mode).
-  await page.locator('.screenshare-pane').getByRole('button', { name: 'Open gap menu' }).click()
+  await page.locator('[aria-label="Design pane"]').getByRole('button', { name: 'Open gap menu' }).click()
   await page.getByRole('button', { name: 'Space between' }).click()
   await expect.poll(justify).toBe('space-between')
 
-  const prefix = page.locator('.screenshare-pane [aria-label="Drag to change gap distribution"]')
+  const prefix = page.locator('[aria-label="Design pane"] [aria-label="Drag to change gap distribution"]')
 
   // Drag the gap prefix LEFT → cycles toward the least spread (space-evenly).
   const b1 = (await prefix.boundingBox())!
@@ -618,11 +618,11 @@ test('Layout gap dropdown applies a spread mode (body-portaled menu works in edi
   // Select a leaf and make it a flex container so the Gap control appears.
   const p = page.locator('.card', { hasText: 'Billing' }).locator('p')
   await p.click({ modifiers: ['Meta'] })
-  await page.locator('.screenshare-pane').getByTitle('Horizontal (flex row)').click()
+  await page.locator('[aria-label="Design pane"]').getByTitle('Horizontal (flex row)').click()
 
   // Open the gap dropdown — its menu is portaled to <body>, OUTSIDE the overlay.
   // The edit-mode click-swallow must not eat the menu item's click (the bug).
-  await page.locator('.screenshare-pane').getByRole('button', { name: 'Open gap menu' }).click()
+  await page.locator('[aria-label="Design pane"]').getByRole('button', { name: 'Open gap menu' }).click()
   await page.getByRole('button', { name: 'Space between' }).click()
 
   // The selection got justify-content: space-between → the menu click reached it.

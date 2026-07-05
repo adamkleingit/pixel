@@ -2,7 +2,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { INBOX_DIR, SCREENSHARE_DIR } from './fixtures'
+import { INBOX_DIR, PIXEL_DIR } from './fixtures'
 
 /**
  * Thorough sweep of the in-app editing UI: the design pane (every section's
@@ -14,12 +14,12 @@ import { INBOX_DIR, SCREENSHARE_DIR } from './fixtures'
 
 // --- helpers -----------------------------------------------------------------
 
-const bar = (page: Page) => page.locator('.screenshare-rec')
+const bar = (page: Page) => page.locator('.pixel-rec')
 const editBtn = (page: Page) => bar(page).getByRole('button', { name: 'Edit' })
 const saveBtn = (page: Page) => bar(page).getByRole('button', { name: 'Save' })
 const cancelBtn = (page: Page) => bar(page).getByRole('button', { name: 'Cancel' })
-const pane = (page: Page) => page.locator('.screenshare-pane')
-const paneBody = (page: Page) => page.locator('.screenshare-pane-body')
+const pane = (page: Page) => page.locator('[aria-label="Design pane"]')
+const paneBody = (page: Page) => pane(page).locator('.pixel-pane-body')
 
 /** A design-pane numeric/text field by its aria-label. */
 const field = (page: Page, name: string) => pane(page).getByRole('textbox', { name })
@@ -90,7 +90,7 @@ async function dragHandle(
 }
 
 test.beforeEach(async () => {
-  await rm(SCREENSHARE_DIR, { recursive: true, force: true })
+  await rm(PIXEL_DIR, { recursive: true, force: true })
 })
 
 // --- design pane: structure --------------------------------------------------
@@ -100,9 +100,9 @@ test('pane: docks, shows the selected tag, and renders tag-appropriate sections'
 }) => {
   await enterEdit(page)
   await selectExact(inboxP(page))
-  await expect(page.locator('.screenshare-pane-tag')).toHaveText(/<p/)
+  await expect(page.locator('.pixel-pane-tag')).toHaveText(/<p/)
   const body = paneBody(page)
-  for (const s of ['Position', 'Layout', 'Appearance', 'Typography', 'Fill', 'Stroke', 'Effects']) {
+  for (const s of ['Position', 'Layout', 'Appearance', 'Typography', 'Background', 'Stroke', 'Effects']) {
     await expect(body).toContainText(s)
   }
 })
@@ -196,7 +196,7 @@ test('Layout: selecting the flex toolbar shows the Layout section; padding appli
   await page.keyboard.down('Meta')
   await page.mouse.click((cb.x + cb.width + tb.x + tb.width) / 2, cb.y + cb.height / 2)
   await page.keyboard.up('Meta')
-  await expect(page.locator('.screenshare-pane-tag')).toHaveText(/toolbar|<div/)
+  await expect(page.locator('.pixel-pane-tag')).toHaveText(/toolbar|<div/)
 
   // Padding fields are always shown in Layout. (The numeric Gap field is
   // contextual — this toolbar uses justify-content:space-between, so GapField
@@ -209,17 +209,24 @@ test('Layout: selecting the flex toolbar shows the Layout section; padding appli
 
 // --- Fill / Stroke / Effects -------------------------------------------------
 
-test('Fill: "Add fill" adds a background paint', async ({ page }) => {
+test('Background: editing a solid element\'s hex writes background-color', async ({ page }) => {
   await enterEdit(page)
-  await selectExact(upgrade(page))
-  await pane(page).getByTitle('Add fill', { exact: true }).click()
-  await expect.poll(() => styleOf(upgrade(page), 'background-color')).not.toBe('')
+  // A card has a solid background → the Background section shows an editable
+  // color row (the child-free top-padding corner selects the card itself).
+  await selectExact(inboxCard(page), { x: 8, y: 8 })
+  await pane(page).locator('[data-section="background"] input[type="text"]').first().fill('112233')
+  await expect.poll(() => styleOf(inboxCard(page), 'background-color')).not.toBe('')
 })
 
-test('Stroke: "Add stroke" adds a border', async ({ page }) => {
+test('Stroke: setting a stroke color applies a border', async ({ page }) => {
   await enterEdit(page)
   await selectExact(upgrade(page))
-  await pane(page).getByTitle('Add stroke', { exact: true }).click()
+  // The Stroke section is inline now (no "Add stroke" button): typing a color in
+  // the stroke paint row makes the stroke visible with the default 1px weight.
+  await pane(page)
+    .locator('[data-section="stroke"] input[type="text"]')
+    .first()
+    .fill('ff0000')
   await expect
     .poll(() => upgrade(page).evaluate((el) => (el as HTMLElement).style.borderWidth))
     .not.toBe('')
@@ -353,7 +360,7 @@ test('keyboard: arrow keys reorder an in-flow element among its siblings', async
 test('selection: Cmd+click picks the exact leaf; plain hover anchors by depth', async ({ page }) => {
   await enterEdit(page)
   await selectExact(upgrade(page))
-  const anchor = page.locator('.screenshare-sel-anchor')
+  const anchor = page.locator('.pixel-sel-anchor')
   await expect(anchor).toBeVisible()
   const a = (await upgrade(page).boundingBox())!
   const b = (await anchor.boundingBox())!
@@ -364,13 +371,13 @@ test('selection: Cmd+click picks the exact leaf; plain hover anchors by depth', 
 test('selection: hover draws a hover outline', async ({ page }) => {
   await enterEdit(page)
   await upgrade(page).hover()
-  await expect(page.locator('.screenshare-sel-hover')).toBeVisible()
+  await expect(page.locator('.pixel-sel-hover')).toBeVisible()
 })
 
 test('selection: double-click drills inward toward the leaf', async ({ page }) => {
   await enterEdit(page)
   const target = upgrade(page)
-  const anchor = page.locator('.screenshare-sel-anchor')
+  const anchor = page.locator('.pixel-sel-anchor')
   await target.click()
   await expect(anchor).toBeVisible()
   const outer = (await anchor.boundingBox())!.width
@@ -383,17 +390,17 @@ test('selection: Shift+click builds a multi-selection', async ({ page }) => {
   await enterEdit(page)
   await selectExact(upgrade(page))
   await compose(page).click({ modifiers: ['Shift'] })
-  await expect(page.locator('.screenshare-sel-anchor')).toHaveCount(1)
-  await expect(page.locator('.screenshare-sel-match')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-anchor')).toHaveCount(1)
+  await expect(page.locator('.pixel-sel-match')).toHaveCount(1)
 })
 
 test('selection: Escape clears the selection, then exits edit', async ({ page }) => {
   await enterEdit(page)
   await selectExact(upgrade(page))
-  await expect(page.locator('.screenshare-sel-anchor')).toBeVisible()
+  await expect(page.locator('.pixel-sel-anchor')).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.locator('.screenshare-sel-anchor')).toHaveCount(0)
-  await expect(bar(page).locator('.screenshare-rec.editing')).toBeDefined()
+  await expect(page.locator('.pixel-sel-anchor')).toHaveCount(0)
+  await expect(bar(page).locator('.pixel-rec.editing')).toBeDefined()
   await page.keyboard.press('Escape')
   await expect(editBtn(page)).toHaveAttribute('aria-pressed', 'false')
 })
@@ -453,7 +460,7 @@ test('Save: writes an edit task carrying the changes to the dropbox', async ({ p
   await opacityField(page).fill('20')
   await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.2')
   await saveBtn(page).click()
-  await expect(bar(page).locator('.screenshare-rec.editing')).toHaveCount(0)
+  await expect(bar(page).locator('.pixel-rec.editing')).toHaveCount(0)
 
   const id = await waitForEditTask()
   const edits = JSON.parse(await readFile(join(INBOX_DIR, id, 'edits.json'), 'utf8'))

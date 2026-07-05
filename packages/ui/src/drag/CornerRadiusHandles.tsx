@@ -216,8 +216,13 @@ function Dot({
   const draggingThis =
     !!drag && drag.element === element && drag.corners.has(corner)
   const dragSomethingElse = !!drag && !draggingThis
+  // The label shows only on the corner the user actually grabbed — not the
+  // mirrored corners an alt / alt+shift drag also drives — so an all-corners
+  // drag reads as one value pill, not four overlapping ones.
+  const isDragOrigin =
+    !!drag && drag.element === element && drag.baseCorner === corner
 
-  const showLabel = (hovered && !dragSomethingElse) || draggingThis
+  const showLabel = (hovered && !dragSomethingElse) || isDragOrigin
 
   const tokenName = tokenDisplayLabel(matchToken(`${Math.round(radius)}px`))
 

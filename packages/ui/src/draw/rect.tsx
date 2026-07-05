@@ -5,7 +5,7 @@ import type { RectFlash, RectShape } from '../context'
 export function DragRect({ rect }: { rect: RectShape }) {
   return (
     <div
-      className="screenshare-rect"
+      className="pixel-rect"
       style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
     />
   )
@@ -28,7 +28,7 @@ export function RectFlashView({
 
   return (
     <div
-      className="screenshare-rect-flash"
+      className="pixel-rect-flash"
       style={{ left: flash.x, top: flash.y, width: flash.width, height: flash.height }}
     />
   )

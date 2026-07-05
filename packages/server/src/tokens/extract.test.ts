@@ -36,7 +36,7 @@ const SHADCN_GLOBALS = `
 describe('token extraction', () => {
   it('shadcn: extracts :root vars with utility/css-var spellings + writes the cache', async () => {
     const project = tmpProject()
-    const root = join(project, '.screenshare')
+    const root = join(project, '.pixel')
     writeFileSync(join(project, 'globals.css'), SHADCN_GLOBALS)
 
     const selected = selectAdapter(project)
@@ -65,7 +65,7 @@ describe('token extraction', () => {
 
   it('tailwind v4: extracts @theme declarations with v4 utility spellings', async () => {
     const project = tmpProject()
-    const root = join(project, '.screenshare')
+    const root = join(project, '.pixel')
     writeFileSync(
       join(project, 'package.json'),
       JSON.stringify({ name: 'x', dependencies: { tailwindcss: '^4.0.0' } }),
@@ -90,7 +90,7 @@ describe('token extraction', () => {
 
   it('no token source: falls back to an empty set', async () => {
     const project = tmpProject()
-    const root = join(project, '.screenshare')
+    const root = join(project, '.pixel')
     writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'plain' }))
 
     const cache = await extractAndCacheTokens(project, root)

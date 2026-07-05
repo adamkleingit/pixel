@@ -29,6 +29,11 @@ export function NumericInput({
   prefixProps = {},
   tokenLabel = null,
 }: NumericInputProps = {}) {
+  // Size the input to the digits it actually holds (capped) so the unit suffix
+  // sits right after the number instead of across a fixed-width gap. `ch` ≈ one
+  // digit in the inherited font; +2px keeps the caret from touching the suffix.
+  const contentChars = Math.max((value ?? '').length, (placeholder ?? '').length, 1)
+
   return (
     <label
       title={tokenLabel ? `Bound to token: ${tokenLabel}` : undefined}
@@ -37,11 +42,11 @@ export function NumericInput({
         minWidth: 0,
         display: 'flex',
         alignItems: 'center',
-        // space-between pushes the value group (prefix + numeric input) to the
-        // left and the token label / suffix to the right, so the token name
-        // anchors to the right edge of the input and grows responsively as the
-        // sidebar widens — instead of getting clipped at a fixed cap.
-        justifyContent: 'space-between',
+        // With a token label present, space-between anchors the token name to
+        // the right edge (grows with the sidebar). For a plain unit suffix we
+        // pack left instead, so it reads "100%" tight to the value rather than
+        // floating at the far edge with dead space in between.
+        justifyContent: tokenLabel ? 'space-between' : 'flex-start',
         gap: 6,
         height: SIZES.rowHeight,
         padding: '0 8px',
@@ -64,7 +69,9 @@ export function NumericInput({
           digits, which is all this control ever shows. */}
       <span
         style={{
-          flex: '0 0 auto',
+          // Shrinkable (0 1 auto) so in tight cells the value group gives up
+          // width before the suffix / token label is clipped.
+          flex: '0 1 auto',
           display: 'inline-flex',
           alignItems: 'center',
           gap: 4,
@@ -101,12 +108,15 @@ export function NumericInput({
           aria-label={ariaLabel}
           disabled={disabled}
           style={{
-            // Fixed width sized for the typical 1–4 digit values this control
-            // shows (opacity, radius, font size, gap, etc.). Token labels sit
-            // in the responsive slot to the right — see the outer label's
-            // space-between layout.
-            width: 44,
-            flex: '0 0 auto',
+            // Hug the current value (see contentChars) so the suffix sits
+            // right after the number, capped at 44px — the old fixed width —
+            // so long values (e.g. "140.6") never blow past their cell. Shrinks
+            // below content in very tight cells (minWidth: 0) so the suffix is
+            // never clipped.
+            width: `calc(${contentChars}ch + 2px)`,
+            maxWidth: 44,
+            flex: '0 1 auto',
+            minWidth: 0,
             background: 'transparent',
             border: 'none',
             outline: 'none',

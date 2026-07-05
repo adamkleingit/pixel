@@ -15,8 +15,8 @@ import { OWN_UI_PROPS } from '../own-ui'
 import { useScrubbable, type ScrubExtras, type ScrubModifiers, type SnapTarget } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
 import { mirrorPropertiesFor } from '../drag/spacing-mirror'
-import { readPx } from '../edit/read-computed'
-import { readExplicitPx } from '../edit/read-explicit'
+import { readRaw } from '../edit/read-computed'
+import { readExplicit } from '../edit/read-explicit'
 
 export interface LayoutSectionProps {
   /** Source + matched-peer elements. Reads collapse via `readSharedField`;
@@ -146,9 +146,11 @@ const BOX_PROPERTIES: BoxProperty[] = [
 ]
 
 function readField(el: Element, property: string): FieldState {
-  const explicit = readExplicitPx(el, property)
+  // Preserve the authored unit (px/%/em/rem/auto). Explicit value first, else
+  // the computed value as a dimmed placeholder.
+  const explicit = readExplicit(el, property)
   if (explicit.source !== null) return { value: explicit.value, placeholder: '' }
-  return { value: '', placeholder: readPx(el, property) }
+  return { value: '', placeholder: readRaw(el, property) }
 }
 
 /** Collapse `readField` across the element set: same → that field, different
@@ -349,7 +351,7 @@ export function LayoutSection({ elements = [] }: LayoutSectionProps = {}) {
    *  then exact-typed match against the formatted px value. */
   function resolveSpacingToken(v: string, extras?: ScrubExtras): Token | null {
     if (extras?.snappedToken) return extras.snappedToken
-    return spacingMatch.matchToken(v ? `${v}px` : '')
+    return spacingMatch.matchToken(withUnit(v))
   }
 
   /** Common write path for either gap input — expands through the mirror set
@@ -362,7 +364,7 @@ export function LayoutSection({ elements = [] }: LayoutSectionProps = {}) {
       if (token) {
         applyTokenAll(elements, p, token)
       } else {
-        applyPatchAll(elements, { kind: 'setStyle', property: p, value: v ? `${v}px` : '' })
+        applyPatchAll(elements, { kind: 'setStyle', property: p, value: withUnit(v) })
       }
     }
   }
@@ -388,7 +390,7 @@ export function LayoutSection({ elements = [] }: LayoutSectionProps = {}) {
       if (token) {
         applyTokenAll(elements, p, token)
       } else {
-        applyPatchAll(elements, { kind: 'setStyle', property: p, value: v ? `${v}px` : '' })
+        applyPatchAll(elements, { kind: 'setStyle', property: p, value: withUnit(v) })
       }
     }
   }
@@ -651,10 +653,19 @@ function emptyFields(): Record<BoxProperty, FieldState> {
   return out
 }
 
-/** Token label for a spacing input — looks up by formatted px value. */
+/** Token label for a spacing input — `value` already carries its unit. */
 function tokenLabelFor(value: string, match: ReturnType<typeof useTokenMatch>): string | null {
   if (!value) return null
-  return tokenDisplayLabel(match.matchToken(`${value}px`))
+  return tokenDisplayLabel(match.matchToken(withUnit(value)))
+}
+
+/** Default a bare number to `px`; pass through values that already carry a unit
+ *  or keyword. Lets the unit-aware padding/margin inputs and the px-oriented
+ *  width/height/gap inputs share one write path. */
+function withUnit(v: string): string {
+  const t = (v ?? '').trim()
+  if (t === '') return ''
+  return /[a-z%]/i.test(t) ? t : `${t}px`
 }
 
 interface DimensionInputProps {
@@ -671,6 +682,9 @@ interface DimensionInputProps {
   tokenLabel?: string | null
 }
 
+// Padding/margin live four-to-a-row, too tight for a per-cell unit dropdown, so
+// these keep the plain numeric input. A typed unit (e.g. `2em`) is still honored
+// — the parent's `withUnit` write only defaults a *bare* number to px.
 function DimensionInput({
   prefix,
   ariaLabel,

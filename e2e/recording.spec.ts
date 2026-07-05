@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { readFile, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { INBOX_DIR, SCREENSHARE_DIR } from './fixtures'
+import { INBOX_DIR, PIXEL_DIR } from './fixtures'
 
 /** Poll the dropbox until a recording dir has its `timeline.json` (written last). */
 async function waitForReadyRecording(timeoutMs = 30_000): Promise<string> {
@@ -55,7 +55,7 @@ async function recordSession(page: Page): Promise<void> {
 
 test.beforeEach(async () => {
   // Start each test from a clean dropbox so we read exactly one recording.
-  await rm(SCREENSHARE_DIR, { recursive: true, force: true })
+  await rm(PIXEL_DIR, { recursive: true, force: true })
 })
 
 test('the M shortcut toggles the mouse tool while recording', async ({ page }) => {
@@ -137,7 +137,7 @@ test('Cmd+drag draws a freehand stroke (recorded with a snapshot) when the tool 
   await page.mouse.up()
 
   // The stroke stays on screen while Cmd is held, and clears when it's released.
-  const strokes = page.locator('.screenshare-stroke')
+  const strokes = page.locator('.pixel-stroke')
   await expect(strokes).toHaveCount(1)
   await page.keyboard.up('Meta')
   await expect(strokes).toHaveCount(0)
@@ -255,7 +255,7 @@ test('surfaces an error when the upload fails, then resends successfully', async
 
   // The failed save surfaces a resend prompt that names the server, and nothing
   // has been persisted yet.
-  const banner = page.locator('.screenshare-save-error')
+  const banner = page.locator('.pixel-save-error')
   await expect(banner).toBeVisible()
   await expect(banner).toContainText(/pixel server/i)
   const resend = page.getByRole('button', { name: 'Resend' })

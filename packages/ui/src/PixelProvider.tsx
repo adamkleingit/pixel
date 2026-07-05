@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
-  ScreenshareContext,
+  PixelContext,
   type RectFlash,
   type RectShape,
   type ResolvedBarConfig,
-  type ScreenshareContextValue,
+  type PixelContextValue,
+  type StateFrameMeta,
   type Stroke,
   type StrokeShape,
 } from './context'
+import {
+  captureLive,
+  getFrames,
+  getVersion,
+  subscribe as subscribeFrames,
+  type Frame,
+} from './pixel-react/store'
+import { freezeTo, restoreLive } from './pixel-react/control'
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
 import { requestEditCancel, requestEditSave } from './edit/edit-actions'
@@ -23,15 +32,22 @@ import {
 import { injectStyles } from './styles'
 import { installConsoleCapture } from './bug-report'
 import type { BlipData } from './draw/blip'
-import { eventInOwnUI } from './own-ui'
+import { eventInInlineEdit, eventInOwnUI } from './own-ui'
 import type { Token } from './pixel-common'
-import type { EditPayload, Recording, ScreenshareConfig, ScreenshareState, StrokePoint, Task } from './types'
+import type { EditPayload, Recording, PixelConfig, PixelState, StrokePoint, Task } from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
 
 /** Keyboard shortcut (KeyboardEvent.code) that toggles the mouse tool while recording. */
 const MOUSE_TOOL_KEY = 'KeyM'
+
+// Pointer press/release on the element under an inline edit is let through the
+// inert layer so the browser can place the caret where the user points. `click`
+// / `dblclick` are still swallowed so the element (e.g. a button) never
+// ACTIVATES from the same gesture (double-click a button to edit it, not to
+// trigger its onClick).
+const CARET_PASS_EVENTS = new Set(['mousedown', 'mouseup'])
 
 /** True when focus is in a text field — keystrokes there must not trigger shortcuts. */
 function isEditableTarget(): boolean {
@@ -41,9 +57,9 @@ function isEditableTarget(): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
-export interface ScreenshareProviderProps {
+export interface PixelProviderProps {
   children: React.ReactNode
-  config?: ScreenshareConfig
+  config?: PixelConfig
   /**
    * Master switch. When `false`, the provider is fully inert — no styles, no
    * keyboard shortcuts, no event capture, and `start()` is a no-op — so Pixel
@@ -81,20 +97,20 @@ function rectFrom(x0: number, y0: number, x1: number, y1: number): RectShape {
   }
 }
 
-export function ScreenshareProvider({
+export function PixelProvider({
   children,
   config = {},
   isEnabled = true,
   onComplete,
   onSaved,
   onCancel,
-}: ScreenshareProviderProps) {
+}: PixelProviderProps) {
   // Adopt any recording already in flight (a remount within the same document —
   // e.g. a Storybook story switch — parks it on a globalThis singleton). On the
   // normal first mount the session is empty and these fall back to defaults.
   const adopted = getActiveSession()
 
-  const [state, setState] = useState<ScreenshareState>(() => adopted?.state ?? 'idle')
+  const [state, setState] = useState<PixelState>(() => adopted?.state ?? 'idle')
   const [lastRecording, setLastRecording] = useState<Recording | null>(null)
   const [blips, setBlips] = useState<BlipData[]>([])
   const [dragRect, setDragRect] = useState<RectShape | null>(null)
@@ -286,7 +302,7 @@ export function ScreenshareProvider({
       pendingRef.current = recording
       updateActiveSession({ pending: recording, saveError: message })
       setSaveError(message)
-      console.error('[screenshare] failed to save recording:', err)
+      console.error('[pixel] failed to save recording:', err)
     } finally {
       setSaving(false)
     }
@@ -316,7 +332,7 @@ export function ScreenshareProvider({
     } catch (err) {
       const message = "Couldn't save your edits — is the Pixel server running?"
       setSaveError(message)
-      console.error('[screenshare] failed to save edits:', err)
+      console.error('[pixel] failed to save edits:', err)
       throw err
     } finally {
       setSaving(false)
@@ -427,13 +443,90 @@ export function ScreenshareProvider({
   // Entering edit is gated on `isEnabled` so a disabled SDK stays fully inert;
   // exiting is always allowed (turning the session off is safe).
   const enterEdit = useCallback(() => {
-    if (enabledRef.current) setEditing(true)
+    if (!enabledRef.current) return
+    setPassthrough(false) // start in select mode (mouse tool on), not passthrough
+    setEditing(true)
+  }, [setPassthrough])
+  // Set to `cancelTimeTravel` below. When an edit that began while time-traveling
+  // finishes (Save/Cancel → exitEdit), this resumes the live app. A no-op when we
+  // weren't frozen (cancelTimeTravel guards on frozenIndexRef).
+  const resumeAfterEditRef = useRef<() => void>(() => {})
+  const exitEdit = useCallback(() => {
+    setEditing(false)
+    resumeAfterEditRef.current()
   }, [])
-  const exitEdit = useCallback(() => setEditing(false), [])
   const toggleEdit = useCallback(() => {
     if (!enabledRef.current) return
-    setEditing((e) => !e)
+    if (!editingRef.current) setPassthrough(false) // entering edit → select mode
+    setEditing((e) => {
+      // Exiting edit via the toggle also resumes live if we were time-traveling.
+      if (e) resumeAfterEditRef.current()
+      return !e
+    })
+  }, [setPassthrough])
+
+  // --- Time travel (pixel-react state history) -----------------------------
+  // The pane is open/closed; freezing is a separate action (click a frame or a
+  // chevron). Frames come from the pixel-react store, which only fills when the
+  // app routes its `react` through pixel-react (dev alias). `frozenIndexRef`
+  // mirrors the state so the stable callbacks read it without re-creating, and
+  // so the side effects (freeze/restore) stay OUT of setState updaters.
+  const [timeTravel, setTimeTravel] = useState(false)
+  const [frozenIndex, setFrozenIndex] = useState<number | null>(null)
+  const frozenIndexRef = useRef<number | null>(null)
+  const preFreezeRef = useRef<Frame | null>(null)
+
+  const framesVersion = useSyncExternalStore(subscribeFrames, getVersion, getVersion)
+  const stateFrames = useMemo<StateFrameMeta[]>(
+    // framesVersion drives the recompute; getFrames() mutates its array in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => getFrames().map((f) => ({ id: f.id, at: f.at })),
+    [framesVersion],
+  )
+
+  const freezeToIndex = useCallback((target: number) => {
+    const frame = getFrames()[target]
+    if (!frame) return
+    if (frozenIndexRef.current === null) preFreezeRef.current = captureLive()
+    freezeTo(frame)
+    frozenIndexRef.current = target
+    setFrozenIndex(target)
   }, [])
+
+  const gotoState = useCallback((index: number) => freezeToIndex(index), [freezeToIndex])
+
+  const stepStateBack = useCallback(() => {
+    const len = getFrames().length
+    if (len === 0) return
+    const prev = frozenIndexRef.current
+    freezeToIndex(prev === null ? len - 1 : Math.max(0, prev - 1))
+  }, [freezeToIndex])
+
+  const stepStateForward = useCallback(() => {
+    const len = getFrames().length
+    if (len === 0) return
+    const prev = frozenIndexRef.current
+    freezeToIndex(prev === null ? len - 1 : Math.min(len - 1, prev + 1))
+  }, [freezeToIndex])
+
+  const cancelTimeTravel = useCallback(() => {
+    if (frozenIndexRef.current !== null) {
+      restoreLive(preFreezeRef.current ?? captureLive())
+    }
+    frozenIndexRef.current = null
+    preFreezeRef.current = null
+    setFrozenIndex(null)
+  }, [])
+  // exitEdit (defined above) resumes live through this when a time-traveled edit ends.
+  resumeAfterEditRef.current = cancelTimeTravel
+
+  const toggleTimeTravel = useCallback(() => {
+    if (!enabledRef.current) return
+    setTimeTravel((open) => {
+      if (open) cancelTimeTravel() // closing the pane resumes live
+      return !open
+    })
+  }, [cancelTimeTravel])
 
   // Hold back dev-server HMR while a session (editing OR recording/paused) is
   // live, so a rebuild can't wipe in-progress edits or reset the recording
@@ -633,6 +726,9 @@ export function ScreenshareProvider({
     // Block-mode-only: swallow the page's click/typing so the app doesn't react.
     const swallow = (e: Event) => {
       if (isOwnUI(e)) return
+      // Let the active inline edit place its caret (press/release only) — but
+      // still swallow `click` so the edited element can't activate.
+      if (eventInInlineEdit(e) && CARET_PASS_EVENTS.has(e.type)) return
       e.preventDefault()
       e.stopPropagation()
     }
@@ -650,7 +746,7 @@ export function ScreenshareProvider({
       for (const t of pageKeyEvents) window.addEventListener(t, swallowKey as EventListener, true)
       // Drop focus from any page input so keystrokes don't reach it.
       const active = document.activeElement as HTMLElement | null
-      if (active && !active.closest('.screenshare-overlay')) active.blur?.()
+      if (active && !active.closest('.pixel-overlay')) active.blur?.()
     }
 
     return () => {
@@ -667,32 +763,51 @@ export function ScreenshareProvider({
     }
   }, [state, passthrough])
 
-  // Edit mode inerts the page so Pixel's selection (a later step) can take over:
-  // page clicks/activation are swallowed and any focused field is blurred. Only
-  // runs when NOT recording — while recording, that effect's block/passthrough
-  // already governs the page, so we don't double-install (which would fight over
-  // capture-phase propagation). Pointer events are left alone for the upcoming
-  // selection handler; swallowing `click` is what blocks navigation/activation.
-  // Keyboard isn't swallowed, so the edit shortcuts (double-Enter / Esc) keep
-  // working — and with clicks blocked, no app field can be focused to type into.
+  // Edit-mode input gate + mouse-tool toggle. Only runs when NOT recording —
+  // while recording, that effect's block/passthrough already governs the page.
+  //
+  //  - **Mouse tool ON** (passthrough off, the default): inert the page so
+  //    Pixel's selection owns pointer input — page clicks/activation are
+  //    swallowed and any focused field is blurred. (`click` is swallowed; the
+  //    press/release on an active inline edit is let through so its caret can be
+  //    placed — see the swallow.)
+  //  - **Mouse tool OFF** (passthrough): leave the page fully live so the user
+  //    can interact with the real app. Toggling back re-freezes it.
+  //  - **`M`** flips between the two (kept out of `installKeyboard` so it beats
+  //    the swallow and is scoped to edit mode); ignored while a text field /
+  //    inline edit owns the keystroke.
   useEffect(() => {
     if (!editing || state === 'recording') return
+
+    const onToolKey = (e: KeyboardEvent) => {
+      if (e.code !== MOUSE_TOOL_KEY || e.repeat || isEditableTarget()) return
+      e.preventDefault()
+      e.stopPropagation()
+      setPassthrough((p) => !p)
+    }
+    window.addEventListener('keydown', onToolKey, true)
+
+    const pageMouseEvents = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'contextmenu']
     const swallow = (e: Event) => {
-      // Leave Pixel's own UI live — the overlay surface AND body-portaled menus
-      // (gap/size dropdowns, token pickers); otherwise their item clicks get
-      // swallowed here and the dropdowns look broken.
+      // Leave Pixel's own UI live (overlay + body-portaled menus), and let the
+      // element under an inline edit take pointer press/release for caret
+      // placement — but still swallow `click` so it can't activate.
       if (eventInOwnUI(e)) return
+      if (eventInInlineEdit(e) && CARET_PASS_EVENTS.has(e.type)) return
       e.preventDefault()
       e.stopPropagation()
     }
-    const pageMouseEvents = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'contextmenu']
-    for (const t of pageMouseEvents) window.addEventListener(t, swallow, true)
-    const active = document.activeElement as HTMLElement | null
-    if (active && !active.closest('.screenshare-overlay')) active.blur?.()
+    if (!passthrough) {
+      for (const t of pageMouseEvents) window.addEventListener(t, swallow, true)
+      const active = document.activeElement as HTMLElement | null
+      if (active && !active.closest('.pixel-overlay')) active.blur?.()
+    }
+
     return () => {
+      window.removeEventListener('keydown', onToolKey, true)
       for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
     }
-  }, [editing, state])
+  }, [editing, state, passthrough, setPassthrough])
 
   const bar = useMemo<ResolvedBarConfig>(
     () => ({
@@ -703,7 +818,7 @@ export function ScreenshareProvider({
     [config.bar?.always, config.bar?.position, config.bar?.opacity],
   )
 
-  const value = useMemo<ScreenshareContextValue>(
+  const value = useMemo<PixelContextValue>(
     () => ({
       state,
       start: () => void start(),
@@ -736,9 +851,17 @@ export function ScreenshareProvider({
       removeRectFlash,
       drawStroke,
       drawStrokes,
+      timeTravel,
+      toggleTimeTravel,
+      stateFrames,
+      frozenIndex,
+      gotoState,
+      stepStateBack,
+      stepStateForward,
+      cancelTimeTravel,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes, timeTravel, toggleTimeTravel, stateFrames, frozenIndex, gotoState, stepStateBack, stepStateForward, cancelTimeTravel],
   )
 
-  return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>
+  return <PixelContext.Provider value={value}>{children}</PixelContext.Provider>
 }

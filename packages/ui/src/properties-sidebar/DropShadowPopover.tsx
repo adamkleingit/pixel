@@ -1,12 +1,14 @@
+import { useEffect, useState } from 'react'
 import type React from 'react'
 import { ColorSwatch } from './ColorSwatch'
-import { IconButton } from './IconButton'
 import { NumericInput } from './NumericInput'
 import { Popover } from './Popover'
-import { dropletIcon, opacityIcon } from './icons'
+import { SaturationValuePicker } from './SaturationValuePicker'
+import { Slider } from './Slider'
+import { opacityIcon } from './icons'
 import { COLORS, SIZES } from './tokens'
 import { useScrubbable } from './useScrubbable'
-import type { BoxShadow } from '../edit/color'
+import { hexToHsv, hsvToHex, normalizeHex, type BoxShadow } from '../edit/color'
 
 export interface DropShadowPopoverProps {
   isOpen?: boolean
@@ -45,7 +47,21 @@ export function DropShadowPopover({
     max: 100,
   })
 
-  const headerRight = <IconButton title="Blend mode">{dropletIcon}</IconButton>
+  // Visual color picker for the shadow color, toggled by the swatch. HSV is held
+  // locally and re-seeded whenever the hex changes from outside, so the SV
+  // square + hue slider stay in sync (interactions flow HSV → hex → emit).
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [hsv, setHsv] = useState(() => hexToHsv(hex))
+  useEffect(() => {
+    if (normalizeHex(hsvToHex(hsv.h, hsv.s, hsv.v)) !== normalizeHex(hex)) {
+      setHsv(hexToHsv(hex))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hex])
+  function emitHsv(next: { h: number; s: number; v: number }) {
+    setHsv(next)
+    emit({ hex: hsvToHex(next.h, next.s, next.v) })
+  }
 
   return (
     <Popover
@@ -53,8 +69,7 @@ export function DropShadowPopover({
       onClose={onClose}
       anchorRef={anchorRef}
       width={260}
-      title=""
-      headerRight={headerRight}
+      title="Drop shadow"
     >
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div>
@@ -66,13 +81,15 @@ export function DropShadowPopover({
               prefix="X"
               value={x}
               onChange={setX}
-              prefixProps={scrubX.prefixProps}
+              ariaLabel="Shadow X"
+              prefixProps={{ ...scrubX.prefixProps, 'aria-label': 'Scrub shadow X' }}
             />
             <NumericInput
               prefix="Y"
               value={y}
               onChange={setY}
-              prefixProps={scrubY.prefixProps}
+              ariaLabel="Shadow Y"
+              prefixProps={{ ...scrubY.prefixProps, 'aria-label': 'Scrub shadow Y' }}
             />
           </div>
         </div>
@@ -86,7 +103,8 @@ export function DropShadowPopover({
               value={blur}
               onChange={setBlur}
               prefix={blurIcon}
-              prefixProps={scrubBlur.prefixProps}
+              ariaLabel="Shadow blur"
+              prefixProps={{ ...scrubBlur.prefixProps, 'aria-label': 'Scrub shadow blur' }}
             />
           </div>
           <div>
@@ -97,19 +115,48 @@ export function DropShadowPopover({
               value={spread}
               onChange={setSpread}
               prefix={spreadIcon}
-              prefixProps={scrubSpread.prefixProps}
+              ariaLabel="Shadow spread"
+              prefixProps={{ ...scrubSpread.prefixProps, 'aria-label': 'Scrub shadow spread' }}
             />
           </div>
         </div>
 
-        <div>
-          <div style={{ fontSize: 11, color: COLORS.label, marginBottom: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, color: COLORS.label }}>
             Color
           </div>
+
+          {/* Visual picker — revealed by clicking the swatch. Editing the SV
+              square or hue slider flows back to hex, keeping the row + element
+              in sync. */}
+          {pickerOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <SaturationValuePicker
+                hue={hsv.h}
+                saturation={hsv.s}
+                value={hsv.v}
+                onChange={sv => emitHsv({ ...hsv, s: sv.saturation, v: sv.value })}
+                height={140}
+              />
+              <Slider
+                value={hsv.h}
+                onChange={h => emitHsv({ ...hsv, h })}
+                min={0}
+                max={360}
+                height={10}
+                trackStyle={{
+                  background:
+                    'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                }}
+              />
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <div
               style={{
                 flex: 1,
+                minWidth: 0,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -119,11 +166,18 @@ export function DropShadowPopover({
                 height: SIZES.rowHeight,
               }}
             >
-              <ColorSwatch color={`#${hex}`} background={`#${hex}`} size={18} />
+              <ColorSwatch
+                color={`#${hex}`}
+                background={`#${hex}`}
+                size={18}
+                title="Pick a color"
+                onClick={() => setPickerOpen(o => !o)}
+              />
               <input
                 type="text"
                 value={hex}
                 onChange={e => setHex(e.target.value)}
+                aria-label="Shadow color hex"
                 style={{
                   flex: 1,
                   minWidth: 0,
@@ -138,13 +192,14 @@ export function DropShadowPopover({
                 }}
               />
             </div>
-            <div style={{ width: 76, display: 'flex' }}>
+            <div style={{ width: 92, display: 'flex', flexShrink: 0 }}>
               <NumericInput
                 value={alpha}
                 onChange={setAlpha}
                 prefix={opacityIcon}
                 suffix="%"
-                prefixProps={scrubAlpha.prefixProps}
+                ariaLabel="Shadow opacity"
+                prefixProps={{ ...scrubAlpha.prefixProps, 'aria-label': 'Scrub shadow opacity' }}
               />
             </div>
           </div>

@@ -32,6 +32,39 @@ export function isTextEditable(el: Element | null): el is HTMLElement {
   return el.children.length === 0
 }
 
+/** True if `el` has at least one direct, non-whitespace text node. */
+function hasDirectText(el: Element): boolean {
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '') return true
+  }
+  return false
+}
+
+/**
+ * True for a *mixed-content* inline element — one that interleaves raw text with
+ * child elements (a `<p>` with `<span class="kbd">` / `<strong>` runs). These
+ * can't use the plaintext path (contenteditable would flatten the children away
+ * on commit), so we edit their **innerHTML as raw markup** instead: show the
+ * markup as literal text, let the user edit it, and re-parse it on commit.
+ *
+ * Gated on having *both* child elements AND loose text so pure containers
+ * (layout `<div>`s with only element children, no stray text) keep drilling to
+ * select on double-click rather than turning into an HTML editor.
+ */
+export function isHtmlEditable(el: Element | null): el is HTMLElement {
+  if (!el || !(el instanceof HTMLElement)) return false
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return false
+  if (NON_TEXT_EDITABLE_TAGS.has(el.tagName.toLowerCase())) return false
+  if (el.children.length === 0) return false
+  return hasDirectText(el)
+}
+
+/** Either a pure-text leaf (plaintext edit) or a mixed inline element (innerHTML
+ *  edit) — the set of elements a double-click begins an inline edit on. */
+export function isInlineEditable(el: Element | null): el is HTMLElement {
+  return isTextEditable(el) || isHtmlEditable(el)
+}
+
 /** Lift disabled/readonly for the edit (they block focus/typing); restore on exit. */
 function liftInertness(element: HTMLElement): () => void {
   const el = element as HTMLElement & { disabled?: boolean; readOnly?: boolean }
@@ -60,7 +93,9 @@ export function beginInlineEdit(
   const inner =
     element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
       ? beginInputInlineEdit(element, commit, peers)
-      : beginTextInlineEdit(element, commit, peers)
+      : isHtmlEditable(element)
+        ? beginHtmlInlineEdit(element, commit, peers)
+        : beginTextInlineEdit(element, commit, peers)
   element.setAttribute(INLINE_EDITING_ATTR, '')
   return {
     element: inner.element,
@@ -144,6 +179,88 @@ function beginTextInlineEdit(
         changes.push({ target: peer, kind: 'text', name: '', before, after: newText })
       }
       commit(changes, 'text')
+    }
+  }
+
+  return { element, exit }
+}
+
+/**
+ * Mixed-content inline edit: swap the element's rendered content for its raw
+ * innerHTML *as literal text*, let the user edit the markup, then re-parse it
+ * back into DOM on commit and record it as an `html` change (before/after are
+ * innerHTML strings). Structurally mirrors `beginTextInlineEdit`, but every
+ * read/write is innerHTML instead of textContent so child elements survive.
+ */
+function beginHtmlInlineEdit(
+  element: HTMLElement,
+  commit: CommitFn,
+  peers: HTMLElement[] = [],
+): InlineEditSession {
+  const originalHTML = element.innerHTML
+  const htmlPeers = peers.filter((p) => p !== element && isHtmlEditable(p))
+  const peerOriginalHTML = new Map(htmlPeers.map((p) => [p, p.innerHTML]))
+  const originalContentEditable = element.getAttribute('contenteditable')
+  const originalSpellcheck = element.getAttribute('spellcheck')
+  let exited = false
+
+  const restoreInertness = liftInertness(element)
+  // Show the markup as literal, editable text (this drops the live child nodes
+  // for the duration of the edit; commit/cancel re-parses innerHTML back).
+  element.textContent = originalHTML
+  element.setAttribute('contenteditable', 'plaintext-only')
+  element.setAttribute('spellcheck', 'false')
+  element.focus()
+  selectAllText(element)
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      exit({ commit: false })
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      exit({ commit: true })
+    }
+  }
+  function onBlur() {
+    exit({ commit: true })
+  }
+
+  element.addEventListener('keydown', onKeyDown)
+  element.addEventListener('blur', onBlur)
+
+  function exit(options?: { commit?: boolean }) {
+    if (exited) return
+    exited = true
+    element.removeEventListener('keydown', onKeyDown)
+    element.removeEventListener('blur', onBlur)
+    if (originalContentEditable === null) element.removeAttribute('contenteditable')
+    else element.setAttribute('contenteditable', originalContentEditable)
+    if (originalSpellcheck === null) element.removeAttribute('spellcheck')
+    else element.setAttribute('spellcheck', originalSpellcheck)
+    // The edited markup is currently the element's text — read it, then blur.
+    const newHTML = element.textContent ?? ''
+    element.blur()
+    restoreInertness()
+    if (options?.commit === false) {
+      element.innerHTML = originalHTML // discard: re-parse the original markup
+      return
+    }
+    // Re-parse the (possibly edited) markup back into real DOM.
+    element.innerHTML = newHTML
+    if (newHTML !== originalHTML) {
+      const changes: Change[] = [
+        { target: element, kind: 'html', name: '', before: originalHTML, after: newHTML },
+      ]
+      for (const peer of htmlPeers) {
+        const before = peerOriginalHTML.get(peer) ?? ''
+        if (before === newHTML) continue
+        peer.innerHTML = newHTML
+        changes.push({ target: peer, kind: 'html', name: '', before, after: newHTML })
+      }
+      commit(changes, 'html')
     }
   }
 

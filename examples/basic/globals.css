@@ -42,6 +42,27 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
+
+  /* Font families — drive the Typography family picker (kind: font-family). */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Font-size scale — drives the Typography size picker + drag-snap
+     (kind: font-size; the `text-` prefix is the Tailwind convention). */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
+  /* Font-weight scale — drives the Typography weight picker (kind: font-weight). */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 }
 
 .dark {

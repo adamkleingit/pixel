@@ -21,7 +21,7 @@ function describe(el: Element): ElementInfo {
 }
 
 function isOwnOverlay(el: Element): boolean {
-  return el.classList && Array.from(el.classList).some((c) => c.startsWith('screenshare-'))
+  return el.classList && Array.from(el.classList).some((c) => c.startsWith('pixel-'))
 }
 
 // Structural nodes we never want in the chain — they carry no useful target
@@ -31,9 +31,9 @@ const SKIP_TAGS = new Set(['HTML', 'BODY', 'HEAD', 'SCRIPT', 'STYLE', 'NOSCRIPT'
 /**
  * Returns the meaningful DOM ancestor chain under (x, y), ordered outermost →
  * innermost (the last entry is the element directly under the cursor). <html>
- * and <body> (and script/style) are excluded. The Screenshare overlay is
+ * and <body> (and script/style) are excluded. The Pixel overlay is
  * `pointer-events:none`, so `elementFromPoint` already skips it; any stray
- * `screenshare-*` node is filtered defensively. Stops at <body>/<html> or
+ * `pixel-*` node is filtered defensively. Stops at <body>/<html> or
  * MAX_DEPTH.
  */
 export function describeElementChain(x: number, y: number): ElementInfo[] {

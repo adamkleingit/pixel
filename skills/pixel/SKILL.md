@@ -1,18 +1,18 @@
 ---
 name: pixel
 description: >
-  Pick up Screenshare tasks dropped on disk and carry them out in the codebase. A
+  Pick up Pixel tasks dropped on disk and carry them out in the codebase. A
   task is either a **recording** (voice + clicks + selected regions, acted on as an
   implementation brief) or a **saved edit** (direct visual changes the user made in
   the running app's in-app edit mode and hit Save). Use when the user says "pixel",
-  "start pixel", "check for recordings", "watch screenshare", "process my
-  recording", "apply my edits", or points you at a .screenshare dropbox folder. On
+  "start pixel", "check for recordings", "watch pixel", "process my
+  recording", "apply my edits", or points you at a .pixel dropbox folder. On
   "pixel" / "start pixel", start the ingest server and watch for tasks (steps 1 → 6).
 ---
 
-# Screenshare watch
+# Pixel watch
 
-Screenshare drops **tasks** into an on-disk **dropbox** for you to carry out in the
+Pixel drops **tasks** into an on-disk **dropbox** for you to carry out in the
 current codebase. A task is one of two kinds:
 
 - a **recording** — a short session of microphone audio (transcribed), mouse
@@ -50,56 +50,36 @@ default — keep watching until the user explicitly asks you to stop.**
 ## 1. Make sure the ingest server is running
 
 Recordings only land on disk if `@getpixel/server` is running (it writes the dropbox
-and transcribes audio). If nothing is recording or no `.screenshare/` exists yet,
+and transcribes audio). If nothing is recording or no `.pixel/` exists yet,
 start it (it stays up; run it in the background):
 
 ```bash
-npx @getpixel/server        # http://localhost:41789 → writes .screenshare/inbox/<id>/
+npx @getpixel/server        # http://localhost:41789 → writes .pixel/inbox/<id>/
 ```
 
-Set `SCREENSHARE_DIR` to control where it writes, and `SCREENSHARE_WHISPER_LANG`
+Set `PIXEL_DIR` to control where it writes, and `PIXEL_WHISPER_LANG`
 (e.g. `hebrew`) if narration isn't English.
 
 On startup the same server also **extracts the project's design tokens** (from
 shadcn `globals.css`, a Tailwind config, or `@theme` CSS) into
-`.screenshare/design-tokens.json`, and **watches those source files** — re-extracting
+`.pixel/design-tokens.json`, and **watches those source files** — re-extracting
 whenever they change. This is automatic; there's no separate command. The in-app
 design pane reads the file over `GET /tokens` so its color/spacing/radius pickers
 and on-canvas drag-snap reflect the real design system. It also extracts from the
-directory the server runs in; set `SCREENSHARE_PROJECT_DIR` to point at a different
+directory the server runs in; set `PIXEL_PROJECT_DIR` to point at a different
 project root.
 
 > **If Pixel isn't installed or isn't configured correctly** (the command fails,
 > the package is missing, or the server won't start), follow the project README to
 > install and set it up first — then come back here, run the server, and continue
 > listening for file changes.
->
-> **When installing/wiring Pixel into the app**, besides the `<ScreenshareProvider>`
-> + `<Overlay>`, add the **HMR guard** to the app's entry file (where it calls
-> `createRoot(...).render(...)`) so a dev-server rebuild can't wipe an in-progress
-> edit or end a recording mid-session:
->
-> ```tsx
-> import { installHmrGuard } from '@getpixel/ui'
-> if (import.meta.hot) installHmrGuard(import.meta.hot) // Vite; no-op in prod
-> ```
->
-> It defers hot updates + full reloads while an edit/recording session is active
-> and applies one reload when the session ends (on Save/Cancel/Stop). See the
-> README "Defer dev-server HMR during a session" section. (Webpack/CRA: gate your
-> own `module.hot` hook on the exported `shouldDeferHmr()`.)
->
-> This skill ships **inside** `@getpixel/server`. To (re)install the copy that matches
-> your installed package version, run `npx @getpixel/server install-skill` (writes
-> `.claude/skills/pixel/`; add `--global` for `~/.claude/skills`). That
-> keeps the skill and the server in lockstep on the same version.
 
 ## 2. Find the dropbox
 
-Look for the `.screenshare/` directory (default at the project root). It contains:
+Look for the `.pixel/` directory (default at the project root). It contains:
 
 ```
-.screenshare/
+.pixel/
   inbox/<id>/      ← new, unclaimed tasks (recordings or saved edits)
   working/<id>/    ← currently being handled (you create this)
   done/<id>/       ← finished (you create this)
@@ -107,7 +87,7 @@ Look for the `.screenshare/` directory (default at the project root). It contain
 ```
 
 If you can't find it, ask the user for the path (it's wherever they ran
-`@getpixel/server`, honoring `SCREENSHARE_DIR`).
+`@getpixel/server`, honoring `PIXEL_DIR`).
 
 A **saved-edit** task directory contains just `edits.json` (+ a `meta.json` /
 `timeline.json` marker) — see step 4. A **recording** task directory contains:
@@ -136,7 +116,7 @@ or a saved edit), then atomically claims it (oldest first, multi-agent safe) and
 prints one JSON line:
 
 ```json
-{"id":"20260613-175521-404-oauonr","dir":"/abs/path/.screenshare/working/<id>"}
+{"id":"20260613-175521-404-oauonr","dir":"/abs/path/.pixel/working/<id>"}
 ```
 
 `dir` is where the task now lives. Read it from `<dir>` (see step 4). Because it
@@ -247,3 +227,20 @@ message and then stop.
 watching"). Then kill the running `watch`, exit the loop, and leave the server
 as-is (or stop it if they ask). Don't stop just because the inbox is momentarily
 empty — `watch` keeps blocking until the next task.
+
+## Enabling pixel-react time-travel (when asked)
+
+If the user asks to enable **time travel / state history** (the rewind-clock in
+the bar), the app must route its `react` through **pixel-react**. Two edits,
+**dev only** — full walkthrough in the README ("Time travel — state history"):
+
+1. **Alias the React import** in the bundler for the app's `src/` **only** (not
+   `node_modules`): `react` → `@getpixel/ui/pixel-react`. Scope by source path,
+   not "exclude node_modules" — Vite's dep pre-bundling leaks a substring
+   exclusion into `@getpixel/ui` and captures Pixel's own UI. See the README's
+   `pixelReactAlias` Vite plugin.
+2. **Wrap the app content** in `<PixelStateRoot enabled={DEV}>…</PixelStateRoot>`,
+   keeping `<Overlay />` outside it. Remove `<React.StrictMode>` around aliased
+   app code (its double-invoke desyncs capture).
+
+Client components only; state capture is in-memory (newest 50), session-scoped.

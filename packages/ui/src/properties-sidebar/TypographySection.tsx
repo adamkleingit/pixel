@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Token } from '../pixel-common'
+import { DimensionInput } from './DimensionInput'
 import { Dropdown } from './Dropdown'
 import { IconButton } from './IconButton'
 import { NumericDropdown } from './NumericDropdown'
-import { NumericInput } from './NumericInput'
 import { Row } from './Row'
 import { Section } from './Section'
 import { SegmentedButtonGroup } from './SegmentedButtonGroup'
@@ -14,8 +14,11 @@ import { tokenDisplayLabel } from './token-mapping'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
 import { useTokensOf } from '../tokens-context'
+import { LETTER_SPACING_OPTIONS, LINE_HEIGHT_OPTIONS } from '../edit/dimension'
+import { readExplicit } from '../edit/read-explicit'
 import {
   FONT_WEIGHT_VALUES,
+  fontWeightName,
   readFontFamilyFirst,
   readFontWeightName,
   readPx,
@@ -95,6 +98,12 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
     const sz = readShared(elements, el => readPx(el, 'font-size') || '12')
     setSize(sz.kind === 'single' ? sz.value : '')
     setSizeShared(sz.kind === 'multiple' ? 'multiple' : 'single')
+    // Line-height / letter-spacing keep their authored unit (unitless, px, em,
+    // %, normal) — read the explicit value, falling back to the computed one.
+    const lh = readShared(elements, el => readExplicit(el, 'line-height').value || readRaw(el, 'line-height'))
+    setLineHeight(lh.kind === 'single' ? lh.value : '')
+    const ls = readShared(elements, el => readExplicit(el, 'letter-spacing').value || readRaw(el, 'letter-spacing'))
+    setLetterSpacing(ls.kind === 'single' ? ls.value : '')
     const ha = readShared(elements, el => readHAlign(el))
     setHAlign(ha.kind === 'single' ? (ha.value as HTextAlign) : null)
     const va = readShared(elements, el => readVAlign(el))
@@ -112,7 +121,9 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
   }
   function onWeightToken(token: Token) {
     applyTokenAll(elements, 'font-weight', token)
-    setWeight(token.value)
+    // Weight tokens carry a numeric value (e.g. `700`); the dropdown shows named
+    // weights, so bucket it back to a name so the control reflects the pick.
+    setWeight(fontWeightName(token.value))
     setWeightShared('single')
   }
   function onSizeToken(token: Token) {
@@ -171,11 +182,8 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
       applyTokenAll(elements, 'letter-spacing', typed)
       return
     }
-    // A bare number needs a unit — `letter-spacing: 3` is invalid and ignored;
-    // `letter-spacing: 3px` is what the numeric field means. Leave keywords
-    // (e.g. `normal`) and already-united values as-is; empty clears the prop.
-    const value = v.trim() === '' ? '' : /^-?\d*\.?\d+$/.test(v.trim()) ? `${v.trim()}px` : v
-    applyPatchAll(elements, { kind: 'setStyle', property: 'letter-spacing', value })
+    // `v` already carries its unit (composed by DimensionInput) — write it as-is.
+    applyPatchAll(elements, { kind: 'setStyle', property: 'letter-spacing', value: v })
   }
   function onHAlign(v: HTextAlign) {
     setHAlign(v)
@@ -230,19 +238,6 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
     min: 1,
     snap: { targets: sizeMatch.snapTargets, threshold: 3 },
   })
-  const scrubLineHeight = useScrubbable({
-    value: lineHeight,
-    onChange: onLineHeight,
-    min: 0,
-    precision: 1,
-    snap: { targets: lineHeightMatch.snapTargets, threshold: 3 },
-  })
-  const scrubLetterSpacing = useScrubbable({
-    value: letterSpacing,
-    onChange: onLetterSpacing,
-    precision: 1,
-    snap: { targets: letterSpacingMatch.snapTargets, threshold: 3 },
-  })
 
   return (
     <Section title="Typography">
@@ -289,13 +284,15 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
         <Row label="Line height">
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-            <NumericInput
+            <DimensionInput
               prefix={lineHeightPrefix}
-              suffix="%"
               ariaLabel="Line height"
               value={lineHeight}
               onChange={onLineHeight}
-              prefixProps={scrubLineHeight.prefixProps}
+              options={LINE_HEIGHT_OPTIONS}
+              min={0}
+              step={0.1}
+              snap={{ targets: lineHeightMatch.snapTargets, threshold: 3 }}
               tokenLabel={lineHeightTokenLabel}
             />
             <TokenButton property="line-height" onSelect={onLineHeightToken} />
@@ -303,13 +300,13 @@ export function TypographySection({ elements = [] }: TypographySectionProps = {}
         </Row>
         <Row label="Letter spacing">
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-            <NumericInput
+            <DimensionInput
               prefix={letterSpacingPrefix}
-              suffix="%"
               ariaLabel="Letter spacing"
               value={letterSpacing}
               onChange={onLetterSpacing}
-              prefixProps={scrubLetterSpacing.prefixProps}
+              options={LETTER_SPACING_OPTIONS}
+              snap={{ targets: letterSpacingMatch.snapTargets, threshold: 3 }}
               tokenLabel={letterSpacingTokenLabel}
             />
             <TokenButton property="letter-spacing" onSelect={onLetterSpacingToken} />

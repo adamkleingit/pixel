@@ -5,7 +5,7 @@
  * design pane shows the matching token (and on-canvas drag snaps to it).
  */
 :root {
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   color: hsl(var(--foreground));
   background: hsl(var(--page));
 }
@@ -19,7 +19,8 @@ body { margin: 0; }
 }
 
 .hero h1 {
-  font-size: 30px;
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-bold);
   margin: 0 0 var(--space-2);
   letter-spacing: -0.5px;
 }
@@ -86,8 +87,8 @@ body { margin: 0; }
   padding: var(--space-5);
   box-shadow: 0 2px 12px rgba(30, 27, 46, 0.05);
 }
-.card h3 { margin: 0 0 var(--space-2); font-size: 16px; }
-.card p { margin: 0 0 var(--space-4); color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.45; }
+.card h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); font-weight: var(--font-weight-semibold); }
+.card p { margin: 0 0 var(--space-4); color: hsl(var(--muted-foreground)); font-size: var(--text-sm); line-height: 1.45; }
 
 .toolbar { display: flex; gap: var(--space-3); row-gap: 40px; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; margin-top: var(--space-2); }
 
@@ -172,4 +173,4 @@ body { margin: 0; }
   width: min(440px, calc(100vw - 32px));
   box-shadow: 0 20px 60px rgba(30, 27, 46, 0.25);
 }
-.dialog-panel h3 { font-size: 18px; }
+.dialog-panel h3 { font-size: var(--text-lg); }

@@ -1,23 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { ScreenshareProvider } from './ScreenshareProvider'
+import { PixelProvider } from './PixelProvider'
 import { Overlay } from './Overlay'
-import { useScreenshare } from './useScreenshare'
+import { usePixel } from './usePixel'
 
-const STYLE_ID = 'screenshare-styles'
+const STYLE_ID = 'pixel-styles'
 
 /** Surfaces edit + recording state so tests can assert composition. */
 function Probe() {
-  const { state, editing } = useScreenshare()
+  const { state, editing } = usePixel()
   return <div data-testid="probe">{`${state}/${editing ? 'editing' : 'view'}`}</div>
 }
 
 function renderApp(enabled = true) {
   return render(
-    <ScreenshareProvider isEnabled={enabled} config={{ bar: { always: true } }}>
+    <PixelProvider isEnabled={enabled} config={{ bar: { always: true } }}>
       <Probe />
       <Overlay />
-    </ScreenshareProvider>,
+    </PixelProvider>,
   )
 }
 
@@ -48,13 +48,13 @@ describe('edit mode — pencil toggle', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
     expect(probeText()).toBe('idle/editing')
     // The bar reflects the editing state for styling hooks.
-    expect(document.querySelector('.screenshare-rec.editing')).not.toBeNull()
+    expect(document.querySelector('.pixel-rec.editing')).not.toBeNull()
 
     // Cancel (X) exits edit mode and the pencil returns.
     fireEvent.click(cancelEditBtn())
     expect(editBtn().getAttribute('aria-pressed')).toBe('false')
     expect(probeText()).toBe('idle/view')
-    expect(document.querySelector('.screenshare-rec.editing')).toBeNull()
+    expect(document.querySelector('.pixel-rec.editing')).toBeNull()
   })
 })
 
@@ -104,15 +104,15 @@ describe('edit mode — inert when disabled', () => {
 })
 
 describe('edit mode — selection', () => {
-  const anchor = () => document.querySelector('.screenshare-sel-anchor')
+  const anchor = () => document.querySelector('.pixel-sel-anchor')
 
   it('pointerdown selects and draws an anchor outline; bar pointerdowns are ignored; exit clears it', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <button data-testid="page-btn">App button</button>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const pageBtn = screen.getByTestId('page-btn')
 
@@ -149,13 +149,13 @@ describe('edit mode — selection', () => {
 describe('edit mode — keyboard move', () => {
   it('arrow keys nudge an absolutely-positioned selection (Shift = 10px)', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <div data-testid="abs" style={{ position: 'absolute', left: '20px', top: '40px' }}>
           box
         </div>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const abs = screen.getByTestId('abs')
     fireEvent.click(editBtn())
@@ -171,7 +171,7 @@ describe('edit mode — keyboard move', () => {
 
   it('arrow keys reorder an in-flow selection within its parent', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <div data-testid="row">
           <div id="a">a</div>
           <div id="b">b</div>
@@ -179,7 +179,7 @@ describe('edit mode — keyboard move', () => {
         </div>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const row = screen.getByTestId('row')
     const order = () => Array.from(row.children).map((c) => c.id)
@@ -195,15 +195,18 @@ describe('edit mode — keyboard move', () => {
 })
 
 describe('edit mode — design pane', () => {
-  const pane = () => document.querySelector('.screenshare-pane')
+  // The Elements pane also renders `.pixel-pane` (docked left), so scope
+  // every design-pane query to the design pane's own subtree.
+  const pane = () => document.querySelector<HTMLElement>('[aria-label="Design pane"]')
+  const inPane = (sel: string) => pane()!.querySelector(sel)
 
   it('docks on edit (shrinking the body), inspects the selection, collapses, and restores on exit', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <button data-testid="page-btn">App button</button>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const html = document.documentElement
 
@@ -214,16 +217,16 @@ describe('edit mode — design pane', () => {
     fireEvent.click(editBtn())
     expect(pane()).not.toBeNull()
     expect(html.style.marginRight).toBe('280px')
-    expect(document.querySelector('.screenshare-pane-empty')).not.toBeNull() // nothing selected
+    expect(inPane('.pixel-pane-empty')).not.toBeNull() // nothing selected
 
     // Select an element → the pane inspects it. Pixel's real DesignPanel renders
     // for the selection: its SidebarHeader echoes the selected tag, and the
     // tag-driven property sections (Position / Appearance / Typography) appear.
     fireEvent.pointerDown(screen.getByTestId('page-btn'))
-    const paneTag = document.querySelector('.screenshare-pane-tag')!
+    const paneTag = inPane('.pixel-pane-tag')!
     expect(paneTag).not.toBeNull()
     const tag = paneTag.textContent! // e.g. "<div>" / "<button>"
-    const paneBody = document.querySelector('.screenshare-pane-body')!
+    const paneBody = inPane('.pixel-pane-body')!
     // The DesignPanel's SidebarHeader echoes the same tag as the pane title.
     expect(paneBody.textContent).toContain(tag.replace(/[<>]/g, ''))
     // Tag-driven sections from section-visibility render for the selection.
@@ -232,9 +235,9 @@ describe('edit mode — design pane', () => {
     expect(paneBody.textContent).toContain('Effects')
 
     // Collapse (like the recording menu's minimize) → frees the width, hides body.
-    fireEvent.click(document.querySelector('.screenshare-pane-collapse')!)
-    expect(document.querySelector('.screenshare-pane.collapsed')).not.toBeNull()
-    expect(document.querySelector('.screenshare-pane-body')).toBeNull()
+    fireEvent.click(inPane('.pixel-pane-collapse')!)
+    expect(pane()!.classList.contains('collapsed')).toBe(true)
+    expect(inPane('.pixel-pane-body')).toBeNull()
     expect(html.style.marginRight).toBe('0px')
 
     // Exit edit (Cancel) → pane gone, body margin restored.
@@ -245,16 +248,16 @@ describe('edit mode — design pane', () => {
 
   it('is resizable by dragging the left edge (body margin tracks the width)', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const html = document.documentElement
     fireEvent.click(editBtn())
     expect(html.style.marginRight).toBe('280px')
 
-    const handle = document.querySelector('.screenshare-pane-resize')!
+    const handle = inPane('.pixel-pane-resize')!
     // Drag left by 100px → pane (and the reserved body width) grows to 380px.
     fireEvent.pointerDown(handle, { clientX: 1000, pointerId: 1 })
     fireEvent.pointerMove(handle, { clientX: 900, pointerId: 1 })
@@ -267,13 +270,13 @@ describe('edit mode — app inert', () => {
   it('swallows page clicks while editing and restores them on exit; the bar still works', () => {
     const onPageClick = vi.fn()
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <button data-testid="page-btn" onClick={onPageClick}>
           App button
         </button>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     const pageBtn = screen.getByTestId('page-btn')
 

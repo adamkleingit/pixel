@@ -229,10 +229,10 @@ export async function correlateRecording(dir: string): Promise<void> {
     const timeline = buildTimeline(events, segments, durationMs)
     await writeFile(join(dir, 'timeline.json'), JSON.stringify(timeline, null, 2))
     console.log(
-      `[screenshare] timeline ${dir.split('/').pop()} — ${timeline.beats.length} beats ` +
+      `[pixel] timeline ${dir.split('/').pop()} — ${timeline.beats.length} beats ` +
         `(${timeline.hasTranscript ? 'with transcript' : 'events only'})`,
     )
   } catch (err) {
-    console.warn('[screenshare] correlation failed:', err)
+    console.warn('[pixel] correlation failed:', err)
   }
 }

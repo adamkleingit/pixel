@@ -17,9 +17,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ENTRY = join(HERE, '..', 'examples', 'basic', 'src', 'main.tsx')
 
 const editBtn = (page: Page) =>
-  page.locator('.screenshare-rec').getByRole('button', { name: 'Edit' })
+  page.locator('.pixel-rec').getByRole('button', { name: 'Edit' })
 const cancelBtn = (page: Page) =>
-  page.locator('.screenshare-rec').getByRole('button', { name: 'Cancel' })
+  page.locator('.pixel-rec').getByRole('button', { name: 'Cancel' })
 
 const marker = (page: Page) => page.evaluate(() => (window as unknown as { __pixel?: string }).__pixel)
 
@@ -33,7 +33,7 @@ test('defers a full reload during an edit session, then applies it on exit', asy
 
     // Enter edit mode → session active → HMR should be held back.
     await editBtn(page).click()
-    await expect(page.locator('.screenshare-pane')).toBeVisible()
+    await expect(page.locator('[aria-label="Design pane"]')).toBeVisible()
 
     // Touch the entry to trigger a full reload. The guard must abort it.
     await writeFile(ENTRY, `${original}\n// pixel-hmr-test ${Date.now()}\n`)
@@ -41,7 +41,7 @@ test('defers a full reload during an edit session, then applies it on exit', asy
 
     // The page did NOT reload — the marker survives and we're still editing.
     expect(await marker(page)).toBe('alive')
-    await expect(page.locator('.screenshare-pane')).toBeVisible()
+    await expect(page.locator('[aria-label="Design pane"]')).toBeVisible()
 
     // Exit the session → the deferred reload fires now.
     await cancelBtn(page).click()

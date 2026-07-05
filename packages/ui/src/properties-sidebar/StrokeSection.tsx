@@ -176,6 +176,7 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
         hex={hex || '000000'}
         alpha={alpha || '100'}
         onChangeColor={onColorFromPopover}
+        onTokenSelect={onColorToken}
       />
 
       <Row label="">

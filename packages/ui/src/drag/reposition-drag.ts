@@ -20,6 +20,14 @@ import { commitChangeBatch } from '../edit/change-reporter'
 import { applyPatch, setPatchSilent } from '../edit/patch'
 import { cancelAll, captureRects, playFlip } from './flip-animate'
 import {
+  clearActiveGuides,
+  collectSnapModel,
+  computeSnap,
+  setActiveGuides,
+  SNAP_THRESHOLD,
+  type SnapModel,
+} from './alignment-snap'
+import {
   flowChildren,
   nodeBeforeAtSlot,
   resolveInsertionAxis,
@@ -118,6 +126,10 @@ interface Session {
    *  would skew `getBoundingClientRect()` back to the drop point; we already
    *  emitted at natural layout and will emit again when the animation ends. */
   deferCleanupEmit: boolean
+
+  /** Alignment-snap model (sibling/parent edges in screen px), captured once at
+   *  gesture start. Only consulted in the free-absolute path. */
+  snapModel: SnapModel
 }
 
 let session: Session | null = null
@@ -253,6 +265,7 @@ export function startRepositionDrag(input: RepositionStartInput): void {
     parentPositionPrev: getComputedStyle(parent).position,
     parentPositionMutated: false,
     deferCleanupEmit: false,
+    snapModel: collectSnapModel(element),
   }
 
   // In-flow drags float above siblings via z-index, which needs a non-static
@@ -313,6 +326,7 @@ function cleanup(): void {
   if (!session) return
   const deferEmit = session.deferCleanupEmit
   cancelAll(session.flipAnimations)
+  clearActiveGuides()
   setPatchSilent(false)
   document.documentElement.style.cursor = session.prevDocCursor
   document.body.style.userSelect = session.prevBodyUserSelect
@@ -410,11 +424,32 @@ function stepAbsolute(s: Session, e: PointerEvent): void {
     else dxScreen = 0
   }
 
-  const dx = dxScreen / scale
-  const dy = dyScreen / scale
+  // Figma-style alignment snapping. The element moves 1:1 with the cursor on
+  // screen, so its un-snapped screen rect is the start rect shifted by the
+  // cursor delta. Snap that against the sibling/parent model; the correction
+  // (screen px) is folded into the write after converting back to element px.
+  // Holding Shift (axis-lock) bypasses snapping so a locked drag stays exact.
+  const w = s.startElementRect.width
+  const h = s.startElementRect.height
+  const predLeft = s.startElementRect.left + dxScreen
+  const predTop = s.startElementRect.top + dyScreen
+  let snapDx = 0
+  let snapDy = 0
+  if (!e.shiftKey) {
+    const snap = computeSnap(
+      { left: predLeft, top: predTop, right: predLeft + w, bottom: predTop + h },
+      s.snapModel,
+      SNAP_THRESHOLD,
+    )
+    snapDx = snap.dx
+    snapDy = snap.dy
+    setActiveGuides(snap.guides)
+  } else {
+    setActiveGuides([])
+  }
 
-  const left = Math.round(s.startLeft + dx)
-  const top = Math.round(s.startTop + dy)
+  const left = Math.round(s.startLeft + (dxScreen + snapDx) / scale)
+  const top = Math.round(s.startTop + (dyScreen + snapDy) / scale)
 
   applyOnAll(s, 'left', `${left}px`)
   applyOnAll(s, 'top', `${top}px`)
@@ -425,6 +460,7 @@ function stepAbsolute(s: Session, e: PointerEvent): void {
 // ---------------------------------------------------------------------------
 
 function stepInFlow(s: Session, e: PointerEvent): void {
+  setActiveGuides([]) // alignment guides are an absolute-mode affordance only
   const axis = resolveInsertionAxis(s.parent)
   const cursor = axis === 'x' ? e.clientX : e.clientY
   const children = flowChildren(s.parent, axis, s.element)
@@ -462,6 +498,7 @@ function stepInFlow(s: Session, e: PointerEvent): void {
 // ---------------------------------------------------------------------------
 
 function stepInsertionLine(s: Session, e: PointerEvent): void {
+  setActiveGuides([]) // alignment guides are an absolute-mode affordance only
   // Same cursor-follow as free-in-flow; the only difference is opacity (set
   // on entering this mode by onEnterMode) and that we do NOT mutate the DOM.
   followCursorViaTransform(s, e)

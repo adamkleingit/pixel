@@ -6,7 +6,7 @@ import type {
   FrameEvent,
   Recording,
   RectEvent,
-  ScreenshareEvent,
+  PixelEvent,
   SnapshotBlob,
   StrokePoint,
 } from './types'
@@ -38,7 +38,7 @@ export class Recorder {
   private pausedAccum = 0
   private pauseStart = 0
   private paused = false
-  private events: ScreenshareEvent[] = []
+  private events: PixelEvent[] = []
   private snapshots: SnapshotBlob[] = []
   private stream: MediaStream | null = null
   private mediaRecorder: MediaRecorder | null = null
@@ -120,7 +120,7 @@ export class Recorder {
       return { audioEnabled: true }
     } catch (err) {
       // Mic denied or unavailable → record events only, never hard-fail.
-      console.warn('[screenshare] audio unavailable, recording events only:', err)
+      console.warn('[pixel] audio unavailable, recording events only:', err)
       this.stream = null
       this.mediaRecorder = null
       return { audioEnabled: false }
@@ -219,7 +219,7 @@ export class Recorder {
             try {
               blob = await fixWebmDuration(blob, durationMs, { logger: false })
             } catch (err) {
-              console.warn('[screenshare] could not patch webm duration:', err)
+              console.warn('[pixel] could not patch webm duration:', err)
             }
           }
           resolve({ mime: blob.type, blob })

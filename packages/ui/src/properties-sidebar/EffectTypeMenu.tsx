@@ -23,6 +23,15 @@ const EFFECT_TYPES = [
   'Glass',
 ]
 
+/** The effects that map cleanly to a single CSS property and are wired up.
+ *  Noise / Texture / Glass have no faithful CSS equivalent yet — kept disabled. */
+const ENABLED_EFFECTS = new Set([
+  'Drop shadow',
+  'Inner shadow',
+  'Layer blur',
+  'Background blur',
+])
+
 export function EffectTypeMenu({
   isOpen = false,
   value = 'Drop shadow',
@@ -33,6 +42,14 @@ export function EffectTypeMenu({
   const ref = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const width = 200
+
+  // Stable refs so the outside-close effect subscribes once per open — see
+  // Popover.tsx: otherwise the window listener churns on every re-render and is
+  // detached at the moment of an outside click.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const anchorRefRef = useRef(anchorRef)
+  anchorRefRef.current = anchorRef
 
   useLayoutEffect(() => {
     if (!isOpen) return
@@ -68,22 +85,24 @@ export function EffectTypeMenu({
 
   useEffect(() => {
     if (!isOpen) return
-    function handle(e: MouseEvent) {
+    function handle(e: Event) {
       const target = e.target as Node
       if (ref.current?.contains(target)) return
-      if (anchorRef?.current?.contains(target)) return
-      onClose?.()
+      if (anchorRefRef.current?.current?.contains(target)) return
+      onCloseRef.current?.()
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose?.()
+      if (e.key === 'Escape') onCloseRef.current?.()
     }
-    window.addEventListener('mousedown', handle)
+    // `pointerdown` in capture — see Popover.tsx: the edit-mode inert layer
+    // swallows page `mousedown`, so a mouse listener never sees an outside click.
+    window.addEventListener('pointerdown', handle, true)
     window.addEventListener('keydown', handleKey)
     return () => {
-      window.removeEventListener('mousedown', handle)
+      window.removeEventListener('pointerdown', handle, true)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [isOpen, onClose, anchorRef])
+  }, [isOpen])
 
   if (!isOpen || !pos) return null
 
@@ -107,7 +126,7 @@ export function EffectTypeMenu({
     >
       {EFFECT_TYPES.map(t => {
         const active = t === value
-        const enabled = t === 'Drop shadow'
+        const enabled = ENABLED_EFFECTS.has(t)
         return (
           <button
             key={t}

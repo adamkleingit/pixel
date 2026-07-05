@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
 import type { Token } from './pixel-common'
-import type { BarPosition, EditPayload, Recording, ScreenshareState, StrokePoint, Task } from './types'
+import type { BarPosition, BugReportConfig, EditPayload, Recording, PixelState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -31,8 +31,8 @@ export interface Stroke extends StrokeShape {
 }
 
 /** Internal context shared between the provider, the overlay, and the public hook. */
-export interface ScreenshareContextValue {
-  state: ScreenshareState
+export interface PixelContextValue {
+  state: PixelState
   start: () => void
   stop: () => void
   pause: () => void
@@ -72,6 +72,9 @@ export interface ScreenshareContextValue {
    *  the sink can't fetch or none are detected. Feeds the design-pane pickers and
    *  the on-canvas drag snap-to-token. */
   designTokens: Token[]
+  /** Bug-report config (endpoint + static meta), or null when not configured —
+   *  the "Report a bug" button only renders when this is set. */
+  bugReport: BugReportConfig | null
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void
@@ -84,14 +87,38 @@ export interface ScreenshareContextValue {
   drawStroke: StrokeShape | null
   /** Committed strokes, kept visible until the Cmd key is released. */
   drawStrokes: Stroke[]
+
+  // --- Time travel (pixel-react state history) ---------------------------
+  /** Whether the state-history (time-travel) pane is open. */
+  timeTravel: boolean
+  /** Open/close the time-travel pane. Closing while frozen resumes live. */
+  toggleTimeTravel: () => void
+  /** Captured app-state frames (id + timestamp), oldest → newest. Empty unless
+   *  the app routes its `react` through pixel-react (dev alias — see README). */
+  stateFrames: StateFrameMeta[]
+  /** Index of the frozen frame in `stateFrames`, or null when live. */
+  frozenIndex: number | null
+  /** Freeze the app to the frame at `index` (time-travel). */
+  gotoState: (index: number) => void
+  /** Step to the previous / next captured frame (freezing if live). */
+  stepStateBack: () => void
+  stepStateForward: () => void
+  /** Leave time-travel: resume the pre-freeze live state and keep capturing. */
+  cancelTimeTravel: () => void
 }
 
-export const ScreenshareContext = createContext<ScreenshareContextValue | null>(null)
+/** Lightweight frame descriptor for the states list UI. */
+export interface StateFrameMeta {
+  id: number
+  at: number
+}
 
-export function useScreenshareContext(): ScreenshareContextValue {
-  const ctx = useContext(ScreenshareContext)
+export const PixelContext = createContext<PixelContextValue | null>(null)
+
+export function usePixelContext(): PixelContextValue {
+  const ctx = useContext(PixelContext)
   if (!ctx) {
-    throw new Error('Screenshare components must be used within <ScreenshareProvider>')
+    throw new Error('Pixel components must be used within <PixelProvider>')
   }
   return ctx
 }

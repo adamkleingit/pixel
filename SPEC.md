@@ -1,6 +1,6 @@
-# Screenshare — A Standalone Record-Point-Draw Library
+# Pixel — A Standalone Record-Point-Draw Library
 
-**Screenshare is a standalone, self-contained project** — its own repo/workspace,
+**Pixel is a standalone, self-contained project** — its own repo/workspace,
 with **no dependency on Pixel or any other product.** A user arms it, talks, moves
 the cursor, clicks, and scribbles over a live page; it produces a single artifact
 — an **audio track + a timestamped event stream** in which every click and
@@ -8,9 +8,9 @@ drawing is resolved to the DOM element it targeted — and drops that artifact i
 a directory on disk. A coding agent (Claude Code, Cursor, Codex — whatever the
 user already runs) picks it up from there and acts on it.
 
-The whole point: **anyone can install Screenshare into their existing app and
+The whole point: **anyone can install Pixel into their existing app and
 wire it to their existing coding agent, with Pixel nowhere in the picture.** Pixel
-is merely one *possible* consumer that may later run the Screenshare server in
+is merely one *possible* consumer that may later run the Pixel server in
 parallel with its agent; it gets no special treatment here. Wherever this spec
 says "a host" it means any app embedding the SDK; Pixel appears only as an
 occasional illustrative example.
@@ -91,7 +91,7 @@ window) is therefore **not an alternative architecture — it's an optional
 distribution shell** layered later. When machine-wide reach is wanted, the shell
 embeds *this same in-page core* into each web view and degrades to
 coordinates-only over non-web surfaces. (A host that already ships an Electron
-app — Pixel, for instance — can run that shell alongside the Screenshare server.)
+app — Pixel, for instance — can run that shell alongside the Pixel server.)
 Deferred in §10.
 
 The rest of this spec specifies the in-page React library.
@@ -114,7 +114,7 @@ for Whisper + `ffmpeg-static` to decode audio); these are server-only and never
 reach the browser.
 
 ```
-screenshare/                         ← standalone, OUTSIDE any product repo
+pixel/                         ← standalone, OUTSIDE any product repo
   SPEC.md                            ← this document
   package.json                       { private, workspaces: ["packages/*", "examples/*"] }
   packages/
@@ -122,9 +122,9 @@ screenshare/                         ← standalone, OUTSIDE any product repo
       package.json                   { peerDependencies: { react, react-dom } }
       src/
         index.tsx          public surface
-        ScreenshareProvider.tsx   context: config, state machine, the active Recording
+        PixelProvider.tsx   context: config, state machine, the active Recording
         Overlay.tsx        the capture+draw surface (the one thing the host mounts)
-        useScreenshare.ts  { state, start, stop, cancel, tool, setTool, lastRecording }
+        usePixel.ts  { state, start, stop, cancel, tool, setTool, lastRecording }
         machine.ts         idle→recording→paused state machine (pure)
         recorder.ts        getUserMedia + MediaRecorder + level meter + event assembly
         capture/
@@ -137,7 +137,7 @@ screenshare/                         ← standalone, OUTSIDE any product repo
           blip.tsx         click "radar blip" animation
         sinks/
           httpSink.ts      POST the Recording to @getpixel/server
-        types.ts           Recording, ScreenshareEvent, Target, GestureEvent…
+        types.ts           Recording, PixelEvent, Target, GestureEvent…
         plugins.ts         ToolPlugin + ElementResolver + RecordingSink contracts
   packages/
     server/                          @getpixel/server — standalone Node ingest
@@ -153,16 +153,16 @@ The entire SDK public surface:
 
 ```ts
 // @getpixel/ui
-export function ScreenshareProvider(props: {
+export function PixelProvider(props: {
   children: React.ReactNode
-  config?: ScreenshareConfig
+  config?: PixelConfig
   onComplete?: (rec: Recording) => void   // fires once on stop
   onCancel?: () => void
 }): JSX.Element
 
 export function Overlay(props?: { className?: string }): JSX.Element  // mount once
 
-export function useScreenshare(): {
+export function usePixel(): {
   state: 'idle' | 'recording' | 'paused'
   start(): void
   pause(): void
@@ -175,7 +175,7 @@ export function useScreenshare(): {
   status: RecordingStatus | null   // live agent status from the sink (§8)
 }
 
-export interface ScreenshareConfig {
+export interface PixelConfig {
   activation?: { doubleTapKey?: string; stopKey?: string; enabled?: boolean } // default Space/Space
   audio?: boolean                 // default true; false ⇒ events-only
   tools?: ToolPlugin[]            // extra tools (Pixel adds Select); built-ins always present
@@ -186,7 +186,7 @@ export interface ScreenshareConfig {
 }
 ```
 
-A host integrates in three lines: wrap with `<ScreenshareProvider onComplete={…}>`,
+A host integrates in three lines: wrap with `<PixelProvider onComplete={…}>`,
 render `<Overlay/>` once near the root, optionally call `start()` from a button.
 Everything else (double-Space, drawing, targeting, audio) is internal.
 
@@ -248,7 +248,7 @@ mirroring the shortcuts so the feature is fully usable by mouse alone. The HUD
 anchors to a screen edge and flips like a tooltip so it never covers the pointer
 region. It is **opt-out** (`config` can disable it) and **restyleable** via
 `className`, so Pixel can suppress it and render its own chrome while still
-driving the same machine through `useScreenshare()`. `useScreenshare()` gains
+driving the same machine through `usePixel()`. `usePixel()` gains
 `pause()`/`resume()` and `state: 'idle' | 'recording' | 'paused'` accordingly.
 
 ---
@@ -262,11 +262,11 @@ optional audio track.** Nothing is sampled into video.
 interface Recording {
   startedAt: number              // epoch ms, for the record only
   durationMs: number             // t at stop
-  events: ScreenshareEvent[]     // sorted by t (ms since t=0)
+  events: PixelEvent[]     // sorted by t (ms since t=0)
   audio: AudioTrack | null       // null if audio:false or mic denied
 }
 
-type ScreenshareEvent =
+type PixelEvent =
   | PointerSample      // throttled cursor position
   | HoverEvent         // element under cursor changed
   | ClickEvent         // a recorded "bleep" click (default tool)
@@ -481,7 +481,7 @@ interface ToolPlugin {
 interface ToolCtx {
   hit(x: number, y: number): Element | null     // library hit-testing
   makeTarget(el: Element): Target               // resolve + dedupe
-  emit(ev: ScreenshareEvent): void              // push onto the stream
+  emit(ev: PixelEvent): void              // push onto the stream
   snapshot(rect: Rect): Promise<SnapshotEvent['image'] | null>  // raster a region (§6.4) via SnapshotProvider
   now(): number                                 // t in ms (active time)
 }
@@ -535,18 +535,18 @@ The point of the whole feature is **no copy-paste into Claude/Cursor**. The
 recording is dropped into a project-local directory; the coding agent watches
 that directory in a loop, **claims** a new recording (atomically, so multiple
 agents can't collide), does the work, and **writes its status back** so the
-screenshare UI can report progress to the user. The protocol is *just files*, so
+pixel UI can report progress to the user. The protocol is *just files*, so
 any agent — Claude Code, Cursor, Codex — participates with the same skill; no
 API keys, no RPC bus, no model coupling in the library.
 
 ### 8.1 Where it's saved — the dropbox layout
 A gitignored, project-local directory (the agent already runs in this project).
 Default `.pixel/recordings/` under Pixel; configurable root (e.g.
-`.screenshare/`) for a generic host. **State is the subdirectory**, so every
+`.pixel/`) for a generic host. **State is the subdirectory**, so every
 transition is a single atomic `rename()`:
 
 ```
-.screenshare/
+.pixel/
   inbox/<id>/        complete, unclaimed   { meta.json, events.json, audio.webm?, snaps/*.png }
   working/<id>/      claimed               + claim.json { agentId, pid, claimedAt, heartbeatAt }
                                            + progress.ndjson   (append-only status lines)
@@ -571,7 +571,7 @@ transition is a single atomic `rename()`:
   dead agent never strands a recording.
 - **Progress → user.** The owner appends NDJSON lines to `progress.ndjson`
   ("transcribing", "reading Card.tsx:42", "editing…"). Done = write `result.json`
-  and `rename(working/<id> → done/<id>)` (or `failed/`). The screenshare side
+  and `rename(working/<id> → done/<id>)` (or `failed/`). The pixel side
   **watches** these paths and drives the HUD:
   `Queued → Claimed by Claude → Working… → ✓ Done (3 files) / ✗ Error`.
 
@@ -666,7 +666,7 @@ A `pixel` skill, run long-lived (or via `/loop`):
 5. write `result.json`; `rename` to `done/`/`failed/`. Loop.
 
 The same skill works for any agent because it only touches files and reads text —
-that is exactly what makes Screenshare drop into someone's *existing* agent with
+that is exactly what makes Pixel drop into someone's *existing* agent with
 no product in between. The dropbox contract is the only fixed thing.
 
 ### 8.7 Later: a subscribable hook (push integration)
@@ -698,7 +698,7 @@ optional rather than required, for agents that can hold a live subscription.
 - **Optional host adapters (live in the host repo, not here):** e.g. a Pixel
   adapter that supplies an `ElementResolver` (pixel-id → source), a `rootResolver`
   for shadow tiles, and a Select `ToolPlugin`, then drives the machine from its
-  own chrome via `useScreenshare()`. Screenshare neither ships nor depends on any
+  own chrome via `usePixel()`. Pixel neither ships nor depends on any
   such adapter; the seams (§7) are the only contact surface.
 
 ### 9.1 `examples/basic` — the example app
@@ -706,7 +706,7 @@ A plain Vite React app that serves the SDK end-to-end with **no LLM and no
 product**:
 
 - A demo page of plain components (buttons, cards, a list) wrapped in
-  `<ScreenshareProvider config={{ sink: httpSink(serverUrl) }}>` with `<Overlay/>`.
+  `<PixelProvider config={{ sink: httpSink(serverUrl) }}>` with `<Overlay/>`.
 - Records via double-Space, sends to `@getpixel/server`, and shows the local
   `Recording` (event count, duration, audio size) so you can see capture working
   without any agent.
@@ -763,7 +763,7 @@ Other deferred items:
 The smallest end-to-end loop, **no LLM, no transcription, no targeting**:
 1. **`@getpixel/ui` skeleton**: provider + overlay + pure state machine,
    `idle ⇄ recording`, driven by **double-Space to start and double-Space to
-   stop** (input-focus guarded) and `start()/stop()` from `useScreenshare()`.
+   stop** (input-focus guarded) and `start()/stop()` from `usePixel()`.
    A minimal REC indicator (dot + timer).
 2. **Capture: audio + pointer**: `getUserMedia` + `MediaRecorder` for audio;
    throttled `pointermove` samples and `click` events, all on one `t` clock.
@@ -789,7 +789,7 @@ The smallest end-to-end loop, **no LLM, no transcription, no targeting**:
   default: `@huggingface/transformers` (Whisper) + bundled `ffmpeg-static` to
   decode webm→PCM, writing `transcript.json` with per-segment timestamps. Runs in
   the background after save; audio stays on `127.0.0.1`. Language via
-  `SCREENSHARE_WHISPER_LANG` (unset ⇒ English; set `hebrew` etc. for other langs).
+  `PIXEL_WHISPER_LANG` (unset ⇒ English; set `hebrew` etc. for other langs).
 
 **Still to do in Phase 2:**
 - **Pause/resume** (single-Space pause, page goes live; double-Space stop) + the

@@ -3,7 +3,7 @@
  * and picks the highest-confidence match. Ties resolve by registry order.
  *
  * Ported from Pixel (pixel/packages/agent/src/adapters/registry.ts), trimmed to
- * the adapters shipped in the screenshare port. MUI + Chakra are a future TODO —
+ * the adapters shipped in the pixel port. MUI + Chakra are a future TODO —
  * their parsers (vm/babel of `createTheme`/`defineConfig`) are heavier; add them
  * here when needed.
  */

@@ -1,3 +1,4 @@
+import type React from 'react'
 import type { Token } from '../pixel-common'
 import { ColorSwatch } from './ColorSwatch'
 import { IconButton } from './IconButton'
@@ -19,11 +20,22 @@ export interface PaintRowProps {
   isVisible?: boolean
   /** When true, the whole row is inert (multi-edit "Multiple" state). */
   disabled?: boolean
+  /** Hide individual trailing controls — used by gradient/image rows, whose
+   *  opacity/token/visibility aren't meaningful (the swatch opens a full editor
+   *  popover instead). `onRemove` still renders when a handler is given. */
+  hideAlpha?: boolean
+  hideToken?: boolean
+  hideVisibility?: boolean
   onHexChange?: ((hex: string) => void) | null
   onAlphaChange?: ((alpha: string) => void) | null
   onVisibilityChange?: ((isVisible: boolean) => void) | null
   onSwatchClick?: (() => void) | null
   onRemove?: (() => void) | null
+  /** Drag-to-reorder (multi-layer backgrounds). When given, a grip handle is
+   *  rendered at the row's leading edge; pressing it starts a drag the list
+   *  owner tracks. `isDragging` dims the row while it's the one being moved. */
+  onDragHandleDown?: ((e: React.PointerEvent) => void) | null
+  isDragging?: boolean
   /** Token picker — render a per-row TokenButton between the alpha input and
    *  the visibility toggle. Omit to hide the button (e.g. when the parent
    *  hasn't wired a handler yet). */
@@ -41,11 +53,16 @@ export function PaintRow({
   alphaPlaceholder = '',
   isVisible = true,
   disabled = false,
+  hideAlpha = false,
+  hideToken = false,
+  hideVisibility = false,
   onHexChange = null,
   onAlphaChange = null,
   onVisibilityChange = null,
   onSwatchClick = null,
   onRemove = null,
+  onDragHandleDown = null,
+  isDragging = false,
   tokenProperty = null,
   onTokenSelect = null,
 }: PaintRowProps = {}) {
@@ -57,7 +74,31 @@ export function PaintRow({
   })
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : isDragging ? 0.4 : 1 }}>
+      {onDragHandleDown && (
+        <button
+          type="button"
+          title="Drag to reorder"
+          aria-label="Drag to reorder"
+          onPointerDown={disabled ? undefined : onDragHandleDown}
+          style={{
+            flexShrink: 0,
+            width: 16,
+            height: SIZES.rowHeight,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            color: COLORS.muted,
+            cursor: disabled ? 'not-allowed' : 'grab',
+            touchAction: 'none',
+          }}
+        >
+          {gripIcon}
+        </button>
+      )}
       <div
         style={{
           flex: 1,
@@ -121,32 +162,49 @@ export function PaintRow({
           />
         )}
       </div>
-      <div style={{ width: 76, display: 'flex' }}>
-        <NumericInput
-          value={alpha}
-          placeholder={alphaPlaceholder}
-          disabled={disabled}
-          onChange={onAlphaChange}
-          prefix={opacityIcon}
-          suffix={alphaPlaceholder ? '' : '%'}
-          ariaLabel="Opacity"
-          prefixProps={scrubAlpha.prefixProps}
-        />
-      </div>
-      {tokenProperty && onTokenSelect && (
+      {!hideAlpha && (
+        <div style={{ width: 76, display: 'flex' }}>
+          <NumericInput
+            value={alpha}
+            placeholder={alphaPlaceholder}
+            disabled={disabled}
+            onChange={onAlphaChange}
+            prefix={opacityIcon}
+            suffix={alphaPlaceholder ? '' : '%'}
+            ariaLabel="Opacity"
+            prefixProps={scrubAlpha.prefixProps}
+          />
+        </div>
+      )}
+      {!hideToken && tokenProperty && onTokenSelect && (
         <TokenButton property={tokenProperty} onSelect={onTokenSelect} disabled={disabled} />
       )}
-      <IconButton
-        title={isVisible ? 'Hide' : 'Show'}
-        isActive={isVisible}
-        isDisabled={disabled}
-        onClick={() => { if (!disabled) onVisibilityChange?.(!isVisible) }}
-      >
-        {isVisible ? eyeIcon : eyeOffIcon}
-      </IconButton>
-      <IconButton title="Remove" isDisabled={disabled} onClick={disabled ? null : onRemove}>
-        {minusIcon}
-      </IconButton>
+      {!hideVisibility && (
+        <IconButton
+          title={isVisible ? 'Hide' : 'Show'}
+          isActive={isVisible}
+          isDisabled={disabled}
+          onClick={() => { if (!disabled) onVisibilityChange?.(!isVisible) }}
+        >
+          {isVisible ? eyeIcon : eyeOffIcon}
+        </IconButton>
+      )}
+      {onRemove && (
+        <IconButton title="Remove" isDisabled={disabled} onClick={disabled ? null : onRemove}>
+          {minusIcon}
+        </IconButton>
+      )}
     </div>
   )
 }
+
+const gripIcon = (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+    <circle cx="6" cy="4" r="1.15" />
+    <circle cx="10" cy="4" r="1.15" />
+    <circle cx="6" cy="8" r="1.15" />
+    <circle cx="10" cy="8" r="1.15" />
+    <circle cx="6" cy="12" r="1.15" />
+    <circle cx="10" cy="12" r="1.15" />
+  </svg>
+)

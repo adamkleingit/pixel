@@ -11,10 +11,10 @@ import { SERVER_URL } from './fixtures'
  * (drag/spacing-snap-wiring.test.tsx).
  */
 
-// Scope to the screenshare bar — the example app has its own "Edit" button.
+// Scope to the pixel bar — the example app has its own "Edit" button.
 type PWPage = import('@playwright/test').Page
 const editBtn = (page: PWPage) =>
-  page.locator('.screenshare-rec').getByRole('button', { name: 'Edit' })
+  page.locator('.pixel-rec').getByRole('button', { name: 'Edit' })
 
 test('the server extracts the project tokens and serves them at GET /tokens', async ({ request }) => {
   // Extraction runs asynchronously after the server boots; poll until ready.
@@ -50,13 +50,13 @@ test('the design pane token pickers are populated from the project tokens', asyn
 
   // Select a card (a div → Appearance/Fill sections with color + radius pickers).
   await page.locator('.card', { hasText: 'Billing' }).click({ modifiers: ['Meta'] })
-  await expect(page.locator('.screenshare-pane-tag')).toBeVisible()
+  await expect(page.locator('.pixel-pane-tag')).toBeVisible()
 
   // A "Use a token" button only renders when tokens of that kind exist — its
   // presence is itself proof the pane sees the project tokens. (For a div the
   // first such picker is spacing/radius; color lives in Fill/Text — all are fed
   // by the same fetched set.)
-  const useToken = page.locator('.screenshare-pane').getByRole('button', { name: /token/i }).first()
+  const useToken = page.locator('[aria-label="Design pane"]').getByRole('button', { name: /token/i }).first()
   await expect(useToken).toBeVisible()
   await useToken.click()
 

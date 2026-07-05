@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
 import { DesignPanel } from './properties-sidebar/DesignPanel'
@@ -36,7 +36,16 @@ export function DesignPane() {
   const el = anchor instanceof HTMLElement ? anchor : null
   // The full selection (anchor + match entries) — sections collapse disagreeing
   // values to "Multiple" when more than one element is passed.
-  const els = entries.map((e) => e.element)
+  //
+  // Memoize on `entries` (the selection-store state) so the array identity only
+  // changes when the SELECTION changes — not on the many re-renders this pane
+  // gets from unrelated store churn (hovering the page, or every committed edit
+  // bumping the edit-history value). Sections key their read effect on
+  // `elements`; a fresh array every render made them re-read + rebuild their
+  // rows on each keystroke/hover, which reset in-progress edits and detached
+  // open popovers (box-shadow / color). A stable ref runs the read effect only
+  // on a real selection change.
+  const els = useMemo(() => entries.map((e) => e.element), [entries])
   const history = useEditHistory()
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(PANE_W)
@@ -81,11 +90,11 @@ export function DesignPane() {
     const prevTransition = html.style.transition
     html.style.transition = dragging.current ? 'none' : 'margin-right 160ms ease'
     html.style.marginRight = `${collapsed ? 0 : width}px`
-    html.style.setProperty('--screenshare-dock-right', `${collapsed ? COLLAPSED_W : width}px`)
+    html.style.setProperty('--pixel-dock-right', `${collapsed ? COLLAPSED_W : width}px`)
     return () => {
       html.style.marginRight = prevMargin
       html.style.transition = prevTransition
-      html.style.removeProperty('--screenshare-dock-right')
+      html.style.removeProperty('--pixel-dock-right')
     }
   }, [collapsed, width])
 
@@ -110,13 +119,13 @@ export function DesignPane() {
 
   return (
     <aside
-      className={`screenshare-pane${collapsed ? ' collapsed' : ''}`}
+      className={`pixel-pane${collapsed ? ' collapsed' : ''}`}
       style={collapsed ? undefined : { width }}
       aria-label="Design pane"
     >
       {!collapsed && (
         <div
-          className="screenshare-pane-resize"
+          className="pixel-pane-resize"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize design pane"
@@ -125,11 +134,11 @@ export function DesignPane() {
           onPointerUp={onResizeUp}
         />
       )}
-      <div className="screenshare-pane-head">
-        {!collapsed && <span className="screenshare-pane-title">Design</span>}
+      <div className="pixel-pane-head">
+        {!collapsed && <span className="pixel-pane-title">Design</span>}
         <button
           type="button"
-          className="screenshare-pane-collapse"
+          className="pixel-pane-collapse"
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? 'Expand design pane' : 'Collapse design pane'}
           aria-label={collapsed ? 'Expand design pane' : 'Collapse design pane'}
@@ -149,10 +158,10 @@ export function DesignPane() {
       </div>
 
       {!collapsed && (
-        <div className="screenshare-pane-body">
+        <div className="pixel-pane-body">
           {el ? (
             <>
-              <div className="screenshare-pane-tag">{tag}</div>
+              <div className="pixel-pane-tag">{tag}</div>
               {/* TokensProvider is mounted once in Overlay over both the design
                   pane and the selection overlay, so the pickers here and the
                   drag-handle snapping share one token set. */}
@@ -160,11 +169,11 @@ export function DesignPane() {
                 selectedTag={el.tagName.toLowerCase()}
                 headerTag={el.tagName.toLowerCase()}
                 selectedElement={el}
-                elements={els.length ? els : [el]}
+                elements={els}
               />
             </>
           ) : (
-            <div className="screenshare-pane-empty">
+            <div className="pixel-pane-empty">
               Select an element on the page to inspect it.
             </div>
           )}

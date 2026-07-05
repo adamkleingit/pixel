@@ -7,7 +7,7 @@ import { test, expect, type Page } from '@playwright/test'
  * Regression for `rgbStringToHexAlpha` only understanding `rgb()`.
  */
 
-const editBtn = (p: Page) => p.locator('.screenshare-rec').getByRole('button', { name: 'Edit' })
+const editBtn = (p: Page) => p.locator('.pixel-rec').getByRole('button', { name: 'Edit' })
 const pane = (p: Page) => p.locator('[aria-label="Design pane"]')
 // `.btn.secondary` — a solid white background + a real border, so every color
 // section applies (unlike the primary button's gradient fill).

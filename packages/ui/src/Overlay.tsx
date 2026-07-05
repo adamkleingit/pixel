@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { useScreenshareContext } from './context'
+import { usePixelContext } from './context'
 import { Blip } from './draw/blip'
 import { DragRect, RectFlashView } from './draw/rect'
 import { DrawStroke } from './draw/stroke'
 import { DesignPane } from './DesignPane'
+import { ElementsPane } from './ElementsPane'
+import { StatesPane } from './StatesPane'
 import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
 import { EditHistoryProvider, useEditHistory, type EditEntry } from './edit/edit-history'
@@ -44,6 +46,11 @@ const ICONS = {
   save: 'M5 3h11l3 3v15H5zM8 3v5h7V3M8 21v-7h8v7',
   // History clock (edit log): a counter-clockwise arc with a clock hand.
   editLog: 'M3.5 9 A 8 8 0 1 0 6.2 4.2 M3.5 4.5 V9 H8 M12 8.5 V12.5 L15 14.3',
+  // Time-travel (state history): a rewind clock — counter-clockwise arc + hand.
+  timeTravel: 'M3.5 9 A 8 8 0 1 0 6.2 4.2 M3.5 4.5 V9 H8 M12 8 V12.5 L15.5 14.5',
+  // Chevrons for stepping between states.
+  chevronLeft: 'M15 6l-6 6 6 6',
+  chevronRight: 'M9 6l6 6-6 6',
   // Undo / redo: arrowhead + a curved arc back the other way.
   undo: 'M9 6 L4 11 L9 16 M4 11 H13 A5 5 0 1 1 13 21 H9',
   redo: 'M15 6 L20 11 L15 16 M20 11 H11 A5 5 0 1 0 11 21 H15',
@@ -70,7 +77,7 @@ function IconButton({
   return (
     <button
       type="button"
-      className="screenshare-rec-btn"
+      className="pixel-rec-btn"
       title={label}
       aria-label={label}
       onClick={onClick}
@@ -91,19 +98,26 @@ function IconButton({
 
 /**
  * Mouse-tool toggle — a cursor glyph; active (the default) means the mouse tool
- * is on: the page is inert and you can draw rectangles. Off = no tool, clicks
- * pass through to the page. Also bound to the `M` key while recording.
+ * is on: the page is inert and Pixel owns pointer input. Off = clicks pass
+ * through to the real app. Also bound to the `M` key. The tooltip is
+ * mode-specific (recording draws rectangles; edit mode selects & edits).
  */
-function MouseToolToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function MouseToolToggle({
+  on,
+  onToggle,
+  titleOn = 'Mouse tool ON — draw rectangles, page inert (M)',
+  titleOff = 'Mouse tool OFF — clicks pass through to the page (M)',
+}: {
+  on: boolean
+  onToggle: () => void
+  titleOn?: string
+  titleOff?: string
+}) {
   return (
     <button
       type="button"
-      className={`screenshare-rec-btn screenshare-rec-tool${on ? ' active' : ''}`}
-      title={
-        on
-          ? 'Mouse tool ON — draw rectangles, page inert (M)'
-          : 'Mouse tool OFF — clicks pass through to the page (M)'
-      }
+      className={`pixel-rec-btn pixel-rec-tool${on ? ' active' : ''}`}
+      title={on ? titleOn : titleOff}
       aria-label="Mouse tool"
       aria-pressed={on}
       onClick={onToggle}
@@ -170,7 +184,7 @@ function TaskIndicator({
     <button
       type="button"
       className={
-        'screenshare-rec-btn screenshare-rec-tasks' +
+        'pixel-rec-btn pixel-rec-tasks' +
         (serverDown ? ' error' : '') +
         (open ? ' active' : '')
       }
@@ -205,7 +219,7 @@ function TaskIndicator({
         </svg>
       )}
       {!serverDown && activeCount > 0 && (
-        <span className="screenshare-rec-badge">{activeCount}</span>
+        <span className="pixel-rec-badge">{activeCount}</span>
       )}
     </button>
   )
@@ -238,7 +252,7 @@ function summarizeEntry(entry: EditEntry): string {
  */
 function EditLog() {
   const { entries, pointer, undo, redo, goto, canUndo, canRedo } = useEditHistory()
-  const { bar } = useScreenshareContext()
+  const { bar } = usePixelContext()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement>(null)
 
@@ -256,7 +270,7 @@ function EditLog() {
   const navBtn = (icon: keyof typeof ICONS, label: string, onClick: () => void, disabled: boolean) => (
     <button
       type="button"
-      className="screenshare-editlog-nav-btn"
+      className="pixel-editlog-nav-btn"
       title={label}
       aria-label={label}
       onClick={onClick}
@@ -272,7 +286,7 @@ function EditLog() {
     <span ref={rootRef} style={{ display: 'inline-flex' }}>
       <button
         type="button"
-        className={`screenshare-rec-btn${open ? ' active' : ''}`}
+        className={`pixel-rec-btn${open ? ' active' : ''}`}
         title="Change history"
         aria-label="Change history"
         aria-expanded={open}
@@ -283,35 +297,35 @@ function EditLog() {
         </svg>
       </button>
       {open && (
-        <div className="screenshare-editlog" style={panelAnchor(bar.position)} role="dialog" aria-label="Change history">
-          <div className="screenshare-editlog-head">
+        <div className="pixel-editlog" style={panelAnchor(bar.position)} role="dialog" aria-label="Change history">
+          <div className="pixel-editlog-head">
             <span>Changes</span>
-            <span className="screenshare-editlog-nav">
+            <span className="pixel-editlog-nav">
               {navBtn('undo', 'Undo (⌘Z)', undo, !canUndo)}
               {navBtn('redo', 'Redo (⇧⌘Z)', redo, !canRedo)}
             </span>
           </div>
           {entries.length === 0 ? (
-            <div className="screenshare-editlog-empty">No changes yet.</div>
+            <div className="pixel-editlog-empty">No changes yet.</div>
           ) : (
-            <ul className="screenshare-editlog-list">
+            <ul className="pixel-editlog-list">
               {entries.map((entry, i) => (
                 <li
                   key={i}
                   className={
-                    'screenshare-editlog-item' +
+                    'pixel-editlog-item' +
                     (i > pointer ? ' undone' : '') +
                     (i === pointer ? ' current' : '')
                   }
                 >
                   <button
                     type="button"
-                    className="screenshare-editlog-row"
+                    className="pixel-editlog-row"
                     title={i > pointer ? 'Redo to here' : 'Undo to here'}
                     onClick={() => goto(i)}
                   >
-                    <span className="screenshare-editlog-num">{i + 1}</span>
-                    <span className="screenshare-editlog-label">{summarizeEntry(entry)}</span>
+                    <span className="pixel-editlog-num">{i + 1}</span>
+                    <span className="pixel-editlog-label">{summarizeEntry(entry)}</span>
                   </button>
                 </li>
               ))}
@@ -333,7 +347,7 @@ function EditLog() {
  */
 function EditControls() {
   const history = useEditHistory()
-  const { saveEdits, exitEdit, saving } = useScreenshareContext()
+  const { saveEdits, exitEdit, saving } = usePixelContext()
 
   const save = useCallback(async () => {
     // Fold any in-flight (debounced) edit into the batch so a change made just
@@ -375,7 +389,7 @@ function EditControls() {
     <>
       <button
         type="button"
-        className="screenshare-rec-btn screenshare-rec-save"
+        className="pixel-rec-btn pixel-rec-save"
         title="Save (double-tap Enter)"
         aria-label="Save"
         onClick={() => void save()}
@@ -394,7 +408,7 @@ function EditControls() {
       </button>
       <button
         type="button"
-        className="screenshare-rec-btn"
+        className="pixel-rec-btn"
         title="Cancel (Esc)"
         aria-label="Cancel"
         onClick={cancel}
@@ -418,7 +432,7 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
-      className={`screenshare-rec-btn${on ? ' active' : ''}`}
+      className={`pixel-rec-btn${on ? ' active' : ''}`}
       title={on ? 'Exit edit mode (Esc)' : 'Edit (double-tap Enter)'}
       aria-label="Edit"
       aria-pressed={on}
@@ -439,13 +453,42 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 /**
+ * Time-travel toggle — the rewind clock, sitting just below Edit in the bar.
+ * Opens the state-history pane (pixel-react); it does not freeze on its own
+ * (that's the pane's list / chevrons). Closing it resumes live capture.
+ */
+function TimeTravelToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`pixel-rec-btn${on ? ' active' : ''}`}
+      title={on ? 'Close state history' : 'State history — time travel'}
+      aria-label="State history"
+      aria-pressed={on}
+      onClick={onToggle}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path
+          d={ICONS.timeTravel}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  )
+}
+
+/**
  * "Report a bug" button (bug icon) — records the screen + mic via getDisplayMedia
  * and uploads it (with a metadata sidecar: url, browser, console errors) to the
  * configured Vercel Blob token route. Only renders when `config.bugReport` is
- * set. Self-contained: it doesn't touch the screenshare/edit state machine.
+ * set. Self-contained: it doesn't touch the pixel/edit state machine.
  */
 function BugButton() {
-  const { bugReport } = useScreenshareContext()
+  const { bugReport } = usePixelContext()
   const [phase, setPhase] = useState<'idle' | 'recording' | 'uploading' | 'sent' | 'error'>('idle')
   const recRef = useRef<BugRecording | null>(null)
 
@@ -484,11 +527,21 @@ function BugButton() {
 
   if (!bugReport) return null
 
-  if (phase === 'recording') {
-    return (
+  const tint = phase === 'sent' ? '#4ade80' : phase === 'error' ? '#f87171' : undefined
+  const title =
+    phase === 'uploading'
+      ? 'Sending bug report…'
+      : phase === 'sent'
+        ? 'Bug report sent'
+        : phase === 'error'
+          ? 'Bug report failed — try again'
+          : 'Report a bug (records your screen)'
+
+  const button =
+    phase === 'recording' ? (
       <button
         type="button"
-        className="screenshare-rec-btn screenshare-bug-recording"
+        className="pixel-rec-btn pixel-bug-recording"
         title="Stop & send bug report"
         aria-label="Stop bug recording"
         onClick={stop}
@@ -497,39 +550,55 @@ function BugButton() {
           <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
         </svg>
       </button>
+    ) : (
+      <button
+        type="button"
+        className="pixel-rec-btn"
+        title={title}
+        aria-label="Report a bug"
+        onClick={() => void start()}
+        disabled={phase === 'uploading'}
+        style={tint ? { color: tint } : undefined}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d={phase === 'sent' ? ICONS.check : ICONS.bug}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
     )
-  }
 
-  const tint = phase === 'sent' ? '#4ade80' : phase === 'error' ? '#f87171' : undefined
-  const title =
-    phase === 'uploading'
-      ? 'Uploading bug report…'
-      : phase === 'sent'
-        ? 'Bug report sent'
-        : phase === 'error'
-          ? 'Bug report failed — try again'
-          : 'Report a bug (records your screen)'
+  // A bottom-center toast for the upload outcome (auto-dismisses via the phase
+  // reset timers above; sent/error also get a manual dismiss).
+  const showToast = phase === 'uploading' || phase === 'sent' || phase === 'error'
+  const toastMsg =
+    phase === 'uploading' ? 'Sending bug report…' : phase === 'sent' ? 'Bug report sent ✓' : 'Bug report failed — try again'
+  const toast = showToast ? (
+    <div className={`pixel-bug-toast ${phase}`} role="status" aria-live="polite">
+      <span className="pixel-bug-toast-msg">{toastMsg}</span>
+      {phase !== 'uploading' && (
+        <button
+          type="button"
+          className="pixel-bug-toast-close"
+          aria-label="Dismiss"
+          onClick={() => setPhase('idle')}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  ) : null
+
   return (
-    <button
-      type="button"
-      className="screenshare-rec-btn"
-      title={title}
-      aria-label="Report a bug"
-      onClick={() => void start()}
-      disabled={phase === 'uploading'}
-      style={tint ? { color: tint } : undefined}
-    >
-      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-        <path
-          d={phase === 'sent' ? ICONS.check : ICONS.bug}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
+    <>
+      {button}
+      {toast}
+    </>
   )
 }
 
@@ -538,7 +607,7 @@ function TaskKindIcon({ kind }: { kind: Task['kind'] }) {
   const edit = kind === 'edit'
   return (
     <span
-      className={`screenshare-tasks-kind ${edit ? 'edit' : 'recording'}`}
+      className={`pixel-tasks-kind ${edit ? 'edit' : 'recording'}`}
       title={edit ? 'Saved edit' : 'Recording'}
       aria-label={edit ? 'Saved edit' : 'Recording'}
     >
@@ -567,25 +636,25 @@ function TasksPanel({
   onOpen: (id: string) => void
 }) {
   return (
-    <div className="screenshare-tasks" style={anchor} role="dialog" aria-label="Changelog">
-      <div className="screenshare-tasks-head">Changelog</div>
+    <div className="pixel-tasks" style={anchor} role="dialog" aria-label="Changelog">
+      <div className="pixel-tasks-head">Changelog</div>
       {tasks.length === 0 ? (
-        <div className="screenshare-tasks-empty">Nothing yet.</div>
+        <div className="pixel-tasks-empty">Nothing yet.</div>
       ) : (
-        <ul className="screenshare-tasks-list">
+        <ul className="pixel-tasks-list">
           {tasks.map((t) => (
-            <li key={t.id} className="screenshare-tasks-item">
+            <li key={t.id} className="pixel-tasks-item">
               <button
                 type="button"
-                className="screenshare-tasks-open"
+                className="pixel-tasks-open"
                 title={`Open folder — ${t.id}`}
                 onClick={() => onOpen(t.id)}
               >
-                <span className="screenshare-tasks-label">
+                <span className="pixel-tasks-label">
                   <TaskKindIcon kind={t.kind} />
-                  <span className="screenshare-tasks-id">{formatStamp(t)}</span>
+                  <span className="pixel-tasks-id">{formatStamp(t)}</span>
                 </span>
-                <span className={`screenshare-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
+                <span className={`pixel-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
               </button>
             </li>
           ))}
@@ -606,13 +675,15 @@ function RecBar() {
     cancel,
     editing,
     toggleEdit,
+    timeTravel,
+    toggleTimeTravel,
     passthrough,
     setPassthrough,
     bar,
     tasks,
     serverDown,
     openTask,
-  } = useScreenshareContext()
+  } = usePixelContext()
   const recording = state === 'recording'
   const idle = state === 'idle'
   const [minimized, setMinimized] = useState(false)
@@ -620,9 +691,12 @@ function RecBar() {
   const containRef = useContainEvents<HTMLDivElement>(true) // bar also contains Esc
 
   const activeCount = tasks.filter(isActive).length
-  // The indicator earns a slot whenever there's something to show — active
-  // tasks, a server error, or a popup the user has opened.
-  const showIndicator = serverDown || tasks.length > 0 || panelOpen
+  // The changelog indicator earns a slot only while **idle** — when there's
+  // something to show (active tasks, a server error, or a popup the user
+  // opened). While editing or recording it's hidden: edit mode surfaces the
+  // in-session change history (undo/redo) instead, and recording keeps the bar
+  // focused on the capture controls.
+  const showIndicator = idle && !editing && (serverDown || tasks.length > 0 || panelOpen)
   const indicator = showIndicator && (
     <TaskIndicator
       activeCount={activeCount}
@@ -670,7 +744,7 @@ function RecBar() {
 
   const vertical = VERTICAL_POSITIONS.has(bar.position)
   const cls =
-    `screenshare-rec pos-${bar.position}` +
+    `pixel-rec pos-${bar.position}` +
     (vertical ? ' vertical' : '') +
     (idle ? ' idle' : recording ? '' : ' paused') +
     (editing ? ' editing' : '') +
@@ -680,7 +754,7 @@ function RecBar() {
     return (
       <>
         <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
-          {!idle && <span className="screenshare-rec-dot" />}
+          {!idle && <span className="pixel-rec-dot" />}
           {indicator}
           <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
           {tasksPopup}
@@ -698,9 +772,17 @@ function RecBar() {
           controls (no Edit). Both appear only when idle. */}
       {editing ? (
         <>
-          <span className="screenshare-rec-edit-dot" />
-          <span className="screenshare-rec-time">Editing</span>
-          <span className="screenshare-rec-sep" />
+          <span className="pixel-rec-edit-dot" />
+          <span className="pixel-rec-time">Editing</span>
+          <span className="pixel-rec-sep" />
+          {/* Mouse tool: ON = select/edit (page inert); OFF (M) = pointer +
+              keyboard pass through to the real app. Toggling back re-freezes. */}
+          <MouseToolToggle
+            on={!passthrough}
+            onToggle={() => setPassthrough(!passthrough)}
+            titleOn="Mouse tool ON — select & edit, page inert (M)"
+            titleOff="Mouse tool OFF — interact with the app (M)"
+          />
           <EditControls />
         </>
       ) : (
@@ -708,7 +790,7 @@ function RecBar() {
           {idle ? (
             <button
               type="button"
-              className="screenshare-rec-record"
+              className="pixel-rec-record"
               title="Start recording (double-tap Space)"
               onClick={() => start()}
             >
@@ -718,17 +800,30 @@ function RecBar() {
               Rec
             </button>
           ) : (
-            <>
-              <span className="screenshare-rec-dot" />
-              <span className="screenshare-rec-time">
+            // While recording/paused the same leading slot becomes the Stop
+            // button (a red square where the record dot was), so you stop from
+            // exactly where you started; the timer keeps the live/paused cue.
+            <button
+              type="button"
+              className="pixel-rec-record"
+              title="Stop (double-tap Space)"
+              aria-label="Stop"
+              onClick={() => void stop()}
+            >
+              <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
+                <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
+              </svg>
+              <span className="pixel-rec-time">
                 {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
               </span>
-            </>
+            </button>
           )}
 
-          <span className="screenshare-rec-sep" />
-          {/* Edit is offered only when idle — hidden while a recording is active. */}
+          <span className="pixel-rec-sep" />
+          {/* Edit + Time-travel are offered only when idle — hidden while a
+              recording is active. Time-travel sits just below Edit. */}
           {idle && <EditToggle on={false} onToggle={toggleEdit} />}
+          {idle && <TimeTravelToggle on={timeTravel} onToggle={toggleTimeTravel} />}
           {/* The mouse tool only governs recording's block/passthrough. */}
           {!idle && (
             <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
@@ -736,13 +831,12 @@ function RecBar() {
 
           {!idle && (
             <>
-              <span className="screenshare-rec-sep" />
+              <span className="pixel-rec-sep" />
               {recording ? (
                 <IconButton icon="pause" label="Pause (Space)" onClick={pause} />
               ) : (
                 <IconButton icon="resume" label="Resume (Space)" onClick={resume} />
               )}
-              <IconButton icon="stop" label="Stop (double-tap Space)" onClick={() => void stop()} />
               <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke />
             </>
           )}
@@ -753,13 +847,13 @@ function RecBar() {
           above the server task indicator. */}
       {(editing || showIndicator) && (
         <>
-          <span className="screenshare-rec-sep" />
+          <span className="pixel-rec-sep" />
           {editing && <EditLog />}
           {indicator}
         </>
       )}
 
-      <span className="screenshare-rec-sep" />
+      <span className="pixel-rec-sep" />
       {/* Always available (any mode) so a bug can be reported whenever it happens.
           Renders nothing unless `config.bugReport` is set. */}
       <BugButton />
@@ -784,11 +878,11 @@ function ErrorToast({
   actionDisabled?: boolean
 }) {
   return (
-    <div className="screenshare-save-error" role="alert">
-      <span className="screenshare-save-error-msg">{message}</span>
+    <div className="pixel-save-error" role="alert">
+      <span className="pixel-save-error-msg">{message}</span>
       <button
         type="button"
-        className="screenshare-save-error-btn"
+        className="pixel-save-error-btn"
         onClick={onAction}
         disabled={actionDisabled}
       >
@@ -800,7 +894,7 @@ function ErrorToast({
 
 /** Failure toast shown when a recording couldn't be sent — offers a resend. */
 function SaveError() {
-  const { saveError, saving, resend } = useScreenshareContext()
+  const { saveError, saving, resend } = usePixelContext()
   if (!saveError) return null
   return (
     <ErrorToast
@@ -831,28 +925,34 @@ export function Overlay({ className }: OverlayProps) {
     tasks,
     serverDown,
     editing,
+    timeTravel,
+    passthrough,
     designTokens,
-  } = useScreenshareContext()
+  } = usePixelContext()
 
   if (typeof document === 'undefined') return null
 
   const active = state === 'recording' || state === 'paused'
   // Surface the bar (and its indicator) whenever there's status worth showing,
   // even while idle: active recordings on the server, or a connection error.
-  const showBar = active || bar.always || serverDown || tasks.length > 0 || editing
+  const showBar = active || bar.always || serverDown || tasks.length > 0 || editing || timeTravel
 
   return createPortal(
     <EditHistoryProvider>
       <SelectionProvider>
-      <div className={className ? `screenshare-overlay ${className}` : 'screenshare-overlay'}>
+      <div className={className ? `pixel-overlay ${className}` : 'pixel-overlay'}>
         {showBar && <RecBar />}
         {/* One TokensProvider over BOTH the selection overlay (whose drag handles
             publish snap targets) and the design pane (whose pickers read them),
             so design-token snapping and the pickers share the same token set. */}
         <TokensProvider tokens={designTokens}>
-          {editing && <Selection />}
+          {editing && <Selection passthrough={passthrough} />}
+          {editing && <ElementsPane />}
           {editing && <DesignPane />}
         </TokensProvider>
+        {/* While editing a time-traveled version, hide the states pane entirely
+            and show the normal edit UI (design pane); resume happens on exit. */}
+        {timeTravel && !editing && <StatesPane />}
         <SaveError />
         {rectFlashes.map((r) => (
           <RectFlashView key={r.id} flash={r} onDone={removeRectFlash} />

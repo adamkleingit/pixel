@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DimensionInput } from './DimensionInput'
 import { Dropdown } from './Dropdown'
 import { IconButton } from './IconButton'
 import { NumericInput } from './NumericInput'
@@ -7,7 +8,9 @@ import { Section } from './Section'
 import { applyPatchAll, MULTIPLE_PLACEHOLDER, readShared, sharedDisplayValue } from './read-shared'
 import { useScrubbable } from './useScrubbable'
 import { applyPatch } from '../edit/patch'
-import { readPx, readRotationDeg } from '../edit/read-computed'
+import { readPx, readRaw, readRotationDeg } from '../edit/read-computed'
+import { readExplicit } from '../edit/read-explicit'
+import { LENGTH_OPTIONS } from '../edit/dimension'
 
 export interface PositionSectionProps {
   /** Source + matched-peer elements. `[]` means no selection; multi-edit fans
@@ -84,8 +87,8 @@ export function PositionSection({
     if (m === 'none') {
       setX(''); setY('')
     } else {
-      setX(sharedDisplayValue(readShared(elements, el => readPx(el, 'left'))))
-      setY(sharedDisplayValue(readShared(elements, el => readPx(el, 'top'))))
+      setX(sharedDisplayValue(readShared(elements, el => readExplicit(el, 'left').value || readRaw(el, 'left'))))
+      setY(sharedDisplayValue(readShared(elements, el => readExplicit(el, 'top').value || readRaw(el, 'top'))))
     }
   }, [elements, geomTick])
 
@@ -129,14 +132,15 @@ export function PositionSection({
     refreshGeometry()
   }
 
+  // `v` carries its unit (composed by DimensionInput) — write it as-is.
   function onX(v: string) {
     setX(v)
-    applyPatchAll(elements, { kind: 'setStyle', property: 'left', value: v ? `${v}px` : '' })
+    applyPatchAll(elements, { kind: 'setStyle', property: 'left', value: v })
   }
 
   function onY(v: string) {
     setY(v)
-    applyPatchAll(elements, { kind: 'setStyle', property: 'top', value: v ? `${v}px` : '' })
+    applyPatchAll(elements, { kind: 'setStyle', property: 'top', value: v })
   }
 
   // Re-read rotation from the live elements on every change. In single-edit
@@ -168,8 +172,6 @@ export function PositionSection({
     }
   }
 
-  const scrubX = useScrubbable({ value: x, onChange: onX })
-  const scrubY = useScrubbable({ value: y, onChange: onY })
   const scrubRotation = useScrubbable({
     value: rotation,
     onChange: onRotation,
@@ -192,19 +194,19 @@ export function PositionSection({
 
       {positioned && (
         <Row>
-          <NumericInput
+          <DimensionInput
             prefix="X"
             ariaLabel="X position"
             value={x}
             onChange={onX}
-            prefixProps={scrubX.prefixProps}
+            options={LENGTH_OPTIONS}
           />
-          <NumericInput
+          <DimensionInput
             prefix="Y"
             ariaLabel="Y position"
             value={y}
             onChange={onY}
-            prefixProps={scrubY.prefixProps}
+            options={LENGTH_OPTIONS}
           />
         </Row>
       )}

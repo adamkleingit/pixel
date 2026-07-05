@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 
 /**
  * npm runs workspace scripts with cwd at the package dir, which would bury
- * recordings under packages/server/.screenshare. Walk up to the workspace root
+ * recordings under packages/server/.pixel. Walk up to the workspace root
  * (nearest package.json declaring "workspaces") so the dropbox is predictable.
  */
 function defaultRoot(): string {
@@ -24,7 +24,7 @@ function defaultRoot(): string {
     if (existsSync(pkg)) {
       try {
         if (JSON.parse(readFileSync(pkg, 'utf8')).workspaces) {
-          return join(dir, '.screenshare')
+          return join(dir, '.pixel')
         }
       } catch {
         /* ignore malformed package.json */
@@ -34,12 +34,12 @@ function defaultRoot(): string {
     if (parent === dir) break
     dir = parent
   }
-  return join(process.cwd(), '.screenshare')
+  return join(process.cwd(), '.pixel')
 }
 
-/** The dropbox root, honoring `SCREENSHARE_DIR`. */
+/** The dropbox root, honoring `PIXEL_DIR`. */
 export function resolveRoot(): string {
-  return process.env.SCREENSHARE_DIR ?? defaultRoot()
+  return process.env.PIXEL_DIR ?? defaultRoot()
 }
 
 export interface Claimed {

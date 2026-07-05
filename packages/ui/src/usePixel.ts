@@ -1,8 +1,8 @@
-import { useScreenshareContext } from './context'
-import type { Recording, ScreenshareState } from './types'
+import { usePixelContext } from './context'
+import type { Recording, PixelState } from './types'
 
-export interface UseScreenshare {
-  state: ScreenshareState
+export interface UsePixel {
+  state: PixelState
   start: () => void
   stop: () => void
   pause: () => void
@@ -29,12 +29,12 @@ export interface UseScreenshare {
 }
 
 /** Drive and observe recording from anywhere under the provider. */
-export function useScreenshare(): UseScreenshare {
+export function usePixel(): UsePixel {
   const {
     state, start, stop, pause, resume, cancel, toggle,
     editing, enterEdit, exitEdit, toggleEdit,
     passthrough, setPassthrough, lastRecording, saveError, saving, resend,
-  } = useScreenshareContext()
+  } = usePixelContext()
   return {
     state, start, stop, pause, resume, cancel, toggle,
     editing, enterEdit, exitEdit, toggleEdit,

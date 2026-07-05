@@ -3,7 +3,7 @@ import type { Recording } from './types'
 
 /**
  * The live recording, parked on a `globalThis` singleton so it survives a
- * remount of `ScreenshareProvider` within the same document — most notably a
+ * remount of `PixelProvider` within the same document — most notably a
  * Storybook story switch, which tears down and rebuilds the decorated subtree
  * but keeps the preview iframe (and thus the JS heap and this singleton) alive.
  * A fresh provider adopts whatever is here instead of starting over.

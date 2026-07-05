@@ -3,16 +3,17 @@ import { createPortal } from 'react-dom'
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   Overlay,
-  ScreenshareProvider,
+  PixelStateRoot,
+  PixelProvider,
   httpSink,
-  useScreenshare,
+  usePixel,
   type Recording,
 } from '@getpixel/ui'
 
 // Defaults to the worktree dev server port (41889, offset from main's 41789 so
 // both can run in parallel); the e2e test points it elsewhere via Vite env.
 const SERVER_URL =
-  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SCREENSHARE_SERVER_URL ??
+  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_PIXEL_SERVER_URL ??
   'http://localhost:41889'
 
 // Whisper language names (Transformers.js). 'english' is Whisper's default.
@@ -52,7 +53,7 @@ function ControlsBar({
   language: string
   setLanguage: (l: string) => void
 }) {
-  const { state, start, lastRecording, passthrough, setPassthrough } = useScreenshare()
+  const { state, start, lastRecording, passthrough, setPassthrough } = usePixel()
   const idle = state === 'idle'
 
   return (
@@ -250,11 +251,14 @@ function Shell({
   const location = useLocation()
   const [dialogOpen, setDialogOpen] = useState(false)
   const closeDialog = useCallback(() => setDialogOpen(false), [])
+  // Controlled so every keystroke is a real React state change — captured by
+  // pixel-react, so you can time-travel through what you typed.
+  const [dialogText, setDialogText] = useState('type here something…')
 
   return (
     <div className="page">
       <div className="hero">
-        <h1>Screenshare — example app</h1>
+        <h1>Pixel — example app</h1>
         <p>
           Double-tap <span className="kbd">Space</span> to start (allow the mic). While
           recording: single <span className="kbd">Space</span> pauses/resumes, double{' '}
@@ -291,7 +295,11 @@ function Shell({
         </p>
         <label className="field">
           <span>A field to focus</span>
-          <input type="text" defaultValue="type here something…" />
+          <input
+            type="text"
+            value={dialogText}
+            onChange={(e) => setDialogText(e.target.value)}
+          />
         </label>
         <div className="toolbar">
           <button className="btn" onClick={closeDialog}>
@@ -320,13 +328,20 @@ export function App() {
   }
 
   return (
-    <ScreenshareProvider
+    <PixelProvider
       isEnabled={PIXEL_ENABLED}
       config={{
         sink: httpSink(SERVER_URL),
         language,
         // Show the floating bar always (center-right, 30% opacity by default).
         bar: { always: true },
+        // "Report a bug" button → records screen + mic. The token is minted by
+        // the Pixel server we're already connected to (POST /bug-report); the
+        // recording uploads directly to Vercel Blob.
+        bugReport: {
+          endpoint: `${SERVER_URL}/bug-report`,
+          meta: { app: 'pixel-example' },
+        },
       }}
       onComplete={(rec) =>
         console.log('[example] complete:', rec.durationMs, 'ms', rec.events.length, 'events', rec.language)
@@ -334,7 +349,11 @@ export function App() {
       onSaved={(r) => console.log('[example] saved as', r.id)}
       onCancel={() => console.log('[example] cancelled')}
     >
-      <Shell language={language} setLanguage={setLanguage} />
+      {/* Wrap app content so pixel-react can remount it for time-travel. Keep
+          <Overlay /> OUTSIDE — it's Pixel's own UI and must never be captured. */}
+      <PixelStateRoot enabled={PIXEL_ENABLED}>
+        <Shell language={language} setLanguage={setLanguage} />
+      </PixelStateRoot>
       {PIXEL_ENABLED && <Overlay />}
       {serverUp === false && (
         <div
@@ -352,6 +371,6 @@ export function App() {
           Server not reachable at {SERVER_URL} — run <code>npm run server</code>
         </div>
       )}
-    </ScreenshareProvider>
+    </PixelProvider>
   )
 }

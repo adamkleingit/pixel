@@ -7,7 +7,6 @@ import { Section } from './Section'
 import { TokenButton } from './TokenButton'
 import {
   cornersIcon,
-  dropletIcon,
   eyeIcon,
   eyeOffIcon,
   opacityIcon,
@@ -22,7 +21,10 @@ import { tokenDisplayLabel } from './token-mapping'
 import { COLORS, SIZES } from './tokens'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
 import { useTokenMatch } from './useTokenMatch'
+import { DimensionInput } from './DimensionInput'
 import { readOpacity, readPx, readRaw } from '../edit/read-computed'
+import { readExplicit } from '../edit/read-explicit'
+import { LENGTH_OPTIONS } from '../edit/dimension'
 
 export interface AppearanceSectionProps {
   elements?: Element[]
@@ -76,7 +78,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
     const nextCorners = {} as Record<CornerKey, string>
     const nextShared = {} as Record<CornerKey, Shared>
     for (const { key, property } of RADIUS_CORNERS) {
-      const r = readShared(elements, el => readPx(el, property))
+      const r = readShared(elements, el => readExplicit(el, property).value || readRaw(el, property))
       if (r.kind === 'multiple') { nextCorners[key] = ''; nextShared[key] = 'multiple' }
       else                       { nextCorners[key] = (r.kind === 'single' ? r.value : '') || '0'; nextShared[key] = 'single' }
     }
@@ -127,12 +129,13 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
       applyTokenAll(elements, property, extras.snappedToken)
       return
     }
-    const typed = radiusMatch.matchToken(v ? `${v}px` : '')
+    // `v` already carries its unit (composed by DimensionInput).
+    const typed = radiusMatch.matchToken(v)
     if (typed) {
       applyTokenAll(elements, property, typed)
       return
     }
-    applyPatchAll(elements, { kind: 'setStyle', property, value: v ? `${v}px` : '' })
+    applyPatchAll(elements, { kind: 'setStyle', property, value: v })
   }
 
   function onAllCorners(v: string, _mods?: unknown, extras?: ScrubExtras) {
@@ -222,7 +225,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
   const allCornersSingle = RADIUS_CORNERS.every(c => cornersShared[c.key] === 'single')
   const uniformRadius = allCornersSingle && RADIUS_CORNERS.every(c => corners[c.key] === corners.tl)
   const allValue = uniformRadius ? corners.tl : ''
-  const allTokenLabel = uniformRadius ? tokenDisplayLabel(radiusMatch.matchToken(allValue ? `${allValue}px` : '')) : null
+  const allTokenLabel = uniformRadius ? tokenDisplayLabel(radiusMatch.matchToken(allValue)) : null
 
   const actions = (
     <>
@@ -233,7 +236,6 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
       >
         {isVisible ? eyeIcon : eyeOffIcon}
       </IconButton>
-      <IconButton title="Blend mode">{dropletIcon}</IconButton>
     </>
   )
 
@@ -320,7 +322,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
                   snapTargets={radiusMatch.snapTargets}
                   tokenLabel={
                     cornersShared[c.key] === 'single'
-                      ? tokenDisplayLabel(radiusMatch.matchToken(corners[c.key] ? `${corners[c.key]}px` : ''))
+                      ? tokenDisplayLabel(radiusMatch.matchToken(corners[c.key]))
                       : null
                   }
                 />
@@ -355,21 +357,17 @@ function RadiusInput({
   snapTargets: ReturnType<typeof useTokenMatch>['snapTargets']
   tokenLabel: string | null
 }) {
-  const scrub = useScrubbable({
-    value,
-    onChange,
-    min: 0,
-    snap: snapTargets.length > 0 ? { targets: snapTargets, threshold: 3 } : undefined,
-  })
   return (
-    <NumericInput
+    <DimensionInput
       prefix={icon}
       ariaLabel={ariaLabel}
       value={value}
       placeholder={placeholder}
       disabled={disabled}
       onChange={onChange}
-      prefixProps={scrub.prefixProps}
+      options={LENGTH_OPTIONS}
+      min={0}
+      snap={snapTargets.length > 0 ? { targets: snapTargets, threshold: 3 } : undefined}
       tokenLabel={tokenLabel}
     />
   )

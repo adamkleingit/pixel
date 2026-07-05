@@ -3,7 +3,7 @@ import {
   EXAMPLE_DIR,
   EXAMPLE_PORT,
   EXAMPLE_URL,
-  SCREENSHARE_DIR,
+  PIXEL_DIR,
   SERVER_PORT,
   SERVER_URL,
   TRANSCRIPT_FIXTURE,
@@ -41,12 +41,12 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
-        SCREENSHARE_DIR,
-        SCREENSHARE_PORT: String(SERVER_PORT),
-        SCREENSHARE_TRANSCRIBE_MOCK: TRANSCRIPT_FIXTURE,
+        PIXEL_DIR,
+        PIXEL_PORT: String(SERVER_PORT),
+        PIXEL_TRANSCRIBE_MOCK: TRANSCRIPT_FIXTURE,
         // Extract design tokens from the example app's globals.css (not the
         // .artifacts dropbox parent), so GET /tokens serves a real token set.
-        SCREENSHARE_PROJECT_DIR: EXAMPLE_DIR,
+        PIXEL_PROJECT_DIR: EXAMPLE_DIR,
       },
     },
     {
@@ -57,7 +57,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
-        VITE_SCREENSHARE_SERVER_URL: SERVER_URL,
+        VITE_PIXEL_SERVER_URL: SERVER_URL,
       },
     },
   ],

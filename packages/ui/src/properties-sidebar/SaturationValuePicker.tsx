@@ -35,6 +35,7 @@ export function SaturationValuePicker({
 
   return (
     <div
+      aria-label="Color saturation and brightness"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       style={{

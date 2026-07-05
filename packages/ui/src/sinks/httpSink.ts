@@ -32,7 +32,7 @@ export function httpSink(
         signal: tasksTimeoutMs > 0 ? AbortSignal.timeout(tasksTimeoutMs) : undefined,
       })
       if (!res.ok) {
-        throw new Error(`screenshare server responded ${res.status}`)
+        throw new Error(`pixel server responded ${res.status}`)
       }
       const body = (await res.json()) as { tasks?: Task[] }
       return body.tasks ?? []
@@ -40,7 +40,7 @@ export function httpSink(
     async openTask(id: string): Promise<void> {
       const res = await fetch(`${root}/tasks/${encodeURIComponent(id)}/reveal`, { method: 'POST' })
       if (!res.ok) {
-        throw new Error(`screenshare server responded ${res.status}`)
+        throw new Error(`pixel server responded ${res.status}`)
       }
     },
     async fetchTokens(): Promise<{ tokens: Token[] }> {
@@ -48,7 +48,7 @@ export function httpSink(
         signal: tasksTimeoutMs > 0 ? AbortSignal.timeout(tasksTimeoutMs) : undefined,
       })
       if (!res.ok) {
-        throw new Error(`screenshare server responded ${res.status}`)
+        throw new Error(`pixel server responded ${res.status}`)
       }
       const body = (await res.json()) as { tokens?: Token[] }
       return { tokens: body.tokens ?? [] }
@@ -76,7 +76,7 @@ export function httpSink(
         body: form,
       })
       if (!res.ok) {
-        throw new Error(`screenshare server responded ${res.status}`)
+        throw new Error(`pixel server responded ${res.status}`)
       }
       return (await res.json()) as { id: string }
     },
@@ -87,7 +87,7 @@ export function httpSink(
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
-        throw new Error(`screenshare server responded ${res.status}`)
+        throw new Error(`pixel server responded ${res.status}`)
       }
       return (await res.json()) as { id: string }
     },

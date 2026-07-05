@@ -1,4 +1,4 @@
-// Public data model for a Screenshare recording.
+// Public data model for a Pixel recording.
 
 import type { Token, TokenSource } from './pixel-common'
 
@@ -80,7 +80,7 @@ export interface FrameEvent {
   height: number
 }
 
-export type ScreenshareEvent = PointerSample | ClickEvent | RectEvent | DrawEvent | FrameEvent
+export type PixelEvent = PointerSample | ClickEvent | RectEvent | DrawEvent | FrameEvent
 
 export interface AudioTrack {
   mime: string
@@ -104,14 +104,14 @@ export interface Recording {
   /** Spoken-language hint for transcription (e.g. 'hebrew'); chosen in the UI. */
   language?: string
   /** Append-only event stream, sorted by `t`. */
-  events: ScreenshareEvent[]
+  events: PixelEvent[]
   /** Captured audio, or null if disabled / mic denied. */
   audio: AudioTrack | null
   /** Region screenshots produced by rectangle drags. */
   snapshots: SnapshotBlob[]
 }
 
-export type ScreenshareState = 'idle' | 'recording' | 'paused'
+export type PixelState = 'idle' | 'recording' | 'paused'
 
 /** A recording's processing stage on the server, surfaced in the floating bar. */
 export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
@@ -137,9 +137,9 @@ export interface Task {
 export interface EditChangeRecord {
   target: ElementInfo[]
   /** What surface changed. `move` reorders within the parent (before/after are
-   *  child indices). */
-  kind: 'style' | 'text' | 'attr' | 'move'
-  /** CSS property / attribute name; '' for text and move. */
+   *  child indices). `html` replaces innerHTML (mixed-content inline edit). */
+  kind: 'style' | 'text' | 'attr' | 'move' | 'html'
+  /** CSS property / attribute name; '' for text, move, and html. */
   name: string
   before: string
   after: string
@@ -215,7 +215,7 @@ export interface BarConfig {
   opacity?: number
 }
 
-export interface ScreenshareConfig {
+export interface PixelConfig {
   /** Floating control bar appearance. */
   bar?: BarConfig
   /**
@@ -242,4 +242,19 @@ export interface ScreenshareConfig {
    * Set to 0 to disable polling.
    */
   taskPollMs?: number
+  /**
+   * "Report a bug" button. When set, the floating bar shows a bug button that
+   * records the screen (+ mic) and uploads it — with a metadata sidecar — to a
+   * Vercel Blob client-upload token route at `endpoint`. `meta` is merged into
+   * every report's meta.json (e.g. app name/version). Omit to hide the button.
+   */
+  bugReport?: BugReportConfig
+}
+
+export interface BugReportConfig {
+  /** The Vercel client-upload token route, e.g.
+   *  `https://your-endpoint.vercel.app/api/bug-report`. */
+  endpoint: string
+  /** Extra fields merged into each report's meta.json (app name, version, …). */
+  meta?: Record<string, unknown>
 }

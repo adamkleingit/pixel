@@ -42,9 +42,11 @@ export function readRaw(el: Element, property: string): string {
  * Resolve a numeric CSS font-weight (e.g. "400", "700") into the named weight
  * the Typography dropdown uses.
  */
-export function readFontWeightName(el: Element): string {
-  const raw = getComputedStyle(el).getPropertyValue('font-weight').trim()
-  const n = parseInt(raw, 10)
+/** Bucket a numeric font-weight (100–900) to the nearest named weight the
+ *  Typography dropdown uses. Shared by the computed-style read and the
+ *  font-weight token pick (which carries a numeric value like `700`). */
+export function fontWeightName(weight: number | string): string {
+  const n = typeof weight === 'number' ? weight : parseInt(weight, 10)
   if (!Number.isFinite(n)) return 'Regular'
   if (n <= 150) return 'Thin'
   if (n <= 350) return 'Light'
@@ -53,6 +55,10 @@ export function readFontWeightName(el: Element): string {
   if (n <= 650) return 'Semibold'
   if (n <= 800) return 'Bold'
   return 'Black'
+}
+
+export function readFontWeightName(el: Element): string {
+  return fontWeightName(getComputedStyle(el).getPropertyValue('font-weight').trim())
 }
 
 /** Map the Typography dropdown's named weight back to its numeric value. */

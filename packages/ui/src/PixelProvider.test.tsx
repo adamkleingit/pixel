@@ -1,9 +1,9 @@
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { ScreenshareProvider } from './ScreenshareProvider'
+import { PixelProvider } from './PixelProvider'
 import { Overlay } from './Overlay'
-import { useScreenshare } from './useScreenshare'
+import { usePixel } from './usePixel'
 import { clearActiveSession, getActiveSession } from './session'
 import type { Recording } from './types'
 
@@ -14,7 +14,7 @@ vi.mock('./capture/snapshot', () => ({
   captureStroke: async () => null,
 }))
 
-const STYLE_ID = 'screenshare-styles'
+const STYLE_ID = 'pixel-styles'
 
 // --- Mic / MediaRecorder mocks, with counters to assert no double-construction. ---
 let mediaRecorderCount = 0
@@ -63,7 +63,7 @@ beforeEach(() => {
 
 /** Surfaces the current state and a start() trigger so tests can drive the SDK. */
 function Probe() {
-  const { state, start } = useScreenshare()
+  const { state, start } = usePixel()
   return (
     <button data-testid="probe" onClick={() => start()}>
       {state}
@@ -73,7 +73,7 @@ function Probe() {
 
 /** Exposes every lifecycle control + the current state for the remount tests. */
 function Harness() {
-  const { state, start, stop, pause, resume } = useScreenshare()
+  const { state, start, stop, pause, resume } = usePixel()
   return (
     <div>
       <span data-testid="state">{state}</span>
@@ -97,13 +97,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('ScreenshareProvider isEnabled', () => {
+describe('PixelProvider isEnabled', () => {
   it('is active by default: injects styles, shows the bar, and claims the activation key', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     expect(document.getElementById(STYLE_ID)).not.toBeNull()
     expect(screen.getByTitle('Start recording (double-tap Space)')).toBeTruthy()
@@ -113,10 +113,10 @@ describe('ScreenshareProvider isEnabled', () => {
 
   it('is fully inert when isEnabled=false', () => {
     render(
-      <ScreenshareProvider isEnabled={false} config={{ bar: { always: true } }}>
+      <PixelProvider isEnabled={false} config={{ bar: { always: true } }}>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     // No styles injected and no keyboard listener (Space passes through).
     expect(document.getElementById(STYLE_ID)).toBeNull()
@@ -135,10 +135,10 @@ describe('session continuity across a provider remount', () => {
 
   it('adopts an in-flight recording without restarting the mic', async () => {
     const first = render(
-      <ScreenshareProvider config={config}>
+      <PixelProvider config={config}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
 
     await act(async () => {
@@ -160,10 +160,10 @@ describe('session continuity across a provider remount', () => {
     // A fresh provider adopts it.
     let completed: Recording | undefined
     render(
-      <ScreenshareProvider config={config} onComplete={(r) => (completed = r)}>
+      <PixelProvider config={config} onComplete={(r) => (completed = r)}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
 
     // (a) state is 'recording', (b) no new MediaRecorder, (c) same Recorder instance.
@@ -188,10 +188,10 @@ describe('session continuity across a provider remount', () => {
 
   it('re-installs DOM capture listeners on adoption (records events after remount)', async () => {
     const first = render(
-      <ScreenshareProvider config={config}>
+      <PixelProvider config={config}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     await act(async () => {
       fireEvent.click(screen.getByTestId('start'))
@@ -201,10 +201,10 @@ describe('session continuity across a provider remount', () => {
 
     let completed: Recording | undefined
     render(
-      <ScreenshareProvider config={config} onComplete={(r) => (completed = r)}>
+      <PixelProvider config={config} onComplete={(r) => (completed = r)}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     expect(screen.getByTestId('state').textContent).toBe('recording')
 
@@ -225,10 +225,10 @@ describe('session continuity across a provider remount', () => {
   it('is not corrupted by StrictMode dev double-mounting', async () => {
     render(
       <StrictMode>
-        <ScreenshareProvider config={config}>
+        <PixelProvider config={config}>
           <Harness />
           <Overlay />
-        </ScreenshareProvider>
+        </PixelProvider>
       </StrictMode>,
     )
 
@@ -246,10 +246,10 @@ describe('session continuity across a provider remount', () => {
 
   it('preserves paused state across a remount', async () => {
     const first = render(
-      <ScreenshareProvider config={config}>
+      <PixelProvider config={config}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
 
     await act(async () => {
@@ -267,10 +267,10 @@ describe('session continuity across a provider remount', () => {
     first.unmount()
 
     render(
-      <ScreenshareProvider config={config}>
+      <PixelProvider config={config}>
         <Harness />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
 
     // Adopted as paused, same recorder, no new mic.
@@ -294,10 +294,10 @@ describe('session continuity across a provider remount', () => {
 describe('mouse tool toggle', () => {
   it('is hidden when idle (it only governs recording) — the toggle itself is covered by the recording e2e', () => {
     render(
-      <ScreenshareProvider config={{ bar: { always: true } }}>
+      <PixelProvider config={{ bar: { always: true } }}>
         <Probe />
         <Overlay />
-      </ScreenshareProvider>,
+      </PixelProvider>,
     )
     // Bar is visible (bar.always) but, idle, the mouse tool isn't offered.
     expect(screen.queryByRole('button', { name: 'Mouse tool' })).toBeNull()

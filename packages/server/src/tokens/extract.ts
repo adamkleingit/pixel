@@ -32,10 +32,10 @@ export function emptyCache(): TokensCache {
  * The project whose design tokens we extract. Defaults to the parent of the
  * dropbox root — i.e. the workspace dir the dev runs the server from, where
  * package.json / globals.css / tailwind.config live. Overridable for tests and
- * unusual layouts via `SCREENSHARE_PROJECT_DIR`.
+ * unusual layouts via `PIXEL_PROJECT_DIR`.
  */
 export function resolveProjectDir(root: string): string {
-  return process.env.SCREENSHARE_PROJECT_DIR ?? dirname(root)
+  return process.env.PIXEL_PROJECT_DIR ?? dirname(root)
 }
 
 /** Read the cached tokens, or null if absent/unparseable. */
@@ -113,7 +113,7 @@ export function watchTokenSources(
         const next = await extractAndCacheTokens(projectDir, root)
         if (next) onUpdate?.(next)
       } catch (err) {
-        console.error('[screenshare] token re-extract failed:', err)
+        console.error('[pixel] token re-extract failed:', err)
       }
     }, 50)
   }

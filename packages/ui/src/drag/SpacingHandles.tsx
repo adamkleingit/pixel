@@ -382,6 +382,10 @@ function Bar({
   // up padding-left, and alt+shift lights up all four sides of the kind.
   const draggingThis = !!drag && drag.element === element && drag.properties.has(property)
   const dragSomethingElse = !!drag && !draggingThis
+  // `isDragOrigin` is only the bar the user actually grabbed (`baseProperty`),
+  // not the mirrored sides an alt / alt+shift drag also drives — the label
+  // shows only here so a mirror drag reads as one value pill, not two/four.
+  const isDragOrigin = !!drag && drag.element === element && drag.baseProperty === property
   // Live value while this bar is being dragged. All mirrored sides share the
   // same value by construction (the session writes one px to every property
   // in the active set per frame), so reading `drag.value` is correct here.
@@ -393,8 +397,9 @@ function Bar({
   // the value, an animated band would just be visual noise.
   const showBand = hovered && !drag && (kind === 'margin' || value > 0)
   // Show the label whenever the user is paying attention to this bar — hover
-  // or active drag. Suppressed while another bar is being dragged.
-  const showLabel = (hovered && !dragSomethingElse) || draggingThis
+  // or being the grabbed bar of an active drag. Suppressed while another bar is
+  // being dragged, and on mirrored (non-origin) sides so only one pill shows.
+  const showLabel = (hovered && !dragSomethingElse) || isDragOrigin
 
   const color = kind === 'padding' ? COLORS.spacingPadding : COLORS.spacingMargin
   const fill  = kind === 'padding' ? COLORS.spacingPaddingFill : COLORS.spacingMarginFill

@@ -1,7 +1,7 @@
 /**
  * Tokens context — exposes the project's design-tokens TokenSet to the canvas
  * UI. In Pixel this is fetched once at App level via the `tokens.get` RPC. In
- * the screenshare port there is no agent, so the provider supplies an empty
+ * the pixel port there is no agent, so the provider supplies an empty
  * token set by default; the token pickers render gracefully and never crash.
  *
  * Read pattern: `useTokens()` for the whole response, `useTokensOf(kind)` for

@@ -4,11 +4,11 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /** Whisper model (multilingual by default so non-English narration works). */
-const MODEL = process.env.SCREENSHARE_WHISPER_MODEL ?? 'Xenova/whisper-base'
+const MODEL = process.env.PIXEL_WHISPER_MODEL ?? 'Xenova/whisper-base'
 /** Spoken language, e.g. 'hebrew' or 'english'. Unset → Whisper auto-detects. */
-const LANGUAGE = process.env.SCREENSHARE_WHISPER_LANG || undefined
+const LANGUAGE = process.env.PIXEL_WHISPER_LANG || undefined
 /** 'transcribe' (same language) or 'translate' (→ English). */
-const TASK = process.env.SCREENSHARE_WHISPER_TASK || 'transcribe'
+const TASK = process.env.PIXEL_WHISPER_TASK || 'transcribe'
 const SAMPLE_RATE = 16000
 
 export interface TranscriptSegment {
@@ -27,7 +27,7 @@ export interface Transcript {
 }
 
 export interface TranscribeOptions {
-  /** Spoken language (e.g. 'hebrew'); overrides SCREENSHARE_WHISPER_LANG. */
+  /** Spoken language (e.g. 'hebrew'); overrides PIXEL_WHISPER_LANG. */
   language?: string
 }
 
@@ -81,9 +81,9 @@ async function getPipeline(): Promise<unknown> {
   if (!pipePromise) {
     pipePromise = (async () => {
       const { pipeline } = await import('@huggingface/transformers')
-      console.log(`[screenshare] loading Whisper model "${MODEL}" (first run downloads it)…`)
+      console.log(`[pixel] loading Whisper model "${MODEL}" (first run downloads it)…`)
       const p = await pipeline('automatic-speech-recognition', MODEL)
-      console.log('[screenshare] Whisper model ready')
+      console.log('[pixel] Whisper model ready')
       return p
     })()
   }
@@ -127,7 +127,7 @@ export const whisperTranscriber: Transcriber = {
 
 /**
  * A deterministic transcriber that ignores the audio and returns a transcript
- * read from a JSON file. Used for tests (set `SCREENSHARE_TRANSCRIBE_MOCK` to
+ * read from a JSON file. Used for tests (set `PIXEL_TRANSCRIBE_MOCK` to
  * the fixture path) so the pipeline runs without loading Whisper or ffmpeg. The
  * fixture supplies at least `text` + `segments`; other fields are defaulted.
  */
@@ -162,10 +162,10 @@ export async function transcribeRecording(
     const transcript = await transcriber.transcribe(audioPath, opts)
     await writeFile(join(dir, 'transcript.json'), JSON.stringify(transcript, null, 2))
     console.log(
-      `[screenshare] transcribed ${dir.split('/').pop()} — ` +
+      `[pixel] transcribed ${dir.split('/').pop()} — ` +
         `${transcript.segments.length} segments in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
     )
   } catch (err) {
-    console.warn('[screenshare] transcription failed (recording still saved):', err)
+    console.warn('[pixel] transcription failed (recording still saved):', err)
   }
 }

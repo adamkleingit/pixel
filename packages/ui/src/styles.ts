@@ -1,14 +1,14 @@
 // Self-contained styles for the overlay, radar blip, and REC indicator.
-// Injected once into <head>; scoped under .screenshare-* class names so they
+// Injected once into <head>; scoped under .pixel-* class names so they
 // never collide with the host app.
 
 import { THEME_CSS } from './design-system/theme-css'
 import { HANDLES_CSS } from './drag/handles-css'
 
-const STYLE_ID = 'screenshare-styles'
+const STYLE_ID = 'pixel-styles'
 
 const CSS = `
-.screenshare-overlay {
+.pixel-overlay {
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -16,14 +16,14 @@ const CSS = `
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
-.screenshare-blip {
+.pixel-blip {
   position: fixed;
   width: 28px;
   height: 28px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
-.screenshare-blip .screenshare-blip-ring {
+.pixel-blip .pixel-blip-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
@@ -31,31 +31,31 @@ const CSS = `
   box-shadow:
     0 0 14px 4px rgba(168, 85, 247, 0.65),
     inset 0 0 10px rgba(168, 85, 247, 0.45);
-  animation: screenshare-ring 1100ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation: pixel-ring 1100ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
-.screenshare-blip .screenshare-blip-ring.delay {
+.pixel-blip .pixel-blip-ring.delay {
   animation-delay: 160ms;
 }
-.screenshare-blip .screenshare-blip-dot {
+.pixel-blip .pixel-blip-dot {
   position: absolute;
   inset: 36%;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 40%, #d8b4fe, #7c3aed);
   box-shadow: 0 0 12px 3px rgba(168, 85, 247, 0.95);
-  animation: screenshare-dot 1100ms ease-out forwards;
+  animation: pixel-dot 1100ms ease-out forwards;
 }
 
-@keyframes screenshare-ring {
+@keyframes pixel-ring {
   from { transform: scale(0.35); opacity: 1; }
   to   { transform: scale(3.4);  opacity: 0; }
 }
-@keyframes screenshare-dot {
+@keyframes pixel-dot {
   0%   { transform: scale(1);   opacity: 1; }
   55%  { opacity: 0.85; }
   100% { transform: scale(0.4); opacity: 0; }
 }
 
-.screenshare-rec {
+.pixel-rec {
   position: fixed;
   display: flex;
   align-items: center;
@@ -72,39 +72,39 @@ const CSS = `
   backdrop-filter: blur(4px);
   transition: opacity 160ms ease;
 }
-.screenshare-rec:hover { opacity: 1 !important; }
-.screenshare-rec.minimized { padding: 3px; }
+.pixel-rec:hover { opacity: 1 !important; }
+.pixel-rec.minimized { padding: 3px; }
 
 /* positions */
-.screenshare-rec.pos-top-left { top: 16px; left: 16px; }
-.screenshare-rec.pos-top-center { top: 16px; left: 50%; transform: translateX(-50%); }
+.pixel-rec.pos-top-left { top: 16px; left: calc(16px + var(--pixel-dock-left, 0px)); }
+.pixel-rec.pos-top-center { top: 16px; left: 50%; transform: translateX(-50%); }
 /* Right-docked positions account for the design pane's width (a CSS var the
    pane sets on :root) so the bar floats beside the pane, not under it. */
-.screenshare-rec.pos-top-right { top: 16px; right: calc(16px + var(--screenshare-dock-right, 0px)); }
-.screenshare-rec.pos-center-left { top: 50%; left: 16px; transform: translateY(-50%); }
-.screenshare-rec.pos-center-right { top: 50%; right: calc(16px + var(--screenshare-dock-right, 0px)); transform: translateY(-50%); }
-.screenshare-rec.pos-bottom-left { bottom: 16px; left: 16px; }
-.screenshare-rec.pos-bottom-center { bottom: 16px; left: 50%; transform: translateX(-50%); }
-.screenshare-rec.pos-bottom-right { bottom: 16px; right: calc(16px + var(--screenshare-dock-right, 0px)); }
+.pixel-rec.pos-top-right { top: 16px; right: calc(16px + var(--pixel-dock-right, 0px)); }
+.pixel-rec.pos-center-left { top: 50%; left: calc(16px + var(--pixel-dock-left, 0px)); transform: translateY(-50%); }
+.pixel-rec.pos-center-right { top: 50%; right: calc(16px + var(--pixel-dock-right, 0px)); transform: translateY(-50%); }
+.pixel-rec.pos-bottom-left { bottom: 16px; left: calc(16px + var(--pixel-dock-left, 0px)); }
+.pixel-rec.pos-bottom-center { bottom: 16px; left: 50%; transform: translateX(-50%); }
+.pixel-rec.pos-bottom-right { bottom: 16px; right: calc(16px + var(--pixel-dock-right, 0px)); }
 
 /* vertical layout for center-left / center-right */
-.screenshare-rec.vertical {
+.pixel-rec.vertical {
   flex-direction: column;
   border-radius: 14px;
   padding: 7px 5px;
 }
-.screenshare-rec.vertical .screenshare-rec-sep {
+.pixel-rec.vertical .pixel-rec-sep {
   width: 60%;
   height: 1px;
   align-self: center;
   margin: 1px 0;
 }
-.screenshare-rec.vertical .screenshare-rec-time {
+.pixel-rec.vertical .pixel-rec-time {
   min-width: 0;
   font-size: 10px;
 }
 
-.screenshare-rec .screenshare-rec-record {
+.pixel-rec .pixel-rec-record {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -115,21 +115,30 @@ const CSS = `
   cursor: pointer;
   padding: 1px 3px;
 }
-.screenshare-rec .screenshare-rec-dot {
+.pixel-rec .pixel-rec-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #a855f7;
   box-shadow: 0 0 8px #a855f7;
-  animation: screenshare-pulse 1.2s ease-in-out infinite;
+  animation: pixel-pulse 1.2s ease-in-out infinite;
 }
-.screenshare-rec.paused .screenshare-rec-dot {
+.pixel-rec.paused .pixel-rec-dot {
   animation: none;
   opacity: 0.5;
 }
+/* Stop button's red square pulses while actively recording (like the old dot),
+   and goes steady + dimmed when paused. */
+.pixel-rec .pixel-rec-stop-ind {
+  animation: pixel-pulse 1.2s ease-in-out infinite;
+}
+.pixel-rec.paused .pixel-rec-stop-ind {
+  animation: none;
+  opacity: 0.6;
+}
 /* Edit-mode indicator: a steady (non-pulsing) blue dot, distinct from the
    recording dot, so the bar reads as "editing" at a glance. */
-.screenshare-rec .screenshare-rec-edit-dot {
+.pixel-rec .pixel-rec-edit-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -137,19 +146,19 @@ const CSS = `
   box-shadow: 0 0 8px #3b82f6;
 }
 /* Save (diskette) tinted green to read as the primary/confirm action. */
-.screenshare-rec .screenshare-rec-save {
+.pixel-rec .pixel-rec-save {
   color: #4ade80;
 }
-.screenshare-rec .screenshare-rec-time {
+.pixel-rec .pixel-rec-time {
   min-width: 58px;
 }
-.screenshare-rec .screenshare-rec-sep {
+.pixel-rec .pixel-rec-sep {
   width: 1px;
   align-self: stretch;
   margin: 1px;
   background: rgba(243, 232, 255, 0.18);
 }
-.screenshare-rec .screenshare-rec-btn {
+.pixel-rec .pixel-rec-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -163,33 +172,33 @@ const CSS = `
   cursor: pointer;
   transition: background 120ms ease;
 }
-.screenshare-rec .screenshare-rec-btn:hover {
+.pixel-rec .pixel-rec-btn:hover {
   background: rgba(168, 85, 247, 0.35);
 }
-.screenshare-rec .screenshare-rec-btn.active {
+.pixel-rec .pixel-rec-btn.active {
   background: rgba(168, 85, 247, 0.5);
   color: #fff;
 }
 /* mouse-tool toggle: lit when the tool is on (active), dim when off */
-.screenshare-rec .screenshare-rec-tool {
+.pixel-rec .pixel-rec-tool {
   opacity: 0.45;
 }
-.screenshare-rec .screenshare-rec-tool.active {
+.pixel-rec .pixel-rec-tool.active {
   opacity: 1;
 }
-@keyframes screenshare-pulse {
+@keyframes pixel-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.25; }
 }
 
 /* Task status indicator: a count badge, or an error tint when the server is down. */
-.screenshare-rec .screenshare-rec-tasks { position: relative; }
-.screenshare-rec .screenshare-rec-tasks.error {
+.pixel-rec .pixel-rec-tasks { position: relative; }
+.pixel-rec .pixel-rec-tasks.error {
   color: #fca5a5;
-  animation: screenshare-pulse 1.4s ease-in-out infinite;
+  animation: pixel-pulse 1.4s ease-in-out infinite;
 }
-.screenshare-rec .screenshare-rec-tasks.error:hover { background: rgba(248, 113, 113, 0.3); }
-.screenshare-rec .screenshare-rec-badge {
+.pixel-rec .pixel-rec-tasks.error:hover { background: rgba(248, 113, 113, 0.3); }
+.pixel-rec .pixel-rec-badge {
   position: absolute;
   top: -2px;
   right: -2px;
@@ -207,7 +216,7 @@ const CSS = `
 }
 
 /* Tasks popup, anchored just outside the bar (positioned inline by JS). */
-.screenshare-tasks {
+.pixel-tasks {
   position: absolute;
   z-index: 1;
   width: 232px;
@@ -222,7 +231,7 @@ const CSS = `
   color: #f3e8ff;
   cursor: default;
 }
-.screenshare-tasks-head {
+.pixel-tasks-head {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -230,13 +239,13 @@ const CSS = `
   color: #c4b5fd;
   padding: 2px 6px 8px;
 }
-.screenshare-tasks-empty {
+.pixel-tasks-empty {
   font-size: 12px;
   color: #b9a9d6;
   padding: 4px 6px 8px;
 }
-.screenshare-tasks-list { list-style: none; margin: 0; padding: 0; }
-.screenshare-tasks-item {
+.pixel-tasks-list { list-style: none; margin: 0; padding: 0; }
+.pixel-tasks-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -244,9 +253,9 @@ const CSS = `
   padding: 6px;
   border-radius: 8px;
 }
-.screenshare-tasks-item + .screenshare-tasks-item { margin-top: 2px; }
-.screenshare-tasks-item:hover { background: rgba(168, 85, 247, 0.14); }
-.screenshare-tasks-open {
+.pixel-tasks-item + .pixel-tasks-item { margin-top: 2px; }
+.pixel-tasks-item:hover { background: rgba(168, 85, 247, 0.14); }
+.pixel-tasks-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -260,28 +269,28 @@ const CSS = `
   text-align: left;
   cursor: pointer;
 }
-.screenshare-tasks-label {
+.pixel-tasks-label {
   display: flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
 }
-.screenshare-tasks-kind {
+.pixel-tasks-kind {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.screenshare-tasks-kind.recording { color: #c4b5fd; }
-.screenshare-tasks-kind.edit { color: #f0abfc; }
-.screenshare-tasks-id {
+.pixel-tasks-kind.recording { color: #c4b5fd; }
+.pixel-tasks-kind.edit { color: #f0abfc; }
+.pixel-tasks-id {
   font: 500 11px ui-monospace, monospace;
   color: #e9d5ff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.screenshare-tasks-pill {
+.pixel-tasks-pill {
   flex: none;
   padding: 2px 8px;
   border-radius: 999px;
@@ -289,16 +298,16 @@ const CSS = `
   font-weight: 700;
   letter-spacing: 0.2px;
 }
-.screenshare-tasks-pill.pending { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
-.screenshare-tasks-pill.executing {
+.pixel-tasks-pill.pending { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
+.pixel-tasks-pill.executing {
   background: rgba(96, 165, 250, 0.2);
   color: #93c5fd;
-  animation: screenshare-pulse 1.4s ease-in-out infinite;
+  animation: pixel-pulse 1.4s ease-in-out infinite;
 }
-.screenshare-tasks-pill.done { background: rgba(74, 222, 128, 0.18); color: #86efac; }
-.screenshare-tasks-pill.error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
+.pixel-tasks-pill.done { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.pixel-tasks-pill.error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
 
-.screenshare-editlog {
+.pixel-editlog {
   position: absolute;
   z-index: 1;
   width: 248px;
@@ -313,7 +322,7 @@ const CSS = `
   color: #f3e8ff;
   cursor: default;
 }
-.screenshare-editlog-head {
+.pixel-editlog-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -324,8 +333,8 @@ const CSS = `
   color: #c4b5fd;
   padding: 2px 4px 8px 6px;
 }
-.screenshare-editlog-nav { display: inline-flex; gap: 2px; }
-.screenshare-editlog-nav-btn {
+.pixel-editlog-nav { display: inline-flex; gap: 2px; }
+.pixel-editlog-nav-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -338,16 +347,16 @@ const CSS = `
   color: #e9d5ff;
   cursor: pointer;
 }
-.screenshare-editlog-nav-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.22); }
-.screenshare-editlog-nav-btn:disabled { opacity: 0.35; cursor: default; }
-.screenshare-editlog-empty { font-size: 12px; color: #b9a9d6; padding: 4px 6px 8px; }
-.screenshare-editlog-list { list-style: none; margin: 0; padding: 0; }
-.screenshare-editlog-item { border-radius: 8px; }
-.screenshare-editlog-item + .screenshare-editlog-item { margin-top: 2px; }
-.screenshare-editlog-item:hover { background: rgba(168, 85, 247, 0.14); }
-.screenshare-editlog-item.undone { opacity: 0.4; }
-.screenshare-editlog-item.current { background: rgba(168, 85, 247, 0.2); }
-.screenshare-editlog-row {
+.pixel-editlog-nav-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.22); }
+.pixel-editlog-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.pixel-editlog-empty { font-size: 12px; color: #b9a9d6; padding: 4px 6px 8px; }
+.pixel-editlog-list { list-style: none; margin: 0; padding: 0; }
+.pixel-editlog-item { border-radius: 8px; }
+.pixel-editlog-item + .pixel-editlog-item { margin-top: 2px; }
+.pixel-editlog-item:hover { background: rgba(168, 85, 247, 0.14); }
+.pixel-editlog-item.undone { opacity: 0.4; }
+.pixel-editlog-item.current { background: rgba(168, 85, 247, 0.2); }
+.pixel-editlog-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -360,13 +369,13 @@ const CSS = `
   text-align: left;
   cursor: pointer;
 }
-.screenshare-editlog-num {
+.pixel-editlog-num {
   flex: none;
   min-width: 16px;
   font: 600 10px ui-monospace, monospace;
   color: #a78bda;
 }
-.screenshare-editlog-label {
+.pixel-editlog-label {
   font: 500 12px ui-monospace, monospace;
   color: #e9d5ff;
   overflow: hidden;
@@ -374,7 +383,13 @@ const CSS = `
   white-space: nowrap;
 }
 
-.screenshare-rect {
+/* Bug-report button while recording the screen — red, pulsing. */
+.pixel-bug-recording {
+  color: #ef4444 !important;
+  animation: pixel-pulse 1.4s ease-in-out infinite;
+}
+
+.pixel-rect {
   position: fixed;
   border: 2px solid rgba(168, 85, 247, 0.95);
   background: rgba(168, 85, 247, 0.14);
@@ -382,22 +397,22 @@ const CSS = `
   border-radius: 4px;
   pointer-events: none;
 }
-.screenshare-rect-flash {
+.pixel-rect-flash {
   position: fixed;
   border: 2px solid rgba(168, 85, 247, 0.95);
   background: rgba(168, 85, 247, 0.12);
   border-radius: 4px;
   pointer-events: none;
-  animation: screenshare-rect-fade 900ms ease-out forwards;
+  animation: pixel-rect-fade 900ms ease-out forwards;
 }
-@keyframes screenshare-rect-fade {
+@keyframes pixel-rect-fade {
   from { opacity: 1; }
   to   { opacity: 0; }
 }
 
 /* Freehand strokes (Cmd+drag). Full-viewport SVG; coords are client px. They
    stay visible until the Cmd key is released. */
-.screenshare-stroke {
+.pixel-stroke {
   position: fixed;
   inset: 0;
   width: 100%;
@@ -405,7 +420,7 @@ const CSS = `
   pointer-events: none;
   overflow: visible;
 }
-.screenshare-stroke path {
+.pixel-stroke path {
   fill: none;
   stroke: rgba(168, 85, 247, 0.95);
   stroke-width: 3;
@@ -414,7 +429,7 @@ const CSS = `
   filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.6));
 }
 
-.screenshare-save-error {
+.pixel-save-error {
   position: fixed;
   bottom: 16px;
   left: 50%;
@@ -435,8 +450,8 @@ const CSS = `
   pointer-events: auto;
   backdrop-filter: blur(4px);
 }
-.screenshare-save-error-msg { flex: 1; }
-.screenshare-save-error-btn {
+.pixel-save-error-msg { flex: 1; }
+.pixel-save-error-btn {
   flex: none;
   border: none;
   border-radius: 7px;
@@ -447,25 +462,76 @@ const CSS = `
   cursor: pointer;
   transition: background 120ms ease;
 }
-.screenshare-save-error-btn:hover { background: #dc2626; }
-.screenshare-save-error-btn:disabled { opacity: 0.6; cursor: default; }
+.pixel-save-error-btn:hover { background: #dc2626; }
+.pixel-save-error-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Bug-report outcome toast (bottom-center), coloured by phase. */
+.pixel-bug-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 460px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  font: 500 13px ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+  animation: pixel-bug-toast-in 160ms ease-out;
+}
+.pixel-bug-toast.uploading {
+  background: rgba(24, 12, 38, 0.96);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #f3e8ff;
+}
+.pixel-bug-toast.sent {
+  background: rgba(6, 40, 20, 0.96);
+  border: 1px solid rgba(74, 222, 128, 0.55);
+  color: #dcfce7;
+}
+.pixel-bug-toast.error {
+  background: rgba(70, 10, 10, 0.96);
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #fee2e2;
+}
+.pixel-bug-toast-msg { flex: 1; }
+.pixel-bug-toast-close {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.pixel-bug-toast-close:hover { opacity: 1; }
+@keyframes pixel-bug-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 
 /* Edit-mode selection outlines — drawn over the picked element's box. */
-.screenshare-sel {
+.pixel-sel {
   position: fixed;
   pointer-events: none;
   box-sizing: border-box;
   z-index: 2147483001;
   transform-origin: center center;
 }
-.screenshare-sel-anchor {
+.pixel-sel-anchor {
   border: 2px solid rgba(168, 85, 247, 0.95);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 10px rgba(168, 85, 247, 0.5);
 }
-.screenshare-sel-match {
+.pixel-sel-match {
   border: 2px solid rgba(168, 85, 247, 0.55);
 }
-.screenshare-sel-hover {
+.pixel-sel-hover {
   border: 1.5px dashed rgba(168, 85, 247, 0.8);
 }
 
@@ -479,27 +545,39 @@ const CSS = `
    root, so the :host * scope could never reach the chrome. Here everything is
    light DOM, so we must explicitly exclude Pixel's own UI — and the
    class-substring :not() is NOT enough: it only skips elements that themselves
-   carry a screenshare- class, not the inline-styled controls deep inside the
+   carry a pixel- class, not the inline-styled controls deep inside the
    design pane (DesignPanel buttons / inputs / scrub handles). Those would
    inherit cursor:default !important, clobbering their pointer / ew-resize
-   cursors. The extra :not(.screenshare-overlay *) excludes the entire overlay
-   subtree, so Pixel's UI keeps its own cursors. The element under an inline
-   edit re-enables a text caret below. */
-html.screenshare-editing body *:not([class*='screenshare-']):not(.screenshare-overlay *) {
+   cursors. The extra :not(.pixel-overlay *) excludes the entire overlay
+   subtree, so Pixel's UI keeps its own cursors. Body-portaled Pixel menus and
+   popovers (color / shadow / dropdowns) live OUTSIDE .pixel-overlay — they
+   carry the data-pixel-ui marker instead — so they need their own
+   exclusion, or their scrub handles / inputs would show cursor:default too. The
+   element under an inline edit re-enables a text caret below. */
+html.pixel-editing body *:not([class*='pixel-']):not(.pixel-overlay *):not([data-pixel-ui]):not([data-pixel-ui] *) {
   cursor: default !important;
   user-select: none !important;
   -webkit-user-select: none !important;
 }
-html.screenshare-editing [data-pixel-editing],
-html.screenshare-editing [data-pixel-editing] * {
+html.pixel-editing [data-pixel-editing],
+html.pixel-editing [data-pixel-editing] * {
   cursor: text !important;
   user-select: text !important;
   -webkit-user-select: text !important;
 }
+/* While an inline edit is active, let clicks reach the contenteditable to place
+   the caret — the resize / spacing / radius handles overlay the element (and on
+   a short element cover it entirely), so they must not intercept the pointer.
+   The :has() scope matches exactly the edit-active window; handles re-enable the
+   moment data-pixel-editing is removed on exit. */
+html.pixel-editing:has([data-pixel-editing]) [data-resize-handle],
+html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
+  pointer-events: none !important;
+}
 
 /* Design pane — docks on the right and reserves layout width (the body is
    shrunk via documentElement margin-right, set from DesignPane). */
-.screenshare-pane {
+.pixel-pane {
   position: fixed;
   top: 0;
   right: 0;
@@ -515,10 +593,10 @@ html.screenshare-editing [data-pixel-editing] * {
   color: #2a1f3d;
   z-index: 2147483002;
 }
-.screenshare-pane.collapsed {
+.pixel-pane.collapsed {
   width: 36px;
 }
-.screenshare-pane-resize {
+.pixel-pane-resize {
   position: absolute;
   left: -3px;
   top: 0;
@@ -527,10 +605,10 @@ html.screenshare-editing [data-pixel-editing] * {
   cursor: col-resize;
   z-index: 1;
 }
-.screenshare-pane-resize:hover {
+.pixel-pane-resize:hover {
   background: linear-gradient(to right, rgba(124, 58, 237, 0.35), transparent);
 }
-.screenshare-pane-head {
+.pixel-pane-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -539,7 +617,7 @@ html.screenshare-editing [data-pixel-editing] * {
   border-bottom: 1px solid #ece6ff;
   flex-shrink: 0;
 }
-.screenshare-pane-title {
+.pixel-pane-title {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -549,7 +627,7 @@ html.screenshare-editing [data-pixel-editing] * {
   white-space: nowrap;
   overflow: hidden;
 }
-.screenshare-pane-collapse {
+.pixel-pane-collapse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -562,23 +640,23 @@ html.screenshare-editing [data-pixel-editing] * {
   color: #6b5b8a;
   flex-shrink: 0;
 }
-.screenshare-pane-collapse:hover { background: #efe9ff; }
-.screenshare-pane.collapsed .screenshare-pane-head {
+.pixel-pane-collapse:hover { background: #efe9ff; }
+.pixel-pane.collapsed .pixel-pane-head {
   padding: 0;
   justify-content: center;
 }
-.screenshare-pane-body {
+.pixel-pane-body {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
 }
-.screenshare-pane-empty {
+.pixel-pane-empty {
   color: #8b7fa6;
   font-size: 13px;
   line-height: 1.5;
   padding: 8px 2px;
 }
-.screenshare-pane-tag {
+.pixel-pane-tag {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   font-weight: 700;
@@ -586,7 +664,7 @@ html.screenshare-editing [data-pixel-editing] * {
   margin-bottom: 10px;
   word-break: break-all;
 }
-.screenshare-pane-row {
+.pixel-pane-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -595,13 +673,120 @@ html.screenshare-editing [data-pixel-editing] * {
   font-size: 12px;
   border-top: 1px solid #f1ecff;
 }
-.screenshare-pane-row:first-of-type { border-top: none; }
-.screenshare-pane-key { color: #8b7fa6; white-space: nowrap; }
-.screenshare-pane-val {
+.pixel-pane-row:first-of-type { border-top: none; }
+.pixel-pane-key { color: #8b7fa6; white-space: nowrap; }
+.pixel-pane-val {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #2a1f3d;
   text-align: right;
   word-break: break-word;
+}
+
+/* Elements pane — the same pane chrome docked on the LEFT edge (reserves
+   layout width via documentElement margin-left, set from ElementsPane). */
+.pixel-pane.pixel-pane-left {
+  left: 0;
+  right: auto;
+  border-left: none;
+  border-right: 1px solid #e6deff;
+  box-shadow: 2px 0 16px rgba(124, 58, 237, 0.12);
+}
+.pixel-pane-left .pixel-pane-resize {
+  left: auto;
+  right: -3px;
+}
+.pixel-pane-left .pixel-pane-resize:hover {
+  background: linear-gradient(to left, rgba(124, 58, 237, 0.35), transparent);
+}
+
+/* States (time-travel) pane — list of captured commits + freeze controls. */
+.pixel-states-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.pixel-states-navbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b5b8a;
+}
+.pixel-states-navbtn:hover:not(:disabled) { background: #efe9ff; }
+.pixel-states-navbtn:disabled { opacity: 0.35; cursor: default; }
+.pixel-states-frozen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #f3ecff;
+  border: 1px solid #e0d3ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.pixel-states-frozen-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7c3aed;
+  flex-shrink: 0;
+}
+.pixel-states-resume {
+  margin-left: auto;
+  border: none;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.pixel-states-resume:hover { background: #6d28d9; }
+.pixel-states-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column-reverse;
+}
+.pixel-states-item { border-top: 1px solid #f1ecff; }
+.pixel-states-item:last-child { border-top: none; }
+.pixel-states-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 6px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.pixel-states-row:hover { background: #efe9ff; }
+.pixel-states-item.current .pixel-states-row {
+  background: #e6d8ff;
+}
+.pixel-states-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b7fa6;
+  min-width: 20px;
+}
+.pixel-states-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #2a1f3d;
 }
 `
 

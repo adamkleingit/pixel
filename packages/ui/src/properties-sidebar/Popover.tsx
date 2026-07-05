@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode, RefObject } from 'react'
-import { OWN_UI_PROPS } from '../own-ui'
+import { OWN_UI_ATTR, OWN_UI_PROPS } from '../own-ui'
 import { COLORS, Z_INDEX } from './tokens'
 
 export interface PopoverProps {
@@ -29,6 +29,17 @@ export function Popover({
 }: PopoverProps = {}) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+
+  // Keep the latest onClose / anchorRef in refs so the outside-close effect can
+  // depend on `isOpen` alone. `onClose` and `anchorRef` are fresh identities on
+  // every render, and this popover re-renders constantly in edit mode (each page
+  // hover + each committed edit), so a deps-based subscription would churn the
+  // window listener off/on every render — leaving it detached at the exact
+  // moment of an outside click. Subscribe once per open instead.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const anchorRefRef = useRef(anchorRef)
+  anchorRefRef.current = anchorRef
 
   useLayoutEffect(() => {
     if (!isOpen) return
@@ -58,11 +69,22 @@ export function Popover({
       setPos({ left, top })
     }
     update()
-    const raf = requestAnimationFrame(update)
+    // Re-clamp when the popover's OWN content changes height (e.g. adding
+    // gradient stops) — otherwise a grown popover overflows the viewport bottom
+    // instead of shifting up, pushing controls off-screen.
+    const ro = new ResizeObserver(update)
+    // The node isn't mounted on this first run (pos is null → the popover
+    // renders null, so `ref.current` is still null). Attach the observer on the
+    // next frame, once `setPos` above has caused the node to render.
+    const raf = requestAnimationFrame(() => {
+      update()
+      if (ref.current) ro.observe(ref.current)
+    })
     window.addEventListener('resize', update)
     window.addEventListener('scroll', update, true)
     return () => {
       cancelAnimationFrame(raf)
+      ro.disconnect()
       window.removeEventListener('resize', update)
       window.removeEventListener('scroll', update, true)
     }
@@ -70,22 +92,31 @@ export function Popover({
 
   useEffect(() => {
     if (!isOpen) return
-    function handle(e: MouseEvent) {
+    function handle(e: Event) {
       const target = e.target as Node
       if (ref.current?.contains(target)) return
-      if (anchorRef?.current?.contains(target)) return
-      onClose?.()
+      if (anchorRefRef.current?.current?.contains(target)) return
+      // Menus we own (Dropdowns, nested pickers) portal to <body> outside our
+      // ref but carry the own-UI marker — clicking one must not close us.
+      if (target instanceof Element && target.closest(`[${OWN_UI_ATTR}]`)) return
+      onCloseRef.current?.()
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose?.()
+      if (e.key === 'Escape') onCloseRef.current?.()
     }
-    window.addEventListener('mousedown', handle)
+    // Close on `pointerdown` in the CAPTURE phase. In edit mode the app-inert
+    // layer swallows page `mousedown` (preventDefault + stopPropagation) at
+    // window-capture, so a `mousedown` listener never sees an outside click.
+    // `pointerdown` is deliberately left live by both that layer and the
+    // selection handler (which only preventDefaults it), so a window-capture
+    // listener here reliably sees clicks on the page, the pane, or anywhere else.
+    window.addEventListener('pointerdown', handle, true)
     window.addEventListener('keydown', handleKey)
     return () => {
-      window.removeEventListener('mousedown', handle)
+      window.removeEventListener('pointerdown', handle, true)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [isOpen, onClose, anchorRef])
+  }, [isOpen])
 
   if (!isOpen || !pos) return null
 
@@ -98,6 +129,11 @@ export function Popover({
         left: pos.left,
         top: pos.top,
         width,
+        // Never exceed the viewport: the body scrolls, and the position math
+        // above shifts the whole popover up so its bottom stays on-screen.
+        maxHeight: 'calc(100vh - 16px)',
+        display: 'flex',
+        flexDirection: 'column',
         background: COLORS.panel,
         border: `1px solid ${COLORS.border}`,
         borderRadius: 8,
@@ -116,6 +152,7 @@ export function Popover({
             padding: '10px 10px 10px 12px',
             borderBottom: `1px solid ${COLORS.border}`,
             minHeight: 36,
+            flexShrink: 0,
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
@@ -149,7 +186,7 @@ export function Popover({
           </div>
         </div>
       )}
-      <div>{children}</div>
+      <div style={{ overflowY: 'auto', minHeight: 0 }}>{children}</div>
     </div>
   )
 

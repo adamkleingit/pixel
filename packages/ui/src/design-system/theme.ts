@@ -118,7 +118,7 @@ export const Z_INDEX = {
   canvasControls: 1100,
   /** Sidebar dropdowns / popovers — portal to <body>, so they need their own
    *  z-index above the chrome to clear the pane they open from. In the
-   *  screenshare host the whole Pixel UI lives in `.screenshare-overlay` at
+   *  pixel host the whole Pixel UI lives in `.pixel-overlay` at
    *  z 2147483000+, so these body-portaled menus must clear THAT, not the old
    *  ~1050 canvas chrome — otherwise the overlay paints over them and their
    *  clicks land on the pane instead of the menu item. */

@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { Token } from '../pixel-common'
 import { Dropdown } from './Dropdown'
 import { FillPopover } from './FillPopover'
-import { IconButton } from './IconButton'
 import { NumericInput } from './NumericInput'
 import { PaintRow } from './PaintRow'
 import { Row } from './Row'
 import { Section } from './Section'
 import { StrokeSettingsPopover } from './StrokeSettingsPopover'
 import { TokenButton } from './TokenButton'
-import { plusIcon, slidersIcon } from './icons'
+import { slidersIcon } from './icons'
 import { applyPatchAll, applyTokenAll, MULTIPLE_PLACEHOLDER, readShared } from './read-shared'
 import { tokenDisplayLabel } from './token-mapping'
 import { useScrubbable, type ScrubExtras } from './useScrubbable'
@@ -20,32 +19,30 @@ export interface StrokeSectionProps {
   elements?: Element[]
 }
 
-type Stroke = {
-  id: string
-  hex: string
-  alpha: string
-  isVisible: boolean
-}
-
-let nextId = 1
-const mkId = () => `stroke-${nextId++}`
-
+/**
+ * Stroke = the element's CSS `border`. It's a single value — CSS can't stack two
+ * borders (a second would just override the first), so this section edits ONE
+ * stroke: a colour row plus section-level Position + Weight. The eye toggles the
+ * border on/off; there's no add/remove because there's only ever one.
+ */
 export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
-  const [strokes, setStrokes] = useState<Stroke[]>([])
+  const [hex, setHex] = useState('000000')
+  const [alpha, setAlpha] = useState('100')
+  const [isVisible, setIsVisible] = useState(false)
   const [position, setPosition] = useState('Outside')
   const [weight, setWeight] = useState('1')
-  const [weightShared, setWeightShared] = useState<'single' | 'multiple'>('single')
   const [style, setStyle] = useState('solid')
   const [colorShared, setColorShared] = useState<'single' | 'multiple'>('single')
-  const [colorPopoverId, setColorPopoverId] = useState<string | null>(null)
+  const [weightShared, setWeightShared] = useState<'single' | 'multiple'>('single')
+  const [isColorOpen, setIsColorOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const colorAnchorsRef = useRef<Record<string, HTMLElement | null>>({})
+  const colorAnchorRef = useRef<HTMLDivElement | null>(null)
   const settingsAnchorRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    if (elements.length === 0) { setStrokes([]); return }
-    // Compare borders by their composite signature so divergent elements
-    // surface as "Multiple" without us needing six separate readShared calls.
+    if (elements.length === 0) return
+    // Compare borders by their composite signature so divergent elements surface
+    // as "Multiple" without six separate readShared calls.
     const sig = readShared(elements, el => {
       const b = readBorder(el)
       return `${b.widthPx}|${b.style}|${b.hex}|${b.alphaPercent}`
@@ -53,9 +50,7 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
     if (sig.kind === 'multiple') {
       setColorShared('multiple')
       setWeightShared('multiple')
-      setStrokes([{ id: mkId(), hex: '', alpha: '', isVisible: true }])
-      setWeight('')
-      setStyle('solid')
+      setHex(''); setAlpha(''); setWeight(''); setStyle('solid'); setIsVisible(true)
       return
     }
     const b = readBorder(elements[0])
@@ -64,60 +59,46 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
     setColorShared('single')
     setWeightShared('single')
     if (hasOpaqueBorder) {
-      setStrokes([{ id: mkId(), hex: b.hex, alpha: b.alphaPercent, isVisible: true }])
-      setWeight(b.widthPx)
-      setStyle(b.style)
+      setHex(b.hex); setAlpha(b.alphaPercent); setWeight(b.widthPx); setStyle(b.style)
+      setIsVisible(true)
     } else {
-      setStrokes([])
-      setWeight('1')
-      setStyle('solid')
+      setHex('000000'); setAlpha('100'); setWeight('1'); setStyle('solid')
+      setIsVisible(false)
     }
   }, [elements])
 
-  function applyToElement(
-    nextStrokes: Stroke[],
-    nextWeight: string,
-    nextStyle: string,
-  ) {
-    const active = nextStrokes.find(s => s.isVisible)
-    const value = active && active.hex
+  function apply(nextHex: string, nextAlpha: string, nextVisible: boolean, nextWeight: string, nextStyle: string) {
+    const value = nextVisible && nextHex
       ? composeBorder({
           widthPx: nextWeight || '1',
           style: nextStyle,
-          hex: active.hex,
-          alphaPercent: active.alpha || '100',
+          hex: nextHex,
+          alphaPercent: nextAlpha || '100',
         })
-      : ''
-    applyPatchAll(elements, { kind: 'setStyle', property: 'border', value: value || 'none' })
+      : 'none'
+    applyPatchAll(elements, { kind: 'setStyle', property: 'border', value })
   }
 
-  function updateStroke(id: string, patch: Partial<Stroke>) {
-    setColorShared('single')
-    setStrokes(prev => {
-      const next = prev.map(s => {
-        if (s.id !== id) return s
-        const merged = { ...s, ...patch }
-        if (typeof patch.hex === 'string') merged.hex = normalizeHex(patch.hex)
-        return merged
-      })
-      applyToElement(next, weight, style)
-      return next
-    })
+  function onHex(v: string) {
+    const norm = normalizeHex(v)
+    setHex(norm); setColorShared('single')
+    // Typing a colour implies the stroke should show.
+    if (!isVisible) setIsVisible(true)
+    apply(norm, alpha || '100', true, weight, style)
   }
-  function removeStroke(id: string) {
-    setStrokes(prev => {
-      const next = prev.filter(s => s.id !== id)
-      applyToElement(next, weight, style)
-      return next
-    })
-    if (colorPopoverId === id) setColorPopoverId(null)
+  function onAlpha(v: string) {
+    setAlpha(v); setColorShared('single')
+    apply(hex, v, isVisible, weight, style)
   }
-  function addStroke() {
-    setStrokes(prev => {
-      const next = [...prev, { id: mkId(), hex: '000000', alpha: '100', isVisible: true }]
-      applyToElement(next, weight, style)
-      return next
-    })
+  function onVisibility(v: boolean) {
+    setIsVisible(v); setColorShared('single')
+    apply(hex, alpha, v, weight, style)
+  }
+  function onColorFromPopover(nextHex: string, nextAlpha: string) {
+    const norm = normalizeHex(nextHex)
+    setHex(norm); setAlpha(nextAlpha); setColorShared('single')
+    if (!isVisible) setIsVisible(true)
+    apply(norm, nextAlpha, true, weight, style)
   }
   function onWeight(v: string, _mods?: unknown, extras?: ScrubExtras) {
     setWeight(v); setWeightShared('single')
@@ -130,36 +111,32 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
       applyTokenAll(elements, 'border-width', typed)
       return
     }
-    applyToElement(strokes, v, style)
+    apply(hex, alpha, isVisible, v, style)
   }
-  function onColorTokenForRow(id: string, token: Token) {
-    // Write the longhands so the agent can rewrite to `border-color:
+  function onColorToken(token: Token) {
+    // Write the longhand so the agent can rewrite to `border-color:
     // var(--primary)` / `border-primary` (utility) instead of the shorthand
-    // (which can't carry a single semantic token).
+    // (which can't carry a single semantic token). Ensure the border is visible.
     applyTokenAll(elements, 'border-color', token)
-    // Ensure the border is actually visible — set sensible defaults if the
-    // element has none yet.
-    if (!weight || weight === '0') {
+    // Base the width/style top-up on the LIVE border, not the (possibly stale)
+    // state — an element with `border: none` reads weight '1' in state but paints
+    // a 0px border, so picking a color must still give it a visible stroke.
+    const live = elements[0] ? getComputedStyle(elements[0]) : null
+    if (!live || (parseFloat(live.borderTopWidth) || 0) <= 0) {
       applyPatchAll(elements, { kind: 'setStyle', property: 'border-width', value: '1px' })
       setWeight('1')
     }
-    if (!style || style === 'none') {
+    if (!live || live.borderTopStyle === 'none') {
       applyPatchAll(elements, { kind: 'setStyle', property: 'border-style', value: 'solid' })
       setStyle('solid')
     }
     const parsed = rgbStringToHexAlpha(token.value)
-    setStrokes(prev => prev.map(s =>
-      s.id === id ? { ...s, hex: parsed.hex, alpha: parsed.alphaPercent, isVisible: true } : s,
-    ))
-    setColorShared('single')
+    setHex(parsed.hex); setAlpha(parsed.alphaPercent); setIsVisible(true); setColorShared('single')
   }
   function onWidthToken(token: Token) {
     applyTokenAll(elements, 'border-width', token)
     const m = /^(-?[\d.]+)/.exec(token.value.trim())
-    if (m) {
-      setWeight(m[1])
-      setWeightShared('single')
-    }
+    if (m) { setWeight(m[1]); setWeightShared('single') }
   }
 
   const widthMatch = useTokenMatch('border-width')
@@ -171,131 +148,104 @@ export function StrokeSection({ elements = [] }: StrokeSectionProps = {}) {
     snap: { targets: widthMatch.snapTargets, threshold: 3 },
   })
 
-  const actions = (
-    <IconButton title="Add stroke" onClick={addStroke}>{plusIcon}</IconButton>
-  )
-
-  const activeColorAnchorRef = {
-    get current() {
-      return colorPopoverId ? colorAnchorsRef.current[colorPopoverId] ?? null : null
-    },
-  }
-  const activeStroke = colorPopoverId
-    ? strokes.find(s => s.id === colorPopoverId) ?? null
-    : null
-
   return (
-    <Section title="Stroke" actions={actions}>
-      {strokes.map(stroke => (
-        <div
-          key={stroke.id}
-          ref={el => {
-            colorAnchorsRef.current[stroke.id] = el
-          }}
-        >
-          <PaintRow
-            hex={stroke.hex}
-            hexPlaceholder={colorShared === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
-            swatchColor={colorShared === 'multiple' ? 'transparent' : `#${stroke.hex}`}
-            swatchBackground={colorShared === 'multiple' ? 'transparent' : `#${stroke.hex}`}
-            alpha={stroke.alpha}
-            alphaPlaceholder={colorShared === 'multiple' ? '–' : ''}
-            isVisible={stroke.isVisible}
-            disabled={colorShared === 'multiple'}
-            onHexChange={v => updateStroke(stroke.id, { hex: v })}
-            onAlphaChange={v => updateStroke(stroke.id, { alpha: v })}
-            onVisibilityChange={v => updateStroke(stroke.id, { isVisible: v })}
-            onSwatchClick={() =>
-              setColorPopoverId(prev => (prev === stroke.id ? null : stroke.id))
-            }
-            onRemove={() => removeStroke(stroke.id)}
-            tokenProperty="border-color"
-            onTokenSelect={t => onColorTokenForRow(stroke.id, t)}
-          />
-        </div>
-      ))}
+    <Section title="Stroke">
+      <div ref={colorAnchorRef}>
+        <PaintRow
+          hex={hex}
+          hexPlaceholder={colorShared === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
+          swatchColor={colorShared === 'multiple' ? 'transparent' : `#${hex}`}
+          swatchBackground={colorShared === 'multiple' ? 'transparent' : `#${hex}`}
+          alpha={alpha}
+          alphaPlaceholder={colorShared === 'multiple' ? '–' : ''}
+          isVisible={isVisible}
+          disabled={colorShared === 'multiple'}
+          onHexChange={onHex}
+          onAlphaChange={onAlpha}
+          onVisibilityChange={onVisibility}
+          onSwatchClick={() => setIsColorOpen(v => !v)}
+          tokenProperty="border-color"
+          onTokenSelect={onColorToken}
+        />
+      </div>
 
       <FillPopover
-        isOpen={colorPopoverId !== null}
-        onClose={() => setColorPopoverId(null)}
-        anchorRef={activeColorAnchorRef}
-        hex={activeStroke?.hex ?? '000000'}
-        alpha={activeStroke?.alpha ?? '100'}
-        onChangeColor={(hex, alpha) => {
-          if (colorPopoverId) updateStroke(colorPopoverId, { hex, alpha })
-        }}
+        isOpen={isColorOpen}
+        onClose={() => setIsColorOpen(false)}
+        anchorRef={colorAnchorRef}
+        hex={hex || '000000'}
+        alpha={alpha || '100'}
+        onChangeColor={onColorFromPopover}
       />
 
-      {strokes.length > 0 && (
-        <Row label="">
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
-              gap: 6,
-              width: '100%',
-              alignItems: 'center',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 11, color: '#7a7a8e', marginBottom: 4 }}>
-                Position
-              </div>
-              <Dropdown
-                value={position}
-                onChange={setPosition}
-                options={['Inside', 'Center', 'Outside'].map(v => ({ value: v }))}
-              />
+      <Row label="">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+            gap: 6,
+            width: '100%',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 11, color: '#7a7a8e', marginBottom: 4 }}>
+              Position
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: '#7a7a8e', marginBottom: 4 }}>
-                Weight
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                <NumericInput
-                  value={weight}
-                  placeholder={weightShared === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
-                  disabled={weightShared === 'multiple'}
-                  onChange={onWeight}
-                  prefix={weightPrefix}
-                  prefixProps={scrubWeight.prefixProps}
-                  tokenLabel={widthTokenLabel}
-                />
-                <TokenButton property="border-width" onSelect={onWidthToken} />
-              </div>
+            <Dropdown
+              value={position}
+              onChange={setPosition}
+              options={['Inside', 'Center', 'Outside'].map(v => ({ value: v }))}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#7a7a8e', marginBottom: 4 }}>
+              Weight
             </div>
-            <div style={{ alignSelf: 'end' }}>
-              <button
-                ref={settingsAnchorRef}
-                type="button"
-                title="Advanced stroke settings"
-                onClick={() => setIsSettingsOpen(v => !v)}
-                style={{
-                  width: 28,
-                  height: 28,
-                  background: isSettingsOpen ? '#2a2a3a' : 'transparent',
-                  color: isSettingsOpen ? '#8b92ff' : '#8a8a9e',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  padding: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {slidersIcon}
-              </button>
-              <StrokeSettingsPopover
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-                anchorRef={settingsAnchorRef}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <NumericInput
+                value={weight}
+                placeholder={weightShared === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
+                disabled={weightShared === 'multiple'}
+                onChange={onWeight}
+                prefix={weightPrefix}
+                prefixProps={scrubWeight.prefixProps}
+                tokenLabel={widthTokenLabel}
               />
+              <TokenButton property="border-width" onSelect={onWidthToken} />
             </div>
           </div>
-        </Row>
-      )}
+          <div style={{ alignSelf: 'end' }}>
+            <button
+              ref={settingsAnchorRef}
+              type="button"
+              title="Advanced stroke settings"
+              onClick={() => setIsSettingsOpen(v => !v)}
+              style={{
+                width: 28,
+                height: 28,
+                background: isSettingsOpen ? '#2a2a3a' : 'transparent',
+                color: isSettingsOpen ? '#8b92ff' : '#8a8a9e',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'inherit',
+              }}
+            >
+              {slidersIcon}
+            </button>
+            <StrokeSettingsPopover
+              isOpen={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+              anchorRef={settingsAnchorRef}
+            />
+          </div>
+        </div>
+      </Row>
     </Section>
   )
 }

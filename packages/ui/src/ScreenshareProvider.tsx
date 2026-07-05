@@ -11,6 +11,7 @@ import {
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
 import { requestEditCancel, requestEditSave } from './edit/edit-actions'
+import { setHmrSessionActive } from './hmr-guard'
 import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
 import {
@@ -20,6 +21,7 @@ import {
   updateActiveSession,
 } from './session'
 import { injectStyles } from './styles'
+import { installConsoleCapture } from './bug-report'
 import type { BlipData } from './draw/blip'
 import { eventInOwnUI } from './own-ui'
 import type { Token } from './pixel-common'
@@ -161,6 +163,12 @@ export function ScreenshareProvider({
 
   useEffect(() => {
     if (isEnabled) injectStyles()
+  }, [isEnabled])
+
+  // Start buffering console errors as soon as the SDK mounts, so a later bug
+  // report carries whatever was logged before the user hit "Report a bug".
+  useEffect(() => {
+    if (isEnabled) installConsoleCapture()
   }, [isEnabled])
 
   // Keep Pixel's own UI (bar, design pane, and body-portaled menus) from tripping
@@ -426,6 +434,17 @@ export function ScreenshareProvider({
     if (!enabledRef.current) return
     setEditing((e) => !e)
   }, [])
+
+  // Hold back dev-server HMR while a session (editing OR recording/paused) is
+  // live, so a rebuild can't wipe in-progress edits or reset the recording
+  // clock. Deferred updates are applied as one reload the moment the gate
+  // closes. Requires the host to have wired `installHmrGuard(import.meta.hot)`;
+  // otherwise this just toggles an unread flag. The unmount cleanup (separate
+  // effect) releases the gate so HMR resumes if the provider goes away.
+  useEffect(() => {
+    setHmrSessionActive(editing || state !== 'idle')
+  }, [editing, state])
+  useEffect(() => () => setHmrSessionActive(false), [])
 
   const removeBlip = useCallback((id: number) => {
     setBlips((prev) => prev.filter((b) => b.id !== id))
@@ -709,6 +728,7 @@ export function ScreenshareProvider({
       serverDown,
       openTask,
       designTokens,
+      bugReport: config.bugReport ?? null,
       blips,
       removeBlip,
       dragRect,
@@ -717,7 +737,7 @@ export function ScreenshareProvider({
       drawStroke,
       drawStrokes,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes],
   )
 
   return <ScreenshareContext.Provider value={value}>{children}</ScreenshareContext.Provider>

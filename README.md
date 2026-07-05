@@ -53,6 +53,31 @@ shortcuts, no event capture, and `start()` does nothing — so Pixel adds nothin
 to a production build. Render `<Overlay />` behind the same flag so the floating
 bar is dev-only too.
 
+### Defer dev-server HMR during a session (recommended)
+
+Add one line to your app **entry** (the file where you `createRoot(...).render(...)`)
+so a hot-reload can't wipe an in-progress edit or end a recording mid-session:
+
+```tsx
+import { installHmrGuard } from '@getpixel/ui'
+
+// Vite: while a Pixel edit/recording session is active, hot updates (react-
+// refresh) and full reloads are deferred and applied as one reload when the
+// session ends. No-op in production.
+if (import.meta.hot) installHmrGuard(import.meta.hot)
+```
+
+Why it matters: without this, saving a file (or the agent writing your edits back
+to source) triggers Vite HMR — a react-refresh update re-renders off source and
+**discards the in-DOM edits you're making**, and a full reload resets the clock
+and drops the mic, **ending any recording**. The guard holds HMR back until you
+**Save** or **Cancel**, then reloads once so the latest source lands cleanly.
+
+> Vite only — `import.meta.hot` is Vite's HMR API. On webpack/CRA the equivalent
+> is `module.hot`; wire your own hook using the exported `shouldDeferHmr()`
+> primitive (returns true while a session is active — decline/defer the update),
+> which the provider drives the same way.
+
 And then install the skill from the local pixel installation:
 
 ```bash

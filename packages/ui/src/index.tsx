@@ -5,6 +5,7 @@ export type { OverlayProps } from './Overlay'
 export { useScreenshare } from './useScreenshare'
 export type { UseScreenshare } from './useScreenshare'
 export { httpSink, DEFAULT_SERVER_URL } from './sinks/httpSink'
+export { installHmrGuard, shouldDeferHmr, type HotContext } from './hmr-guard'
 
 export type {
   Recording,
@@ -21,6 +22,7 @@ export type {
   ActivationConfig,
   BarConfig,
   BarPosition,
+  BugReportConfig,
   RecordingSink,
   Task,
   TaskStatus,

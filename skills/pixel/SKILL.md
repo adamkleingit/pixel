@@ -74,6 +74,21 @@ project root.
 > install and set it up first — then come back here, run the server, and continue
 > listening for file changes.
 >
+> **When installing/wiring Pixel into the app**, besides the `<ScreenshareProvider>`
+> + `<Overlay>`, add the **HMR guard** to the app's entry file (where it calls
+> `createRoot(...).render(...)`) so a dev-server rebuild can't wipe an in-progress
+> edit or end a recording mid-session:
+>
+> ```tsx
+> import { installHmrGuard } from '@getpixel/ui'
+> if (import.meta.hot) installHmrGuard(import.meta.hot) // Vite; no-op in prod
+> ```
+>
+> It defers hot updates + full reloads while an edit/recording session is active
+> and applies one reload when the session ends (on Save/Cancel/Stop). See the
+> README "Defer dev-server HMR during a session" section. (Webpack/CRA: gate your
+> own `module.hot` hook on the exported `shouldDeferHmr()`.)
+>
 > This skill ships **inside** `@getpixel/server`. To (re)install the copy that matches
 > your installed package version, run `npx @getpixel/server install-skill` (writes
 > `.claude/skills/pixel/`; add `--global` for `~/.claude/skills`). That

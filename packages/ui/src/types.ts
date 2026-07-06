@@ -249,6 +249,13 @@ export interface PixelConfig {
    * every report's meta.json (e.g. app name/version). Omit to hide the button.
    */
   bugReport?: BugReportConfig
+  /**
+   * First-run onboarding. When Pixel first loads it points out the Record / Edit
+   * / Time-travel buttons, then walks through the recording and editing controls
+   * the first time each is used. Each step is dismissed forever (persisted in
+   * localStorage). Set `false` to disable entirely. Default true.
+   */
+  onboarding?: boolean
 }
 
 export interface BugReportConfig {

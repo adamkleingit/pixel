@@ -75,6 +75,8 @@ export interface PixelContextValue {
   /** Bug-report config (endpoint + static meta), or null when not configured —
    *  the "Report a bug" button only renders when this is set. */
   bugReport: BugReportConfig | null
+  /** Whether first-run onboarding is enabled (config.onboarding !== false). */
+  onboarding: boolean
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void

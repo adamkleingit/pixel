@@ -223,10 +223,11 @@ The loop:
 The running `watch` *is* the loop — never replace it with a passive "waiting"
 message and then stop.
 
-**Stop only when the user explicitly asks** ("stop", "stop pixel", "stop
-watching"). Then kill the running `watch`, exit the loop, and leave the server
-as-is (or stop it if they ask). Don't stop just because the inbox is momentarily
-empty — `watch` keeps blocking until the next task.
+**Keep looping until the user explicitly asks to stop** ("stop", "stop pixel",
+"stop watching") — don't stop just because the inbox is momentarily empty, since
+`watch` keeps blocking until the next task. When they do ask to stop, follow the
+**`stop-pixel`** skill: kill the running `watch`, exit the loop, and leave the
+ingest server up (or stop it too if they ask).
 
 ## Enabling pixel-react time-travel (when asked)
 

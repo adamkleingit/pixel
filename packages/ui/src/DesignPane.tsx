@@ -122,6 +122,7 @@ export function DesignPane() {
       className={`pixel-pane${collapsed ? ' collapsed' : ''}`}
       style={collapsed ? undefined : { width }}
       aria-label="Design pane"
+      data-pixel-tour="design"
     >
       {!collapsed && (
         <div

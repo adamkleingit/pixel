@@ -12,6 +12,12 @@ const CSS = `
   position: fixed;
   inset: 0;
   pointer-events: none;
+  /* Sits above ~all host UI, but MUST stay below Pixel's own body-portaled
+     menus (Z_INDEX.popover/modal/overlay = 2147483010+). Those dropdowns/
+     popovers are siblings of this overlay at <body>, not children, so they
+     can only clear the design pane by out-z-indexing this container. Pushing
+     this to the 32-bit max (2147483647) hides every dropdown behind the pane
+     and eats its clicks — see the Z_INDEX comment in design-system/theme.ts. */
   z-index: 2147483000;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
@@ -701,21 +707,29 @@ html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
 
 /* States (time-travel) pane — list of captured commits + freeze controls. */
 .pixel-states-nav {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ece6ff;
+  flex-shrink: 0;
 }
 .pixel-states-navbtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
+  gap: 2px;
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #e4dcff;
+  background: #faf8ff;
+  border-radius: 7px;
   cursor: pointer;
-  color: #6b5b8a;
+  color: #4a3d6b;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
 }
 .pixel-states-navbtn:hover:not(:disabled) { background: #efe9ff; }
 .pixel-states-navbtn:disabled { opacity: 0.35; cursor: default; }
@@ -788,6 +802,113 @@ html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
   font-size: 12px;
   color: #2a1f3d;
 }
+
+/* --- First-run onboarding ------------------------------------------------- */
+.pixel-onb-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483400;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.pixel-onb-lines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.pixel-onb-lines line {
+  stroke: #8b5cf6;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
+.pixel-onb-lines circle { fill: #8b5cf6; }
+.pixel-onb-ring {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #8b5cf6, 0 0 0 6px rgba(139, 92, 246, 0.28);
+  pointer-events: none;
+  animation: pixel-onb-pulse 1.6s ease-in-out infinite;
+}
+@keyframes pixel-onb-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px #8b5cf6, 0 0 0 6px rgba(139, 92, 246, 0.28); }
+  50% { box-shadow: 0 0 0 2px #8b5cf6, 0 0 0 9px rgba(139, 92, 246, 0.12); }
+}
+.pixel-onb-tip {
+  position: fixed;
+  max-width: 232px;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #241b38;
+  color: #f4f1fb;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: 0 8px 28px rgba(20, 12, 40, 0.45);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.pixel-onb-tip.placed { opacity: 1; }
+.pixel-onb-tip strong { color: #fff; font-weight: 650; }
+.pixel-onb-kbd {
+  display: inline-block;
+  padding: 0 5px;
+  min-width: 8px;
+  border-radius: 5px;
+  background: rgba(139, 92, 246, 0.28);
+  border: 1px solid rgba(139, 92, 246, 0.55);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 17px;
+  color: #efeaff;
+}
+.pixel-onb-cta {
+  position: fixed;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.pixel-onb-popup {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(440px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 12px 12px 16px;
+  border-radius: 12px;
+  background: #241b38;
+  color: #f4f1fb;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 12px 40px rgba(20, 12, 40, 0.5);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  pointer-events: auto;
+  animation: pixel-onb-rise 0.24s ease;
+}
+@keyframes pixel-onb-rise {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.pixel-onb-popup-text { flex: 1; }
+.pixel-onb-btn {
+  flex: none;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #8b5cf6;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.4);
+}
+.pixel-onb-btn:hover { background: #7c4ef0; }
 `
 
 export function injectStyles(): void {

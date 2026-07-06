@@ -174,6 +174,8 @@ interface RepositionStartInput {
 }
 
 export function startRepositionDrag(input: RepositionStartInput): void {
+  // eslint-disable-next-line no-console
+  console.log('[reposdrag] START', { meta: input.metaKey, tag: input.element.tagName, text: input.element.textContent?.slice(0, 10) })
   if (session) return
   const parent = input.element.parentElement
   if (!(parent instanceof HTMLElement)) return
@@ -661,6 +663,8 @@ function finalizeCommit(): void {
   // element's natural slot. For Cmd mode we additionally mutate the DOM to
   // the target slot first (Cmd defers reorder to release).
   let snapAnimationFrom: { dx: number; dy: number } | null = null
+  // eslint-disable-next-line no-console
+  console.log('[reposdrag] finalize mode=', s.currentMode.kind)
   if (s.currentMode.kind === 'insertion-line') {
     const axis = resolveInsertionAxis(s.parent)
     // Element's current screen rect *includes* the cursor-following transform
@@ -674,6 +678,8 @@ function finalizeCommit(): void {
       : visualRect.top + visualRect.height / 2
     const targetSlot = resolveInsertionIndex(children, cursorProxy)
     const refNode = nodeBeforeAtSlot(s.parent, children, targetSlot)
+    // eslint-disable-next-line no-console
+    console.log('[reposdrag] insertion', { axis, cursorProxy, targetSlot, childCount: children.length, visualLeft: visualRect.left })
     s.parent.insertBefore(s.element, refNode)
     // Clear inline transform now so the natural rect read is clean and the
     // WAAPI animation below isn't fighting an underlying inline value at the

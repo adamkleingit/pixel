@@ -844,6 +844,7 @@ export function PixelProvider({
       openTask,
       designTokens,
       bugReport: config.bugReport ?? null,
+      onboarding: config.onboarding !== false,
       blips,
       removeBlip,
       dragRect,
@@ -860,7 +861,7 @@ export function PixelProvider({
       stepStateForward,
       cancelTimeTravel,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes, timeTravel, toggleTimeTravel, stateFrames, frozenIndex, gotoState, stepStateBack, stepStateForward, cancelTimeTravel],
+    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, config.onboarding, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes, timeTravel, toggleTimeTravel, stateFrames, frozenIndex, gotoState, stepStateBack, stepStateForward, cancelTimeTravel],
   )
 
   return <PixelContext.Provider value={value}>{children}</PixelContext.Provider>

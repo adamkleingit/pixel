@@ -146,15 +146,23 @@ function beginTextInlineEdit(
   function onBlur() {
     exit({ commit: true })
   }
+  // Mirror the anchor's text onto every peer live (each keystroke), so a
+  // multi-selection edit updates all elements as you type — not just on commit.
+  function onInput() {
+    const current = element.textContent ?? ''
+    for (const peer of textPeers) peer.textContent = current
+  }
 
   element.addEventListener('keydown', onKeyDown)
   element.addEventListener('blur', onBlur)
+  element.addEventListener('input', onInput)
 
   function exit(options?: { commit?: boolean }) {
     if (exited) return
     exited = true
     element.removeEventListener('keydown', onKeyDown)
     element.removeEventListener('blur', onBlur)
+    element.removeEventListener('input', onInput)
     if (originalContentEditable === null) element.removeAttribute('contenteditable')
     else element.setAttribute('contenteditable', originalContentEditable)
     if (originalSpellcheck === null) element.removeAttribute('spellcheck')
@@ -164,6 +172,8 @@ function beginTextInlineEdit(
     restoreInertness()
     if (options?.commit === false) {
       element.textContent = originalText
+      // Revert peers we mirrored onto live.
+      for (const peer of textPeers) peer.textContent = peerOriginalText.get(peer) ?? ''
       return
     }
     if (newText !== originalText) {
@@ -227,15 +237,23 @@ function beginHtmlInlineEdit(
   function onBlur() {
     exit({ commit: true })
   }
+  // Live-mirror the edited markup onto every peer as you type (re-parsed into
+  // real DOM), so a multi-selection edit updates all elements immediately.
+  function onInput() {
+    const current = element.textContent ?? ''
+    for (const peer of htmlPeers) peer.innerHTML = current
+  }
 
   element.addEventListener('keydown', onKeyDown)
   element.addEventListener('blur', onBlur)
+  element.addEventListener('input', onInput)
 
   function exit(options?: { commit?: boolean }) {
     if (exited) return
     exited = true
     element.removeEventListener('keydown', onKeyDown)
     element.removeEventListener('blur', onBlur)
+    element.removeEventListener('input', onInput)
     if (originalContentEditable === null) element.removeAttribute('contenteditable')
     else element.setAttribute('contenteditable', originalContentEditable)
     if (originalSpellcheck === null) element.removeAttribute('spellcheck')
@@ -246,6 +264,8 @@ function beginHtmlInlineEdit(
     restoreInertness()
     if (options?.commit === false) {
       element.innerHTML = originalHTML // discard: re-parse the original markup
+      // Revert peers we mirrored onto live.
+      for (const peer of htmlPeers) peer.innerHTML = peerOriginalHTML.get(peer) ?? ''
       return
     }
     // Re-parse the (possibly edited) markup back into real DOM.
@@ -313,20 +333,37 @@ function beginInputInlineEdit(
   function onBlur() {
     exit({ commit: true })
   }
+  // Live-mirror the anchor's typing onto peer inputs each keystroke (value or
+  // placeholder, matching the anchor's edit target), so a multi-selection edit
+  // updates all inputs immediately, not just on commit.
+  function onInput() {
+    const current = element.value
+    for (const peer of inputPeers) {
+      if (target === 'value') peer.value = current
+      else peer.setAttribute('placeholder', current)
+    }
+  }
 
   node.addEventListener('keydown', onKeyDown)
   node.addEventListener('blur', onBlur)
+  node.addEventListener('input', onInput)
 
   function exit(options?: { commit?: boolean }) {
     if (exited) return
     exited = true
     node.removeEventListener('keydown', onKeyDown)
     node.removeEventListener('blur', onBlur)
+    node.removeEventListener('input', onInput)
     const typed = element.value
     element.blur()
     restoreInertness()
     if (options?.commit === false) {
       element.value = originalValue
+      // Revert peers we mirrored onto live.
+      for (const peer of inputPeers) {
+        if (target === 'value') peer.value = peerOriginalValue.get(peer) ?? ''
+        else peer.setAttribute('placeholder', peerOriginalPlaceholder.get(peer) ?? '')
+      }
       return
     }
     if (target === 'value') {

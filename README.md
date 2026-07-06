@@ -78,11 +78,33 @@ and drops the mic, **ending any recording**. The guard holds HMR back until you
 > primitive (returns true while a session is active — decline/defer the update),
 > which the provider drives the same way.
 
-And then install the skill from the local pixel installation:
+### Install the Pixel skills into your coding agent
 
-```bash
-npx @getpixel/server install-skill --global # → ~/.claude/skills/pixel
+Pixel ships its agent instructions as **skill files** inside the installed
+package — they work with any coding agent (Claude Code, Cursor, Codex, …), you
+just drop them wherever your agent loads reusable instructions from:
+
 ```
+node_modules/@getpixel/server/skill/pixel/SKILL.md        # start + watch loop
+node_modules/@getpixel/server/skill/stop-pixel/SKILL.md   # stop watching
+```
+
+The simplest way is to let your agent install them. Paste this into your coding
+agent:
+
+```
+Install the Pixel skills for this project. They ship in the installed package at
+node_modules/@getpixel/server/skill/ — two subfolders, `pixel` and `stop-pixel`,
+each with a SKILL.md. Copy each subfolder into wherever you load skills / rules /
+custom instructions from, keeping the folder name. For example:
+  • Claude Code → .claude/skills/<name>/SKILL.md (or ~/.claude/skills for global)
+  • Cursor → .cursor/rules/<name>.md
+  • otherwise → your agent's equivalent instructions directory
+After copying, I should be able to trigger them with "pixel" and "stop pixel".
+```
+
+> **Claude Code shortcut:** `npx @getpixel/server install-skill` copies both
+> skills into `.claude/skills/` for you (add `--global` for `~/.claude/skills`).
 
 ## Running
 1. Send **"pixel"** (or "start pixel") to your coding agent

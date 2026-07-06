@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,35 +41,43 @@ function openInFileManager(dir: string): void {
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /**
- * Locate the SKILL.md bundled with THIS package version. Published layout puts it
- * at `<pkg>/skill` (sibling of `dist`); in the dev repo it also lives at the
- * monorepo root `skills/`. Checking the bundled copy first guarantees the skill
- * we install matches the installed @getpixel/server version.
+ * Locate the directory of skills bundled with THIS package version — it holds one
+ * subfolder per skill (`pixel/SKILL.md`, `stop-pixel/SKILL.md`, …). Published
+ * layout puts it at `<pkg>/skill` (sibling of `dist`); in the dev repo it lives at
+ * the monorepo root `skills/`. Checking the bundled copy first guarantees the
+ * skills we install match the installed @getpixel/server version.
  */
-function resolveBundledSkill(): string {
+function resolveBundledSkillsDir(): string {
   const candidates = [
     join(HERE, '..', 'skill'), // published & post-build: dist/ or src/ → ../skill
-    join(HERE, '..', '..', '..', 'skills', 'pixel'), // dev monorepo root
+    join(HERE, '..', '..', '..', 'skills'), // dev monorepo root
   ]
-  const found = candidates.find((c) => existsSync(join(c, 'SKILL.md')))
-  if (!found) throw new Error('bundled pixel skill not found')
+  const found = candidates.find((c) => existsSync(join(c, 'pixel', 'SKILL.md')))
+  if (!found) throw new Error('bundled pixel skills not found')
   return found
 }
 
 /**
- * `pixel-server install-skill [--global]` — copy the bundled skill into the
- * Claude skills dir (project `.claude/skills` by default, `~/.claude/skills` with
- * `--global`) so it always matches the installed package version.
+ * `pixel-server install-skill [--global]` — copy every bundled skill (`pixel`,
+ * `stop-pixel`, …) into the Claude Code skills dir (project `.claude/skills` by
+ * default, `~/.claude/skills` with `--global`) so they always match the installed
+ * package version. This is a Claude Code convenience; other agents can copy the
+ * same `node_modules/@getpixel/server/skill/*` folders into their own skills dir.
  */
-function installSkill(): void {
+function installSkills(): void {
   const global = process.argv.includes('--global')
   const base = global
     ? join(homedir(), '.claude', 'skills')
     : join(process.cwd(), '.claude', 'skills')
-  const dest = join(base, 'pixel')
-  mkdirSync(dest, { recursive: true })
-  cpSync(resolveBundledSkill(), dest, { recursive: true })
-  console.log(`Installed pixel skill → ${dest}`)
+  const srcDir = resolveBundledSkillsDir()
+  for (const name of readdirSync(srcDir)) {
+    const from = join(srcDir, name)
+    if (!existsSync(join(from, 'SKILL.md'))) continue // skip stray files
+    const dest = join(base, name)
+    mkdirSync(dest, { recursive: true })
+    cpSync(from, dest, { recursive: true })
+    console.log(`Installed ${name} skill → ${dest}`)
+  }
 }
 
 /** Parse `--key value` / `--flag` pairs from argv into a plain object. */
@@ -92,7 +100,7 @@ function parseFlags(argv: string[]): Record<string, string> {
 
 switch (process.argv[2]) {
   case 'install-skill': {
-    installSkill()
+    installSkills()
     process.exit(0)
     break
   }

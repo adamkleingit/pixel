@@ -121,30 +121,6 @@ export function StatesPane() {
       )}
       <div className="pixel-pane-head">
         {!collapsed && <span className="pixel-pane-title">States</span>}
-        {!collapsed && (
-          <span className="pixel-states-nav">
-            <button
-              type="button"
-              className="pixel-states-navbtn"
-              title="Previous state"
-              aria-label="Previous state"
-              disabled={count === 0 || frozenIndex === 0}
-              onClick={stepStateBack}
-            >
-              <Chevron dir="left" />
-            </button>
-            <button
-              type="button"
-              className="pixel-states-navbtn"
-              title="Next state"
-              aria-label="Next state"
-              disabled={count === 0 || frozenIndex === count - 1}
-              onClick={stepStateForward}
-            >
-              <Chevron dir="right" />
-            </button>
-          </span>
-        )}
         <button
           type="button"
           className="pixel-pane-collapse"
@@ -165,6 +141,33 @@ export function StatesPane() {
           </svg>
         </button>
       </div>
+
+      {/* Step through captured states — a labeled Back/Next bar under the header
+          (clearer than the bare chevrons that used to sit in the header row). */}
+      {!collapsed && (
+        <div className="pixel-states-nav">
+          <button
+            type="button"
+            className="pixel-states-navbtn"
+            title="Previous state"
+            disabled={count === 0 || frozenIndex === 0}
+            onClick={stepStateBack}
+          >
+            <Chevron dir="left" />
+            Back
+          </button>
+          <button
+            type="button"
+            className="pixel-states-navbtn"
+            title="Next state"
+            disabled={count === 0 || frozenIndex === count - 1}
+            onClick={stepStateForward}
+          >
+            Next
+            <Chevron dir="right" />
+          </button>
+        </div>
+      )}
 
       {!collapsed && (
         <div className="pixel-pane-body">

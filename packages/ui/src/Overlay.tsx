@@ -14,6 +14,7 @@ import { setEditActionHandlers } from './edit/edit-actions'
 import { drainPendingChanges } from './edit/change-reporter'
 import { buildEditPayload } from './edit/edit-payload'
 import { TokensProvider } from './tokens-context'
+import { Onboarding } from './onboarding/Onboarding'
 import { useContainEvents } from './useContainEvents'
 import { startBugRecording, uploadBugReport, type BugRecording } from './bug-report'
 import type { BarPosition, Task, TaskStatus } from './types'
@@ -67,12 +68,15 @@ function IconButton({
   onClick,
   stroke,
   tint,
+  tour,
 }: {
   icon: keyof typeof ICONS
   label: string
   onClick: () => void
   stroke?: boolean
   tint?: string
+  /** `data-pixel-tour` anchor so onboarding callouts can point at this button. */
+  tour?: string
 }) {
   return (
     <button
@@ -82,6 +86,7 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       style={tint ? { color: tint } : undefined}
+      data-pixel-tour={tour}
     >
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
         <path
@@ -107,11 +112,14 @@ function MouseToolToggle({
   onToggle,
   titleOn = 'Mouse tool ON — draw rectangles, page inert (M)',
   titleOff = 'Mouse tool OFF — clicks pass through to the page (M)',
+  tour,
 }: {
   on: boolean
   onToggle: () => void
   titleOn?: string
   titleOff?: string
+  /** `data-pixel-tour` anchor for onboarding callouts. */
+  tour?: string
 }) {
   return (
     <button
@@ -121,6 +129,7 @@ function MouseToolToggle({
       aria-label="Mouse tool"
       aria-pressed={on}
       onClick={onToggle}
+      data-pixel-tour={tour}
     >
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
         <path d={ICONS.mouse} fill="currentColor" />
@@ -191,6 +200,7 @@ function TaskIndicator({
       title={serverDown ? 'Pixel server unreachable — click for details' : 'Task log'}
       aria-label={serverDown ? 'Pixel server unreachable' : 'Task log'}
       onClick={onClick}
+      data-pixel-tour="changelog"
     >
       {serverDown ? (
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -291,6 +301,7 @@ function EditLog() {
         aria-label="Change history"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
+        data-pixel-tour="history"
       >
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
           <path d={ICONS.editLog} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -394,6 +405,7 @@ function EditControls() {
         aria-label="Save"
         onClick={() => void save()}
         disabled={saving}
+        data-pixel-tour="save"
       >
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
           <path
@@ -412,6 +424,7 @@ function EditControls() {
         title="Cancel (Esc)"
         aria-label="Cancel"
         onClick={cancel}
+        data-pixel-tour="cancel-edit"
       >
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
           <path
@@ -437,6 +450,7 @@ function EditToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       aria-label="Edit"
       aria-pressed={on}
       onClick={onToggle}
+      data-pixel-tour="edit"
     >
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
         <path
@@ -466,6 +480,7 @@ function TimeTravelToggle({ on, onToggle }: { on: boolean; onToggle: () => void 
       aria-label="State history"
       aria-pressed={on}
       onClick={onToggle}
+      data-pixel-tour="time-travel"
     >
       <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
         <path
@@ -775,6 +790,9 @@ function RecBar() {
           <span className="pixel-rec-edit-dot" />
           <span className="pixel-rec-time">Editing</span>
           <span className="pixel-rec-sep" />
+          {/* Save/Cancel lead (the primary edit actions); the mouse-tool toggle
+              follows. */}
+          <EditControls />
           {/* Mouse tool: ON = select/edit (page inert); OFF (M) = pointer +
               keyboard pass through to the real app. Toggling back re-freezes. */}
           <MouseToolToggle
@@ -783,7 +801,6 @@ function RecBar() {
             titleOn="Mouse tool ON — select & edit, page inert (M)"
             titleOff="Mouse tool OFF — interact with the app (M)"
           />
-          <EditControls />
         </>
       ) : (
         <>
@@ -793,6 +810,7 @@ function RecBar() {
               className="pixel-rec-record"
               title="Start recording (double-tap Space)"
               onClick={() => start()}
+              data-pixel-tour="record"
             >
               <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
                 <path d={ICONS.record} fill="#ef4444" />
@@ -809,6 +827,7 @@ function RecBar() {
               title="Stop (double-tap Space)"
               aria-label="Stop"
               onClick={() => void stop()}
+              data-pixel-tour="stop"
             >
               <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
                 <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
@@ -826,18 +845,18 @@ function RecBar() {
           {idle && <TimeTravelToggle on={timeTravel} onToggle={toggleTimeTravel} />}
           {/* The mouse tool only governs recording's block/passthrough. */}
           {!idle && (
-            <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} />
+            <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} tour="mouse" />
           )}
 
           {!idle && (
             <>
               <span className="pixel-rec-sep" />
               {recording ? (
-                <IconButton icon="pause" label="Pause (Space)" onClick={pause} />
+                <IconButton icon="pause" label="Pause (Space)" onClick={pause} tour="pause" />
               ) : (
-                <IconButton icon="resume" label="Resume (Space)" onClick={resume} />
+                <IconButton icon="resume" label="Resume (Space)" onClick={resume} tour="pause" />
               )}
-              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke />
+              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke tour="cancel" />
             </>
           )}
         </>
@@ -965,6 +984,7 @@ export function Overlay({ className }: OverlayProps) {
         {blips.map((b) => (
           <Blip key={b.id} data={b} onDone={removeBlip} />
         ))}
+        <Onboarding />
       </div>
       </SelectionProvider>
     </EditHistoryProvider>,

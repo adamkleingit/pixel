@@ -195,6 +195,7 @@ export function ElementsPane() {
       className={`pixel-pane pixel-pane-left${collapsed ? ' collapsed' : ''}`}
       style={collapsed ? undefined : { width }}
       aria-label="Elements pane"
+      data-pixel-tour="elements"
     >
       {!collapsed && (
         <div

@@ -142,4 +142,54 @@ describe('beginInlineEdit (text)', () => {
     expect(commit).not.toHaveBeenCalled()
     expect(p.textContent).toBe('before')
   })
+
+  it('mirrors each keystroke onto peers live, before commit', () => {
+    const anchor = document.createElement('p')
+    anchor.textContent = 'orig'
+    const peerA = document.createElement('p')
+    peerA.textContent = 'orig'
+    const peerB = document.createElement('span')
+    peerB.textContent = 'orig'
+    document.body.append(anchor, peerA, peerB)
+    const commit = vi.fn()
+
+    const session = beginInlineEdit(anchor, commit, [peerA, peerB])!
+    // Simulate typing: text changes + the browser's `input` event on the anchor.
+    anchor.textContent = 'liv'
+    anchor.dispatchEvent(new InputEvent('input'))
+    expect(peerA.textContent).toBe('liv') // updated LIVE, no commit yet
+    expect(peerB.textContent).toBe('liv')
+    expect(commit).not.toHaveBeenCalled()
+
+    anchor.textContent = 'live'
+    anchor.dispatchEvent(new InputEvent('input'))
+    expect(peerA.textContent).toBe('live')
+
+    session.exit({ commit: true })
+    expect(commit).toHaveBeenCalledTimes(1)
+    const [changes] = commit.mock.calls[0]
+    expect(changes).toHaveLength(3) // anchor + 2 peers, one batch
+    expect(changes).toContainEqual(
+      expect.objectContaining({ target: peerA, kind: 'text', before: 'orig', after: 'live' }),
+    )
+  })
+
+  it('reverts live-mirrored peers on cancel', () => {
+    const anchor = document.createElement('p')
+    anchor.textContent = 'orig'
+    const peer = document.createElement('p')
+    peer.textContent = 'orig'
+    document.body.append(anchor, peer)
+    const commit = vi.fn()
+
+    const session = beginInlineEdit(anchor, commit, [peer])!
+    anchor.textContent = 'typed'
+    anchor.dispatchEvent(new InputEvent('input'))
+    expect(peer.textContent).toBe('typed') // mirrored live
+
+    session.exit({ commit: false })
+    expect(commit).not.toHaveBeenCalled()
+    expect(anchor.textContent).toBe('orig')
+    expect(peer.textContent).toBe('orig') // reverted
+  })
 })

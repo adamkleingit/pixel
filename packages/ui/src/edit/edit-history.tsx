@@ -64,6 +64,12 @@ export interface EditHistory {
   /** Index of the last APPLIED entry (−1 = none applied). Entries after it are
    *  the redo tail. */
   pointer: number
+  /** Monotonic counter bumped whenever history NAVIGATION changes the live DOM
+   *  out from under the pane — undo / redo / goto / discard (NOT plain commits,
+   *  which happen while the user is actively editing). The design pane keys its
+   *  re-read on this so its inputs re-derive from the DOM after an undo/redo and
+   *  can never drift from what's actually applied. */
+  navRevision: number
   /** The applied entries (start → pointer), in order — the batch for Save. */
   batch: EditEntry[]
   /** Drop all history without touching the DOM (after a successful Save — the
@@ -130,6 +136,9 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
   // entries[0..pointer] are applied; entries after pointer are the redo tail.
   const [entries, setEntries] = useState<EditEntry[]>([])
   const [pointer, setPointer] = useState(-1)
+  // Bumped on undo/redo/goto/discard (see EditHistory.navRevision).
+  const [navRevision, setNavRevision] = useState(0)
+  const bumpNav = useCallback(() => setNavRevision((n) => n + 1), [])
   const entriesRef = useRef(entries)
   entriesRef.current = entries
   const pointerRef = useRef(pointer)
@@ -166,7 +175,8 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     for (const c of entry.changes) applyChange(c, 'before')
     pointerRef.current = p - 1
     setPointer(p - 1)
-  }, [])
+    bumpNav()
+  }, [bumpNav])
 
   const redo = useCallback(() => {
     const p = pointerRef.current
@@ -175,7 +185,8 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     for (const c of next.changes) applyChange(c, 'after')
     pointerRef.current = p + 1
     setPointer(p + 1)
-  }, [])
+    bumpNav()
+  }, [bumpNav])
 
   // Jump to an arbitrary point in the log: undo down to `target`, or redo up to
   // it. `target` is the desired pointer (−1 = before all edits, entries.length−1
@@ -196,7 +207,8 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     }
     pointerRef.current = p
     setPointer(p)
-  }, [])
+    bumpNav()
+  }, [bumpNav])
 
   // Drop history, leave the DOM as-is (Save: edits persist, agent rewrites source).
   const clear = useCallback(() => {
@@ -219,7 +231,8 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     }
     setEntries([])
     setPointer(-1)
-  }, [])
+    bumpNav()
+  }, [bumpNav])
 
   // Bridge the tracker into the change-reporter shim so the ported design pane
   // (applyPatch → reportPatch pre-hook) and drag gestures (commitChangeBatch)
@@ -240,11 +253,12 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
       canRedo: pointer < entries.length - 1,
       entries,
       pointer,
+      navRevision,
       batch: entries.slice(0, pointer + 1),
       clear,
       discard,
     }),
-    [applyLive, commit, undo, redo, goto, clear, discard, pointer, entries],
+    [applyLive, commit, undo, redo, goto, clear, discard, pointer, entries, navRevision],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

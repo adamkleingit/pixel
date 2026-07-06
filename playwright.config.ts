@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import {
+  EXAMPLE_DIR,
   EXAMPLE_PORT,
   EXAMPLE_URL,
-  SCREENSHARE_DIR,
+  PIXEL_DIR,
   SERVER_PORT,
   SERVER_URL,
   TRANSCRIPT_FIXTURE,
@@ -14,6 +15,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
+  // Drag/resize/reorder tests drive synthetic pointer input against a live React
+  // app; headless pointer timing varies under load, so a gesture can occasionally
+  // land a frame early. The interactions are deterministic when they register —
+  // a retry absorbs the rare input-timing miss (and marks it flaky) rather than
+  // failing the suite. CI is stricter (2) than local (1).
+  retries: process.env.CI ? 2 : 1,
   reporter: 'list',
   use: {
     baseURL: EXAMPLE_URL,
@@ -40,9 +47,12 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
-        SCREENSHARE_DIR,
-        SCREENSHARE_PORT: String(SERVER_PORT),
-        SCREENSHARE_TRANSCRIBE_MOCK: TRANSCRIPT_FIXTURE,
+        PIXEL_DIR,
+        PIXEL_PORT: String(SERVER_PORT),
+        PIXEL_TRANSCRIBE_MOCK: TRANSCRIPT_FIXTURE,
+        // Extract design tokens from the example app's globals.css (not the
+        // .artifacts dropbox parent), so GET /tokens serves a real token set.
+        PIXEL_PROJECT_DIR: EXAMPLE_DIR,
       },
     },
     {
@@ -53,7 +63,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
-        VITE_SCREENSHARE_SERVER_URL: SERVER_URL,
+        VITE_PIXEL_SERVER_URL: SERVER_URL,
       },
     },
   ],

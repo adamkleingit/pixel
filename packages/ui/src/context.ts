@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
-import type { BarPosition, Recording, ScreenshareState, StrokePoint, Task } from './types'
+import type { Token } from './pixel-common'
+import type { BarPosition, BugReportConfig, EditPayload, Recording, PixelState, StrokePoint, Task } from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -30,8 +31,8 @@ export interface Stroke extends StrokeShape {
 }
 
 /** Internal context shared between the provider, the overlay, and the public hook. */
-export interface ScreenshareContextValue {
-  state: ScreenshareState
+export interface PixelContextValue {
+  state: PixelState
   start: () => void
   stop: () => void
   pause: () => void
@@ -46,6 +47,9 @@ export interface ScreenshareContextValue {
   enterEdit: () => void
   exitEdit: () => void
   toggleEdit: () => void
+  /** Persist a batch of edit-mode changes to the sink (Save). Rejects on failure
+   *  so the caller can keep the user in edit mode. No-op sink → rejects. */
+  saveEdits: (payload: EditPayload) => Promise<{ id: string }>
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void
@@ -64,6 +68,15 @@ export interface ScreenshareContextValue {
   serverDown: boolean
   /** Reveal a recording's folder in the OS file manager (no-op if the sink can't). */
   openTask: (id: string) => void
+  /** The project's design tokens, fetched from the sink (GET /tokens). Empty when
+   *  the sink can't fetch or none are detected. Feeds the design-pane pickers and
+   *  the on-canvas drag snap-to-token. */
+  designTokens: Token[]
+  /** Bug-report config (endpoint + static meta), or null when not configured —
+   *  the "Report a bug" button only renders when this is set. */
+  bugReport: BugReportConfig | null
+  /** Whether first-run onboarding is enabled (config.onboarding !== false). */
+  onboarding: boolean
   /** Active radar blips (overlay-only concern). */
   blips: BlipData[]
   removeBlip: (id: number) => void
@@ -76,14 +89,38 @@ export interface ScreenshareContextValue {
   drawStroke: StrokeShape | null
   /** Committed strokes, kept visible until the Cmd key is released. */
   drawStrokes: Stroke[]
+
+  // --- Time travel (pixel-react state history) ---------------------------
+  /** Whether the state-history (time-travel) pane is open. */
+  timeTravel: boolean
+  /** Open/close the time-travel pane. Closing while frozen resumes live. */
+  toggleTimeTravel: () => void
+  /** Captured app-state frames (id + timestamp), oldest → newest. Empty unless
+   *  the app routes its `react` through pixel-react (dev alias — see README). */
+  stateFrames: StateFrameMeta[]
+  /** Index of the frozen frame in `stateFrames`, or null when live. */
+  frozenIndex: number | null
+  /** Freeze the app to the frame at `index` (time-travel). */
+  gotoState: (index: number) => void
+  /** Step to the previous / next captured frame (freezing if live). */
+  stepStateBack: () => void
+  stepStateForward: () => void
+  /** Leave time-travel: resume the pre-freeze live state and keep capturing. */
+  cancelTimeTravel: () => void
 }
 
-export const ScreenshareContext = createContext<ScreenshareContextValue | null>(null)
+/** Lightweight frame descriptor for the states list UI. */
+export interface StateFrameMeta {
+  id: number
+  at: number
+}
 
-export function useScreenshareContext(): ScreenshareContextValue {
-  const ctx = useContext(ScreenshareContext)
+export const PixelContext = createContext<PixelContextValue | null>(null)
+
+export function usePixelContext(): PixelContextValue {
+  const ctx = useContext(PixelContext)
   if (!ctx) {
-    throw new Error('Screenshare components must be used within <ScreenshareProvider>')
+    throw new Error('Pixel components must be used within <PixelProvider>')
   }
   return ctx
 }

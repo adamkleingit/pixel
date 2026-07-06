@@ -1,4 +1,6 @@
-// Public data model for a Screenshare recording.
+// Public data model for a Pixel recording.
+
+import type { Token, TokenSource } from './pixel-common'
 
 /** One element in the ancestor chain of a click target. */
 export interface ElementInfo {
@@ -78,7 +80,7 @@ export interface FrameEvent {
   height: number
 }
 
-export type ScreenshareEvent = PointerSample | ClickEvent | RectEvent | DrawEvent | FrameEvent
+export type PixelEvent = PointerSample | ClickEvent | RectEvent | DrawEvent | FrameEvent
 
 export interface AudioTrack {
   mime: string
@@ -102,14 +104,14 @@ export interface Recording {
   /** Spoken-language hint for transcription (e.g. 'hebrew'); chosen in the UI. */
   language?: string
   /** Append-only event stream, sorted by `t`. */
-  events: ScreenshareEvent[]
+  events: PixelEvent[]
   /** Captured audio, or null if disabled / mic denied. */
   audio: AudioTrack | null
   /** Region screenshots produced by rectangle drags. */
   snapshots: SnapshotBlob[]
 }
 
-export type ScreenshareState = 'idle' | 'recording' | 'paused'
+export type PixelState = 'idle' | 'recording' | 'paused'
 
 /** A recording's processing stage on the server, surfaced in the floating bar. */
 export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
@@ -118,6 +120,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
+  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
+  kind?: 'recording' | 'edit'
   createdAt?: number
   durationMs?: number
   eventCount?: number
@@ -126,9 +130,43 @@ export interface Task {
   message?: string
 }
 
+/** One committed change from edit mode, serialized for the agent to apply to
+ *  source. `target` is the DOM ancestor chain (outermost → innermost) of the
+ *  edited element — the same shape as a recording click target, so the agent
+ *  resolves it the same way. */
+export interface EditChangeRecord {
+  target: ElementInfo[]
+  /** What surface changed. `move` reorders within the parent (before/after are
+   *  child indices). `html` replaces innerHTML (mixed-content inline edit).
+   *  `insert` / `remove` add / remove the element (duplicate / delete). */
+  kind: 'style' | 'text' | 'attr' | 'move' | 'html' | 'insert' | 'remove'
+  /** CSS property / attribute name; '' for text, move, html, insert, and remove. */
+  name: string
+  before: string
+  after: string
+  /** Present when `after` was bound to a design token (picker or snap). The
+   *  agent writes the token's symbolic spelling (`usage`) in source instead of
+   *  the resolved `after` value. Absent for raw edits. */
+  source?: TokenSource
+}
+
+/** A saved batch of edit-mode changes — the "Save" analog of a Recording. */
+export interface EditPayload {
+  /** The page the edits were made on. */
+  url: string
+  createdAt: number
+  changes: EditChangeRecord[]
+}
+
 /** Where a finished recording is sent. The default is an HTTP sink (see `httpSink`). */
 export interface RecordingSink {
   save(rec: Recording): Promise<{ id: string }>
+  /**
+   * Optional: persist a batch of edit-mode changes (the "Save" button / double-
+   * Enter). Written to the same dropbox the agent watches, so it's picked up
+   * exactly like a recording. Omit to disable saving edits.
+   */
+  saveEdits?(payload: EditPayload): Promise<{ id: string }>
   /**
    * Optional: list the recordings the server currently knows about, for the
    * floating-bar status indicator. The provider polls this when present; a
@@ -141,6 +179,13 @@ export interface RecordingSink {
    * with a local sink. Wired to row clicks in the tasks popup when present.
    */
   openTask?(id: string): Promise<void>
+  /**
+   * Optional: fetch the project's design tokens, which the server (`@getpixel/
+   * server`) extracts from the project and serves at GET /tokens. Drives the
+   * design-pane token pickers and the on-canvas drag snap-to-token. Omit to run
+   * without tokens (pickers stay empty, drags scrub freely).
+   */
+  fetchTokens?(): Promise<{ tokens: Token[] }>
 }
 
 export interface ActivationConfig {
@@ -171,7 +216,7 @@ export interface BarConfig {
   opacity?: number
 }
 
-export interface ScreenshareConfig {
+export interface PixelConfig {
   /** Floating control bar appearance. */
   bar?: BarConfig
   /**
@@ -198,4 +243,26 @@ export interface ScreenshareConfig {
    * Set to 0 to disable polling.
    */
   taskPollMs?: number
+  /**
+   * "Report a bug" button. When set, the floating bar shows a bug button that
+   * records the screen (+ mic) and uploads it — with a metadata sidecar — to a
+   * Vercel Blob client-upload token route at `endpoint`. `meta` is merged into
+   * every report's meta.json (e.g. app name/version). Omit to hide the button.
+   */
+  bugReport?: BugReportConfig
+  /**
+   * First-run onboarding. When Pixel first loads it points out the Record / Edit
+   * / Time-travel buttons, then walks through the recording and editing controls
+   * the first time each is used. Each step is dismissed forever (persisted in
+   * localStorage). Set `false` to disable entirely. Default true.
+   */
+  onboarding?: boolean
+}
+
+export interface BugReportConfig {
+  /** The Vercel client-upload token route, e.g.
+   *  `https://your-endpoint.vercel.app/api/bug-report`. */
+  endpoint: string
+  /** Extra fields merged into each report's meta.json (app name, version, …). */
+  meta?: Record<string, unknown>
 }

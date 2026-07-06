@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
+import { useEditHistory } from './edit/edit-history'
+import { DesignPanel } from './properties-sidebar/DesignPanel'
 
 /**
  * DesignPane — the right-docked inspector shown in edit mode. Unlike the
@@ -20,22 +22,6 @@ const COLLAPSED_W = 36
 const MIN_W = 220
 const MAX_W = 560
 
-/** Curated computed-style readout for the selected element. */
-function readStyles(el: Element): Array<[string, string]> {
-  const cs = getComputedStyle(el)
-  const r = el.getBoundingClientRect()
-  return [
-    ['size', `${Math.round(r.width)} × ${Math.round(r.height)}`],
-    ['display', cs.display],
-    ['color', cs.color],
-    ['background', cs.backgroundColor],
-    ['font', `${cs.fontSize} / ${cs.fontWeight}`],
-    ['padding', cs.padding],
-    ['margin', cs.margin],
-    ['radius', cs.borderRadius],
-  ]
-}
-
 /** `<tag.class>` / `<tag#id>` label for the selected element. */
 function describe(el: Element): string {
   const tag = el.tagName.toLowerCase()
@@ -47,10 +33,23 @@ function describe(el: Element): string {
 export function DesignPane() {
   const { entries } = useSelectionStore()
   const anchor = entries[0]?.element ?? null
+  const el = anchor instanceof HTMLElement ? anchor : null
+  // The full selection (anchor + match entries) — sections collapse disagreeing
+  // values to "Multiple" when more than one element is passed.
+  //
+  // Memoize on `entries` (the selection-store state) so the array identity only
+  // changes when the SELECTION changes — not on the many re-renders this pane
+  // gets from unrelated store churn (hovering the page, or every committed edit
+  // bumping the edit-history value). Sections key their read effect on
+  // `elements`; a fresh array every render made them re-read + rebuild their
+  // rows on each keystroke/hover, which reset in-progress edits and detached
+  // open popovers (box-shadow / color). A stable ref runs the read effect only
+  // on a real selection change.
+  const els = useMemo(() => entries.map((e) => e.element), [entries])
+  const history = useEditHistory()
   const [collapsed, setCollapsed] = useState(false)
   const [width, setWidth] = useState(PANE_W)
   const [tag, setTag] = useState('')
-  const [rows, setRows] = useState<Array<[string, string]>>([])
 
   // Resize by dragging the pane's left edge (like Pixel's right sidebar).
   const dragging = useRef(false)
@@ -91,33 +90,43 @@ export function DesignPane() {
     const prevTransition = html.style.transition
     html.style.transition = dragging.current ? 'none' : 'margin-right 160ms ease'
     html.style.marginRight = `${collapsed ? 0 : width}px`
-    html.style.setProperty('--screenshare-dock-right', `${collapsed ? COLLAPSED_W : width}px`)
+    html.style.setProperty('--pixel-dock-right', `${collapsed ? COLLAPSED_W : width}px`)
     return () => {
       html.style.marginRight = prevMargin
       html.style.transition = prevTransition
-      html.style.removeProperty('--screenshare-dock-right')
+      html.style.removeProperty('--pixel-dock-right')
     }
   }, [collapsed, width])
 
   useEffect(() => {
-    if (!anchor) {
-      setTag('')
-      setRows([])
-      return
-    }
-    setTag(describe(anchor))
-    setRows(readStyles(anchor))
+    setTag(anchor ? describe(anchor) : '')
   }, [anchor])
+
+  // Undo / redo (Cmd/Ctrl+Z, +Shift to redo) — ignored while typing in a field
+  // or inline-editing, so it doesn't fight the native text undo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      e.preventDefault()
+      if (e.shiftKey) history.redo()
+      else history.undo()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [history.undo, history.redo])
 
   return (
     <aside
-      className={`screenshare-pane${collapsed ? ' collapsed' : ''}`}
+      className={`pixel-pane${collapsed ? ' collapsed' : ''}`}
       style={collapsed ? undefined : { width }}
       aria-label="Design pane"
+      data-pixel-tour="design"
     >
       {!collapsed && (
         <div
-          className="screenshare-pane-resize"
+          className="pixel-pane-resize"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize design pane"
@@ -126,11 +135,11 @@ export function DesignPane() {
           onPointerUp={onResizeUp}
         />
       )}
-      <div className="screenshare-pane-head">
-        {!collapsed && <span className="screenshare-pane-title">Design</span>}
+      <div className="pixel-pane-head">
+        {!collapsed && <span className="pixel-pane-title">Design</span>}
         <button
           type="button"
-          className="screenshare-pane-collapse"
+          className="pixel-pane-collapse"
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? 'Expand design pane' : 'Collapse design pane'}
           aria-label={collapsed ? 'Expand design pane' : 'Collapse design pane'}
@@ -150,19 +159,22 @@ export function DesignPane() {
       </div>
 
       {!collapsed && (
-        <div className="screenshare-pane-body">
-          {anchor ? (
+        <div className="pixel-pane-body">
+          {el ? (
             <>
-              <div className="screenshare-pane-tag">{tag}</div>
-              {rows.map(([k, v]) => (
-                <div className="screenshare-pane-row" key={k}>
-                  <span className="screenshare-pane-key">{k}</span>
-                  <span className="screenshare-pane-val">{v}</span>
-                </div>
-              ))}
+              <div className="pixel-pane-tag">{tag}</div>
+              {/* TokensProvider is mounted once in Overlay over both the design
+                  pane and the selection overlay, so the pickers here and the
+                  drag-handle snapping share one token set. */}
+              <DesignPanel
+                selectedTag={el.tagName.toLowerCase()}
+                headerTag={el.tagName.toLowerCase()}
+                selectedElement={el}
+                elements={els}
+              />
             </>
           ) : (
-            <div className="screenshare-pane-empty">
+            <div className="pixel-pane-empty">
               Select an element on the page to inspect it.
             </div>
           )}

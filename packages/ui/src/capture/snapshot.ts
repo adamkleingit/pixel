@@ -22,11 +22,11 @@ async function rasterizeBody(): Promise<HTMLCanvasElement | null> {
       filter: (node) =>
         !(
           node instanceof Element &&
-          Array.from(node.classList ?? []).some((c) => c.startsWith('screenshare-'))
+          Array.from(node.classList ?? []).some((c) => c.startsWith('pixel-'))
         ),
     })
   } catch (err) {
-    console.warn('[screenshare] page rasterization failed:', err)
+    console.warn('[pixel] page rasterization failed:', err)
     return null
   }
 }

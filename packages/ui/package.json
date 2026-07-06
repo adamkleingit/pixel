@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./pixel-react": {
+      "types": "./dist/pixel-react/index.d.ts",
+      "import": "./dist/pixel-react/index.js"
     }
   },
   "files": [
@@ -37,6 +41,7 @@
     "postpack": "rm -f README.md"
   },
   "dependencies": {
+    "@vercel/blob": "^1.1.1",
     "fix-webm-duration": "^1.0.5",
     "html-to-image": "^1.11.13"
   },

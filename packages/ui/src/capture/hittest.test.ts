@@ -32,14 +32,14 @@ describe('describeElementChain', () => {
     expect(chain[2]).toMatchObject({ tag: 'button', id: 'go', classes: ['btn'], text: 'Upgrade' })
   })
 
-  it('filters out the screenshare overlay nodes defensively', () => {
-    document.body.innerHTML = `<div class="screenshare-overlay"><span class="real">hi</span></div>`
+  it('filters out the pixel overlay nodes defensively', () => {
+    document.body.innerHTML = `<div class="pixel-overlay"><span class="real">hi</span></div>`
     const span = document.querySelector('.real')!
     hitOn(span)
 
     const chain = describeElementChain(0, 0)
     expect(chain.map((c) => c.tag)).toEqual(['span'])
-    expect(chain.some((c) => c.classes.some((k) => k.startsWith('screenshare-')))).toBe(false)
+    expect(chain.some((c) => c.classes.some((k) => k.startsWith('pixel-')))).toBe(false)
   })
 
   it('collapses whitespace and truncates long text', () => {

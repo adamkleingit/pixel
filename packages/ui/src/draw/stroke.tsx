@@ -13,7 +13,7 @@ function pathFrom(points: { x: number; y: number }[]): string {
  */
 export function DrawStroke({ stroke }: { stroke: StrokeShape }) {
   return (
-    <svg className="screenshare-stroke">
+    <svg className="pixel-stroke">
       <path d={pathFrom(stroke.points)} />
     </svg>
   )

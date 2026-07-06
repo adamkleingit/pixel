@@ -458,6 +458,46 @@ test('history: Cmd+Z undoes and Cmd+Shift+Z redoes a design-pane edit', async ({
   await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.3')
 })
 
+// ⌘Z is owned by the edit history even while a design-pane field is focused
+// (the previously-broken case: native text-undo would fight it and desync the
+// pane). Undo must revert the DOM *and* the pane input must re-derive from the
+// DOM — no drift between what's applied and what the field shows.
+test('history: undo with the field focused reverts the DOM and the pane agrees (no drift)', async ({
+  page,
+}) => {
+  await enterEdit(page)
+  await selectExact(upgrade(page))
+  const opacity = opacityField(page)
+
+  await opacity.fill('30') // Playwright leaves focus in the field
+  await expect(opacity).toBeFocused() // exercise the exact previously-broken case
+  await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.3')
+  await expect.poll(() => opacity.inputValue()).toBe('30')
+
+  // ⌘Z with the field focused → history undo (not a native text-undo).
+  await page.keyboard.press('ControlOrMeta+z')
+  // DOM reverted…
+  await expect.poll(() => styleOf(upgrade(page), 'opacity')).not.toBe('0.3')
+  // …and the pane re-read from the DOM: the field no longer shows the stale 30.
+  await expect.poll(() => opacityField(page).inputValue()).not.toBe('30')
+
+  // Redo re-applies both the DOM and the pane in lock-step.
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.3')
+  await expect.poll(() => opacityField(page).inputValue()).toBe('30')
+})
+
+// A quick edit-then-undo must be deterministic despite the 350ms commit debounce:
+// ⌘Z flushes the in-flight edit into a committed entry first, then reverts it.
+test('history: edit then immediately undo reverts it (debounce is flushed)', async ({ page }) => {
+  await enterEdit(page)
+  await selectExact(upgrade(page))
+  await opacityField(page).fill('40')
+  await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.4')
+  await page.keyboard.press('ControlOrMeta+z') // no wait for the debounce
+  await expect.poll(() => styleOf(upgrade(page), 'opacity')).not.toBe('0.4')
+})
+
 // --- Save / Cancel -----------------------------------------------------------
 
 test('Save: writes an edit task carrying the changes to the dropbox', async ({ page }) => {

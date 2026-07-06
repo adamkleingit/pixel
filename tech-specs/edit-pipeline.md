@@ -1,9 +1,30 @@
 # Edit Pipeline Refactor — one source of truth for selected-element properties
 
-Status: **proposal / plan** (no code yet)
+Status: **in progress** — the bug-fixing core (Phase 1 + Phase 5) is implemented;
+the fuller write-path unification (Phases 2–4/6) is staged.
 Motivation: undo/redo does not reliably revert design-pane edits. That is a
 symptom — the real problem is that a selected element's properties have no single
 source of truth and edits reach the DOM through several parallel paths.
+
+> **Implemented in this PR (Phase 1 + Phase 5 — the phases that fix the bug):**
+> - `EditHistory.navRevision` — bumped on undo/redo/goto/discard (history
+>   *navigation*), NOT on plain commits. The design pane re-derives from the DOM
+>   on every nav (`<DesignPanel key={navRevision}>`), so its inputs can no longer
+>   drift from what's applied.
+> - **Single undo owner.** ⌘Z is handled by the edit history even while a
+>   design-pane field is focused — it `preventDefault`s the browser's native
+>   text-undo (which used to fight it and desync the DOM), flushes any in-flight
+>   debounced edit first (so a quick edit→undo is deterministic), then navigates
+>   history. Native undo is preserved only for inline page-text (contentEditable).
+> - Tests: unit (`edit-history.test.tsx` — navRevision semantics + flush→undo) and
+>   e2e (`editing-full.spec.ts` — undo with the field focused reverts the DOM *and*
+>   the pane agrees; debounce-flush determinism).
+>
+> **Still staged (mechanical, larger, no behavior change):** the formal
+> `SelectionModel`/`EditStore` API and routing all ~108 `applyPatch` write sites
+> through a single `commit`/`preview` (§4, Phases 2–4/6). The single commit sink
+> (history) already unifies recording today, so these are a cleanup, not a
+> prerequisite for correct undo.
 
 ---
 

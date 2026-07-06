@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelectionStore } from './selection/selection-store'
 import { useEditHistory } from './edit/edit-history'
+import { flushOpenSessions } from './edit/change-reporter'
 import { DesignPanel } from './properties-sidebar/DesignPanel'
 
 /**
@@ -102,14 +103,23 @@ export function DesignPane() {
     setTag(anchor ? describe(anchor) : '')
   }, [anchor])
 
-  // Undo / redo (Cmd/Ctrl+Z, +Shift to redo) — ignored while typing in a field
-  // or inline-editing, so it doesn't fight the native text undo.
+  // Undo / redo (Cmd/Ctrl+Z, +Shift to redo). ⌘Z is owned by the edit history —
+  // it is the single undo path for every edit surface (design pane, drag, inline
+  // text). We only defer to the browser's native undo while *inline-editing page
+  // text* (contentEditable), where per-character undo is expected.
+  //
+  // Crucially we do NOT defer while a design-pane field is focused: those inputs
+  // apply on change, so native text-undo would silently mutate the DOM and spawn
+  // stray history entries (two fighting undo stacks). Instead we preventDefault
+  // and drive history — after flushing any in-flight debounced edit so a quick
+  // edit-then-undo is deterministic (the edit commits, then undo reverts it).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
       const ae = document.activeElement as HTMLElement | null
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      if (ae?.isContentEditable) return // inline page-text editing keeps native undo
       e.preventDefault()
+      flushOpenSessions() // commit any debounced pane edit before navigating
       if (e.shiftKey) history.redo()
       else history.undo()
     }
@@ -165,8 +175,16 @@ export function DesignPane() {
               <div className="pixel-pane-tag">{tag}</div>
               {/* TokensProvider is mounted once in Overlay over both the design
                   pane and the selection overlay, so the pickers here and the
-                  drag-handle snapping share one token set. */}
+                  drag-handle snapping share one token set.
+
+                  key={navRevision}: history NAVIGATION (undo/redo/goto/discard)
+                  changes the live DOM out from under the sections' cached reads.
+                  Remounting the panel on each nav makes every section re-derive
+                  its inputs from the DOM, so the pane can never drift from what's
+                  applied. Plain commits (during typing) don't bump navRevision,
+                  so active editing isn't interrupted. */}
               <DesignPanel
+                key={history.navRevision}
                 selectedTag={el.tagName.toLowerCase()}
                 headerTag={el.tagName.toLowerCase()}
                 selectedElement={el}

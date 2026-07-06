@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { EditHistoryProvider, useEditHistory, type Change } from './edit-history'
 import { applyPatch } from './patch'
-import { drainPendingChanges } from './change-reporter'
+import { drainPendingChanges, flushOpenSessions } from './change-reporter'
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <EditHistoryProvider>{children}</EditHistoryProvider>
@@ -183,5 +183,57 @@ describe('edit-history', () => {
     expect(target.textContent).toBe('new')
     act(() => result.current.undo())
     expect(target.textContent).toBe('old')
+  })
+
+  // navRevision is the signal the design pane uses to re-read the DOM after
+  // history NAVIGATION (so its inputs can't drift from what's applied). It must
+  // advance on undo/redo/goto/discard but stay put across plain commits (which
+  // happen mid-edit and must not remount / interrupt the pane).
+  it('navRevision bumps on undo/redo/goto/discard, not on plain commits', () => {
+    const target = el()
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+    const rev = () => result.current.navRevision
+
+    const start = rev()
+    act(() => result.current.commit([styleChange(target, 'padding', '', '10px')]))
+    act(() => result.current.commit([styleChange(target, 'padding', '10px', '20px')]))
+    expect(rev()).toBe(start) // commits do NOT bump
+
+    act(() => result.current.undo())
+    const afterUndo = rev()
+    expect(afterUndo).toBeGreaterThan(start)
+
+    act(() => result.current.redo())
+    expect(rev()).toBeGreaterThan(afterUndo)
+
+    const beforeGoto = rev()
+    act(() => result.current.goto(-1))
+    expect(rev()).toBeGreaterThan(beforeGoto)
+
+    const beforeDiscard = rev()
+    act(() => result.current.discard())
+    expect(rev()).toBeGreaterThan(beforeDiscard)
+  })
+
+  // The design pane's ⌘Z flushes any in-flight (debounced) edit before undoing,
+  // so a quick edit-then-undo is deterministic regardless of the 350ms debounce:
+  // the edit commits as an entry, then undo reverts it.
+  it('flushOpenSessions commits an in-flight pane edit so undo reverts it', () => {
+    const target = el()
+    target.style.padding = '5px' // pre-existing inline value to revert to
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+
+    // A pane edit mutates the DOM immediately; its commit is still debounced.
+    act(() => applyPatch(target, { kind: 'setStyle', property: 'padding', value: '40px' }))
+    expect(target.style.padding).toBe('40px')
+    expect(result.current.batch).toHaveLength(0)
+
+    // ⌘Z: flush → the in-flight edit becomes a committed entry → undo reverts it.
+    act(() => {
+      flushOpenSessions()
+      result.current.undo()
+    })
+    expect(target.style.padding).toBe('5px')
+    expect(result.current.canUndo).toBe(false)
   })
 })

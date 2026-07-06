@@ -499,7 +499,9 @@ test('dragging the element body repositions it (Cmd reorder) and commits (undo r
   await page.keyboard.down('Meta') // Cmd → insertion-line reorder mode
   await page.mouse.move(cx, cy)
   await page.mouse.down()
-  await page.mouse.move(db.x + db.width / 2, db.y + db.height * 0.7, { steps: 14 })
+  // Past Details' midpoint on both axes (far corner) so the insertion resolves
+  // to "after Details" whether the buttons are side-by-side or wrapped/stacked.
+  await page.mouse.move(db.x + db.width * 0.85, db.y + db.height * 0.85, { steps: 14 })
   await page.mouse.up()
   await page.keyboard.up('Meta')
 

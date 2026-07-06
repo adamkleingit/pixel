@@ -188,13 +188,16 @@ test('Layout: selecting the flex toolbar shows the Layout section; padding appli
   page,
 }) => {
   await enterEdit(page)
-  // Select the toolbar itself (not a button): Cmd-click the empty toolbar strip
-  // to the right of the first button (the buttons wrap left-aligned, so that
-  // strip is child-free toolbar space).
-  const cb = (await compose(page).boundingBox())!
-  const tb = (await inboxToolbar(page).boundingBox())!
+  await settleLayout(page)
+  // Select the toolbar itself (not a button): Cmd-click the empty strip *between*
+  // the two buttons. justify-content:space-between opens a gap there; click its
+  // exact midpoint (Compose's right edge ↔ Details's left edge) rather than
+  // toward the toolbar's right edge — on wider (e.g. Linux) font rendering
+  // Details reaches further left and would otherwise swallow the click.
+  const cb = await stableBox(compose(page))
+  const db = await stableBox(inboxCard(page).getByRole('button', { name: 'Details' }))
   await page.keyboard.down('Meta')
-  await page.mouse.click((cb.x + cb.width + tb.x + tb.width) / 2, cb.y + cb.height / 2)
+  await page.mouse.click((cb.x + cb.width + db.x) / 2, cb.y + cb.height / 2)
   await page.keyboard.up('Meta')
   await expect(page.locator('.pixel-pane-tag')).toHaveText(/toolbar|<div/)
 
@@ -336,9 +339,11 @@ test('reposition: Cmd-drag reorders an element within its flex parent', async ({
   await page.keyboard.down('Meta')
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
-  // Drag onto/just past "Details" — toward its box, so the insertion line lands
-  // after it whether the wrapped buttons sit side-by-side or stacked.
-  await page.mouse.move(db.x + db.width / 2, db.y + db.height * 0.7, { steps: 14 })
+  // Aim past Details' midpoint on BOTH axes (far corner) so the insertion index
+  // resolves to "after Details" whether the buttons sit side-by-side (x-axis
+  // flow) or wrapped/stacked (y-axis) — dragging only to its center is ambiguous
+  // and lands before it on wider font rendering.
+  await page.mouse.move(db.x + db.width * 0.85, db.y + db.height * 0.85, { steps: 14 })
   await page.mouse.up()
   await page.keyboard.up('Meta')
 

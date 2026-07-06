@@ -129,6 +129,52 @@ describe('edit-history', () => {
     expect(drained[0]).toMatchObject({ kind: 'style', name: 'gap', after: '8px' })
   })
 
+  it('remove change deletes the node; undo re-inserts it at its slot', () => {
+    const parent = el()
+    const a = document.createElement('span')
+    const b = document.createElement('span')
+    const c = document.createElement('span')
+    parent.append(a, b, c)
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+
+    act(() =>
+      result.current.commit(
+        [{ target: b, kind: 'remove', name: '', before: '', after: '', parent, anchor: b.nextSibling }],
+        'delete',
+      ),
+    )
+    expect(Array.from(parent.children)).toEqual([a, c])
+
+    act(() => result.current.undo()) // re-insert b before c
+    expect(Array.from(parent.children)).toEqual([a, b, c])
+
+    act(() => result.current.redo())
+    expect(Array.from(parent.children)).toEqual([a, c])
+  })
+
+  it('insert change adds the node; undo removes it', () => {
+    const parent = el()
+    const a = document.createElement('span')
+    parent.append(a)
+    const clone = a.cloneNode(true) as HTMLElement
+    const { result } = renderHook(() => useEditHistory(), { wrapper })
+
+    act(() =>
+      result.current.commit(
+        [{ target: clone, kind: 'insert', name: '', before: '', after: '', parent, anchor: a.nextSibling }],
+        'duplicate',
+      ),
+    )
+    expect(Array.from(parent.children)).toEqual([a, clone])
+    expect(result.current.canUndo).toBe(true)
+
+    act(() => result.current.undo())
+    expect(Array.from(parent.children)).toEqual([a])
+
+    act(() => result.current.redo())
+    expect(Array.from(parent.children)).toEqual([a, clone])
+  })
+
   it('records text edits', () => {
     const target = el()
     target.textContent = 'old'

@@ -654,6 +654,10 @@ html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
 .pixel-pane-body {
   flex: 1;
   overflow-y: auto;
+  /* Let deeply-indented / long element rows scroll sideways instead of being
+     clipped (the tree rows opt out of wrapping). Harmless for panes whose
+     content fits — no scrollbar appears. */
+  overflow-x: auto;
   padding: 12px;
 }
 .pixel-pane-empty {

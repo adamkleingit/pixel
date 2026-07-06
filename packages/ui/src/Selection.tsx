@@ -11,6 +11,7 @@ import { SnapGuides } from './drag/SnapGuides'
 import { startRepositionDrag } from './drag/reposition-drag'
 import { BEGIN_INLINE_EDIT_EVENT, resetElementPointerDown } from './drag/handle-inline-edit'
 import { computeKeyboardMove, isArrowKey } from './drag/keyboard-move'
+import { deleteElements, duplicateElements } from './edit/element-actions'
 import {
   computeDrillTarget,
   computeHoverTarget,
@@ -320,6 +321,34 @@ export function Selection({ passthrough = false }: { passthrough?: boolean } = {
           if (result) commitRef.current(result.changes, result.label)
         }
         return
+      }
+
+      // Delete / Duplicate the selection (ported from Pixel desktop's
+      // element-actions). Backspace/Delete removes every selected element;
+      // Cmd/Ctrl+D clones each in place and selects the copies. Both commit one
+      // reversible edit-history entry. Skipped inside our own UI so typing in a
+      // design-pane input keeps its native Backspace / ⌘D.
+      if (!inOwnUI(event)) {
+        const isDelete = event.key === 'Backspace' || event.key === 'Delete'
+        const isDuplicate =
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          (event.key === 'd' || event.key === 'D')
+        if (isDelete || isDuplicate) {
+          const selected = storeRef.current.entries
+            .map((en) => en.element)
+            .filter((el): el is HTMLElement => el instanceof HTMLElement)
+          if (selected.length === 0) return
+          const result = isDelete ? deleteElements(selected) : duplicateElements(selected)
+          if (!result) return
+          event.preventDefault()
+          event.stopPropagation()
+          commitRef.current(result.changes, result.label)
+          if (result.select.length) storeRef.current.selectMany(TILE, result.select)
+          else storeRef.current.clearAll()
+          return
+        }
       }
 
       if (event.key !== 'Escape') return

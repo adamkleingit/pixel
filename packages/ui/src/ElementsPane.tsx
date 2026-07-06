@@ -358,7 +358,12 @@ function Row({
     <div
       ref={registerRef}
       style={{
-        width: '100%',
+        // `max-content` lets the row grow past the pane so a deeply-indented
+        // label scrolls into view (the body is `overflow-x: auto`); `minWidth:
+        // 100%` keeps the selection / hover background spanning the full pane
+        // for shallow rows.
+        width: 'max-content',
+        minWidth: '100%',
         height: ROW_H,
         paddingLeft: 4 + row.depth * INDENT,
         paddingRight: 8,
@@ -372,8 +377,6 @@ function Row({
         fontSize: FONT_SIZE.sm,
         color: COLORS.textPrimary,
         whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
         boxSizing: 'border-box',
       }}
       onMouseEnter={onEnter}

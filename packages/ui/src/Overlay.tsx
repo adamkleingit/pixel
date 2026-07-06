@@ -249,6 +249,8 @@ function summarizeEntry(entry: EditEntry): string {
   const short = (s: string) => (s.length > 16 ? `${s.slice(0, 15)}…` : s)
   if (c.kind === 'text') return `text: “${short(c.after)}”`
   if (c.kind === 'move') return 'reorder'
+  // Structural edits carry no value — the label ('delete' / 'duplicate') says it all.
+  if (c.kind === 'insert' || c.kind === 'remove') return label
   return `${label}: ${short(c.after || '—')}`
 }
 

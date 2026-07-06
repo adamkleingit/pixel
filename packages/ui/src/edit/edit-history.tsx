@@ -20,9 +20,11 @@ export interface Change {
   /** What surface the value lives on. `move` reorders the element within its
    *  parent — `before`/`after` are DOM child indices (see reposition-drag's
    *  `pixel-move-node`). `html` replaces the element's innerHTML (mixed-content
-   *  inline edit — a <p> with <span>/<strong> runs edited as raw markup). */
-  kind: 'style' | 'text' | 'attr' | 'move' | 'html'
-  /** style property (e.g. `padding-left`), attribute name, or '' for text/move/html. */
+   *  inline edit — a <p> with <span>/<strong> runs edited as raw markup).
+   *  `insert` / `remove` are structural: `target` is the node added / removed;
+   *  `parent` + `anchor` say where it lives so undo/redo can re-insert it. */
+  kind: 'style' | 'text' | 'attr' | 'move' | 'html' | 'insert' | 'remove'
+  /** style property (e.g. `padding-left`), attribute name, or '' for text/move/html/insert/remove. */
   name: string
   before: string
   after: string
@@ -31,6 +33,12 @@ export interface Change {
    *  in source instead of the resolved value. Undo/redo ignore it — it only
    *  describes how `after` should be written back, not how it applies to the DOM. */
   source?: TokenSource
+  /** Structural (`insert`/`remove`) only — the container `target` sits in. */
+  parent?: HTMLElement
+  /** Structural (`insert`/`remove`) only — the sibling `target` sits *before*
+   *  in `parent` (null = appended last). Re-insertion falls back to append if
+   *  the anchor has since detached. */
+  anchor?: Node | null
 }
 
 export interface EditEntry {
@@ -63,6 +71,33 @@ export interface EditHistory {
   clear: () => void
   /** Revert every applied entry (newest → oldest) and drop all history (Cancel). */
   discard: () => void
+}
+
+/** Insert a structural change's `target` at its recorded `parent` + `anchor`.
+ *  Falls back to append when the anchor has detached since capture. */
+function insertNode(c: Change): void {
+  const parent = c.parent
+  if (!parent) return
+  const anchor = c.anchor && c.anchor.parentNode === parent ? c.anchor : null
+  parent.insertBefore(c.target, anchor)
+}
+
+/** Apply one change in a direction: `'after'` for commit/redo, `'before'` for
+ *  undo. Structural kinds add / remove the node; value kinds delegate to
+ *  `applyValue`. `insert` is present in the `after` state (absent in `before`);
+ *  `remove` is the inverse. */
+function applyChange(c: Change, dir: 'before' | 'after'): void {
+  if (c.kind === 'insert') {
+    if (dir === 'after') insertNode(c)
+    else c.target.remove()
+    return
+  }
+  if (c.kind === 'remove') {
+    if (dir === 'after') c.target.remove()
+    else insertNode(c)
+    return
+  }
+  applyValue(c.target, c.kind, c.name, dir === 'after' ? c.after : c.before)
 }
 
 function applyValue(target: HTMLElement, kind: Change['kind'], name: string, value: string): void {
@@ -111,9 +146,11 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
   // that commits one entry per property — chain off each other instead of each
   // reading a stale pointer and clobbering the previous entry.
   const commit = useCallback((changes: Change[], label = '') => {
-    const effective = changes.filter((c) => c.before !== c.after)
+    // Structural changes (insert/remove) carry no before/after value — keep them
+    // unconditionally; value changes are dropped when they're a no-op.
+    const effective = changes.filter((c) => c.kind === 'insert' || c.kind === 'remove' || c.before !== c.after)
     if (effective.length === 0) return
-    for (const c of effective) applyValue(c.target, c.kind, c.name, c.after)
+    for (const c of effective) applyChange(c, 'after')
     const entry: EditEntry = { changes: effective, label: label || effective[0].name || 'edit' }
     const next = [...entriesRef.current.slice(0, pointerRef.current + 1), entry] // drop redo tail
     entriesRef.current = next
@@ -126,7 +163,7 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     const p = pointerRef.current
     if (p < 0) return
     const entry = entriesRef.current[p]
-    for (const c of entry.changes) applyValue(c.target, c.kind, c.name, c.before)
+    for (const c of entry.changes) applyChange(c, 'before')
     pointerRef.current = p - 1
     setPointer(p - 1)
   }, [])
@@ -135,7 +172,7 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     const p = pointerRef.current
     const next = entriesRef.current[p + 1]
     if (!next) return
-    for (const c of next.changes) applyValue(c.target, c.kind, c.name, c.after)
+    for (const c of next.changes) applyChange(c, 'after')
     pointerRef.current = p + 1
     setPointer(p + 1)
   }, [])
@@ -148,13 +185,13 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     const clamped = Math.max(-1, Math.min(target, entriesRef.current.length - 1))
     while (p > clamped) {
       const entry = entriesRef.current[p]
-      for (const c of entry.changes) applyValue(c.target, c.kind, c.name, c.before)
+      for (const c of entry.changes) applyChange(c, 'before')
       p--
     }
     while (p < clamped) {
       const next = entriesRef.current[p + 1]
       if (!next) break
-      for (const c of next.changes) applyValue(c.target, c.kind, c.name, c.after)
+      for (const c of next.changes) applyChange(c, 'after')
       p++
     }
     pointerRef.current = p
@@ -178,7 +215,7 @@ export function EditHistoryProvider({ children }: { children: ReactNode }) {
     revertPendingSessions()
     const applied = entriesRef.current.slice(0, pointerRef.current + 1)
     for (let i = applied.length - 1; i >= 0; i--) {
-      for (const c of applied[i].changes) applyValue(c.target, c.kind, c.name, c.before)
+      for (const c of applied[i].changes) applyChange(c, 'before')
     }
     setEntries([])
     setPointer(-1)

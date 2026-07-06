@@ -58,6 +58,14 @@ const HIT_OFFSET = 4
 const HIT_ALONG = 6
 /** Gap between the bar and its value label, in screen px. */
 const LABEL_GAP = 6
+/** Minimum offset (screen px) of a padding/margin handle from the element edge,
+ *  regardless of how small the actual value is. When padding *and* margin are 0
+ *  both bars would otherwise pile onto the edge and — sitting above the resize
+ *  overlay (zIndex 1003 > 1002) — steal the side resize handle. Pushing padding
+ *  in / margin out by at least this much leaves a grabbable strip at the very
+ *  edge for the resize band. The label always reads the element's *true* value,
+ *  so a 0 still reads "0". */
+const MIN_HANDLE_OFFSET = 3
 /** Milliseconds the pointer must rest over the selected element (or its margin
  *  band) before the handles appear — Figma's reveal delay. */
 const HOVER_DELAY_MS = 300
@@ -251,27 +259,31 @@ export function SpacingHandles({
   )
 }
 
-/** True position of the padding bar — at the *inner* edge of the padding (no
- *  visual offset). When `pad[side] === 0` the bar sits exactly on the element
- *  edge; the hit area below extends inward to keep it grabbable. */
+/** Padding bar position — offset *inward* from the element edge by the padding
+ *  value, but at least `MIN_HANDLE_OFFSET` so it never buries the side resize
+ *  handle at the edge. So a 5px padding sits at 5px; a 1px (or 0) padding sits
+ *  at 3px. */
 function paddingPoint(side: Side, W: number, H: number, pad: Record<Side, number>, scale: number): { x: number; y: number } {
+  const off = (v: number) => Math.max(v * scale, MIN_HANDLE_OFFSET)
   switch (side) {
-    case 'top':    return { x: W / 2, y: pad.top * scale }
-    case 'bottom': return { x: W / 2, y: H - pad.bottom * scale }
-    case 'left':   return { x: pad.left * scale, y: H / 2 }
-    case 'right':  return { x: W - pad.right * scale, y: H / 2 }
+    case 'top':    return { x: W / 2, y: off(pad.top) }
+    case 'bottom': return { x: W / 2, y: H - off(pad.bottom) }
+    case 'left':   return { x: off(pad.left), y: H / 2 }
+    case 'right':  return { x: W - off(pad.right), y: H / 2 }
   }
 }
 
-/** True position of the margin bar — at the *outer* edge of the margin. When
- *  `mar[side] === 0` the bar sits on the element edge (same line as the
- *  padding-0 bar). The hit area extends outward to disambiguate. */
+/** Margin bar position — offset *outward* from the element edge by the margin
+ *  value, but at least `MIN_HANDLE_OFFSET` (same rationale as `paddingPoint`)
+ *  so the padding-0 / margin-0 bars don't both pile onto the edge and steal the
+ *  resize handle. */
 function marginPoint(side: Side, W: number, H: number, mar: Record<Side, number>, scale: number): { x: number; y: number } {
+  const off = (v: number) => Math.max(v * scale, MIN_HANDLE_OFFSET)
   switch (side) {
-    case 'top':    return { x: W / 2, y: -mar.top * scale }
-    case 'bottom': return { x: W / 2, y: H + mar.bottom * scale }
-    case 'left':   return { x: -mar.left * scale, y: H / 2 }
-    case 'right':  return { x: W + mar.right * scale, y: H / 2 }
+    case 'top':    return { x: W / 2, y: -off(mar.top) }
+    case 'bottom': return { x: W / 2, y: H + off(mar.bottom) }
+    case 'left':   return { x: -off(mar.left), y: H / 2 }
+    case 'right':  return { x: W + off(mar.right), y: H / 2 }
   }
 }
 

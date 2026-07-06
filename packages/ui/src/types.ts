@@ -137,9 +137,10 @@ export interface Task {
 export interface EditChangeRecord {
   target: ElementInfo[]
   /** What surface changed. `move` reorders within the parent (before/after are
-   *  child indices). `html` replaces innerHTML (mixed-content inline edit). */
-  kind: 'style' | 'text' | 'attr' | 'move' | 'html'
-  /** CSS property / attribute name; '' for text, move, and html. */
+   *  child indices). `html` replaces innerHTML (mixed-content inline edit).
+   *  `insert` / `remove` add / remove the element (duplicate / delete). */
+  kind: 'style' | 'text' | 'attr' | 'move' | 'html' | 'insert' | 'remove'
+  /** CSS property / attribute name; '' for text, move, html, insert, and remove. */
   name: string
   before: string
   after: string

@@ -2,7 +2,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { INBOX_DIR, PIXEL_DIR } from './fixtures'
+import { INBOX_DIR, PIXEL_DIR, settleLayout, stableBox } from './fixtures'
 
 /**
  * Thorough sweep of the in-app editing UI: the design pane (every section's
@@ -326,12 +326,13 @@ test('canvas rotate: dragging the rotate handle rotates the element', async ({ p
 
 test('reposition: Cmd-drag reorders an element within its flex parent', async ({ page }) => {
   await enterEdit(page)
+  await settleLayout(page)
   const toolbar = inboxToolbar(page)
   const order = () => toolbar.evaluate((t) => Array.from(t.children).map((c) => c.textContent))
   expect(await order()).toEqual(['Compose', 'Details'])
 
-  const box = (await compose(page).boundingBox())!
-  const db = (await inboxCard(page).getByRole('button', { name: 'Details' }).boundingBox())!
+  const box = await stableBox(compose(page))
+  const db = await stableBox(inboxCard(page).getByRole('button', { name: 'Details' }))
   await page.keyboard.down('Meta')
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()

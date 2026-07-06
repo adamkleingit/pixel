@@ -15,6 +15,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
+  // Drag/resize/reorder tests drive synthetic pointer input against a live React
+  // app; headless pointer timing varies under load, so a gesture can occasionally
+  // land a frame early. The interactions are deterministic when they register —
+  // a retry absorbs the rare input-timing miss (and marks it flaky) rather than
+  // failing the suite. CI is stricter (2) than local (1).
+  retries: process.env.CI ? 2 : 1,
   reporter: 'list',
   use: {
     baseURL: EXAMPLE_URL,

@@ -150,6 +150,7 @@ export function StatesPane() {
             type="button"
             className="pixel-states-navbtn"
             title="Previous state"
+            aria-label="Previous state"
             disabled={count === 0 || frozenIndex === 0}
             onClick={stepStateBack}
           >
@@ -160,6 +161,7 @@ export function StatesPane() {
             type="button"
             className="pixel-states-navbtn"
             title="Next state"
+            aria-label="Next state"
             disabled={count === 0 || frozenIndex === count - 1}
             onClick={stepStateForward}
           >

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { INBOX_DIR, PIXEL_DIR } from './fixtures'
+import { INBOX_DIR, PIXEL_DIR, settleLayout, stableBox } from './fixtures'
 
 /** Poll the dropbox until an edit task (edits.json + ready timeline.json) lands. */
 async function waitForEditTask(timeoutMs = 30_000): Promise<string> {
@@ -410,6 +410,7 @@ test('resize handle changes the element size and commits (undo reverts)', async 
   // Stable selector (the text changes elsewhere; the pane also mirrors it in a textarea).
   const target = page.locator('.card', { hasText: 'Inbox' }).locator('p')
   await target.click({ modifiers: ['Meta'] }) // select the <p>
+  await settleLayout(page) // let the design-pane dock finish reflowing before measuring
   const before = (await target.boundingBox())!.width
 
   // Pixel's real ResizeHandles render an EdgeBand per resizable side; it's a
@@ -442,16 +443,17 @@ test('corner handle resizes both axes and commits (undo reverts)', async ({ page
 
   const target = page.locator('.card', { hasText: 'Inbox' }).locator('p')
   await target.click({ modifiers: ['Meta'] }) // select the <p>
-  const before = (await target.boundingBox())!
+  await settleLayout(page) // let the design-pane dock finish reflowing before measuring
+  const before = await stableBox(target)
 
   // Pixel's CornerHandle is a body-portal div tagged data-resize-handle="corner".
   // A block child anchors start/start → only the bottom-right corner resizes.
   const corner = page.locator('[data-resize-handle="corner"][data-corner="br"]')
   await expect(corner).toBeVisible()
-  const cb = (await corner.boundingBox())!
+  const cb = await stableBox(corner) // handle is a portal; wait until it stops repositioning
   await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(cb.x + 50, cb.y + 40, { steps: 6 })
+  await page.mouse.move(cb.x + 50, cb.y + 40, { steps: 8 })
   await page.mouse.up()
 
   const after = (await target.boundingBox())!
@@ -480,19 +482,24 @@ test('dragging the element body repositions it (Cmd reorder) and commits (undo r
   // second so the order flips. (We drag *directly* — the single pointerdown both
   // selects, Cmd = exact leaf, and arms the move; a separate pre-click would land
   // inside the double-click window and route to inline-edit instead.)
+  await settleLayout(page) // let the design-pane dock finish reflowing before measuring
   const toolbar = page.locator('.card', { hasText: 'Inbox' }).locator('.toolbar')
   const order = () => toolbar.evaluate((t) => Array.from(t.children).map((c) => c.textContent))
   expect(await order()).toEqual(['Compose', 'Details'])
 
   const compose = toolbar.getByRole('button', { name: 'Compose' })
-  const box = (await compose.boundingBox())!
+  const box = await stableBox(compose)
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
+  // Drag toward "Details"'s actual box (not a fixed offset) so the insertion
+  // line lands after it whether the wrapped buttons sit side-by-side or stacked
+  // (the design pane narrows the card and can wrap the toolbar).
+  const db = await stableBox(toolbar.getByRole('button', { name: 'Details' }))
 
   await page.keyboard.down('Meta') // Cmd → insertion-line reorder mode
   await page.mouse.move(cx, cy)
   await page.mouse.down()
-  await page.mouse.move(cx + 140, cy, { steps: 12 }) // travel past "Details"
+  await page.mouse.move(db.x + db.width / 2, db.y + db.height * 0.7, { steps: 14 })
   await page.mouse.up()
   await page.keyboard.up('Meta')
 

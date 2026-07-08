@@ -1,0 +1,16 @@
+/* A few design tokens so the installed server's token extractor (GET /tokens)
+   has a real source to read (PIXEL_PROJECT_DIR points here). */
+:root {
+  --color-bg: #ffffff;
+  --color-fg: #1a1a2e;
+  --color-accent: #6d5efc;
+  --radius: 10px;
+  --space-4: 16px;
+}
+
+body {
+  margin: 0;
+  font: 15px/1.5 ui-sans-serif, system-ui, sans-serif;
+  color: var(--color-fg);
+  background: var(--color-bg);
+}

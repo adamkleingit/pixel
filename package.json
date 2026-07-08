@@ -16,9 +16,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "release": "npm run build && npm publish -w @getpixel/ui -w @getpixel/server --access public"
+    "test:pack": "node scripts/pack-smoke-setup.mjs && playwright test --config playwright.pack.config.ts",
+    "release": "npm run build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.0",
     "@playwright/test": "^1.60.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",

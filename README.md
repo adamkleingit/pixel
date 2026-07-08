@@ -394,3 +394,34 @@ Recordings save to `pixel/.pixel/inbox/<id>/`. The first recording
 with audio downloads the Whisper model (~150 MB) once; transcription then runs in
 the background and writes `transcript.json`.
 
+## Testing
+
+```bash
+npm test           # unit (Vitest)
+npm run test:e2e   # e2e (Playwright) — the example app is workspace-LINKED to the SDK
+npm run test:pack  # packaging smoke — installs the PUBLISHED tarballs into a clean app
+```
+
+`test:e2e` and `test:pack` are complementary. The e2e suite drives the example app
+consuming `@getpixel/ui` through the workspace symlink and the server via `tsx` — great
+for iterating on behavior. The **pack smoke** (`test:pack`) instead builds the packages,
+`npm pack`s them, and installs the tarballs into a clean app **outside** the workspace
+(`e2e/pack/`), then asserts the server connects and an edit round-trips. That's the only
+test that exercises the real published bytes, so it catches packaging regressions —
+a missing `files` entry, a broken `exports`/`bin`, a missing runtime dependency — that
+the linked suite silently tolerates. All three run on every PR (`.github/workflows/ci.yml`).
+
+## Releasing
+
+Versioning + publishing is automated with [changesets](https://github.com/changesets/changesets).
+`@getpixel/ui` and `@getpixel/server` are versioned in **lockstep** (same version, always
+published together).
+
+1. **On a PR** that changes a package, add a changeset: `npx changeset` → pick
+   **patch** / **minor** / **major** and a one-line summary, then commit the generated
+   file. CI's `changeset` job fails a package-touching PR that has none.
+2. **On merge to `main`**, the `Release` workflow opens a **"Version Packages"** PR
+   that applies the bumps and updates the changelogs (this is the version bump).
+3. **Merging that PR** publishes the new version to npm (`changeset publish`), authed
+   via the `NPM_TOKEN` repo secret.
+

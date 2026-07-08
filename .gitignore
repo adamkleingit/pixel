@@ -10,6 +10,10 @@ packages/*/README.md
 
 # e2e (Playwright) artifacts
 e2e/.artifacts/
+# pack smoke test: provisioned clean install + tarballs (generated per run)
+e2e/pack/.app/
+e2e/pack/.tarballs/
+e2e/pack/.artifacts/
 test-results/
 playwright-report/
 .playwright/

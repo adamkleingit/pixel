@@ -1,0 +1,43 @@
+name: Release
+
+# The publish half of the flow. On every push to main, changesets/action either:
+#   • opens/updates a "Version Packages" PR that runs `changeset version` (applies the
+#     bumps + changelogs, deletes consumed changesets) — this is the version bump; or
+#   • if that PR was just merged (no changesets left), runs `npm run release`
+#     (build + `changeset publish`) to publish the new version to npm.
+on:
+  push:
+    branches: [main]
+
+# Never run two releases at once (a double-publish race).
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write # create the Version Packages PR / commit + tags
+  pull-requests: write # open/update the Version Packages PR
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - uses: changesets/action@v1
+        with:
+          # Bump versions on the Version Packages PR…
+          version: npx changeset version
+          # …and publish once that PR merges (build runs inside `release`).
+          publish: npm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `changeset publish` → `npm publish`, which reads this via the .npmrc
+          # actions/setup-node wrote for registry.npmjs.org.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

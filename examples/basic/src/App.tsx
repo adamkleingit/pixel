@@ -258,7 +258,7 @@ function Shell({
   return (
     <div className="page">
       <div className="hero">
-        <h1>Pixel — example app</h1>
+        <h1>Pixel - example</h1>
         <p>
           Double-tap <span className="kbd">Space</span> to start (allow the mic). While
           recording: single <span className="kbd">Space</span> pauses/resumes, double{' '}

@@ -43,14 +43,13 @@ jobs:
             test-results/
           retention-days: 7
 
-  # Gate: a PR that changes packages/* must ship a changeset, so the next merge to
-  # main bumps the version. `changeset status` exits non-zero when packages changed
-  # without a covering changeset. Skipped on the "Version Packages" PR (it consumes
-  # changesets) — that PR touches packages/* but legitimately has none.
+  # Gate: a PR that changes packages/* must ship a changeset, so the merge to main
+  # auto-bumps + publishes (see release.yml). `changeset status` exits non-zero when
+  # packages changed without a covering changeset.
   changeset:
     name: changeset
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v5
         with:

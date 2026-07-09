@@ -1,20 +1,21 @@
 name: Release
 
-# The publish half of the flow. On every push to main, changesets/action either:
-#   • opens/updates a "Version Packages" PR that runs `changeset version` (applies the
-#     bumps + changelogs, deletes consumed changesets) — this is the version bump; or
-#   • if that PR was just merged (no changesets left), runs `npm run release`
-#     (build + `changeset publish`) to publish the new version to npm.
+# Auto-release on merge to main — NO intermediate "Version Packages" PR. When a
+# feature PR that carried a changeset lands on main, this run does everything in
+# one shot:
+#   1. `changeset version` — apply the bump + changelogs, delete the changeset
+#   2. build + `changeset publish` — publish the new version to npm
+#   3. commit the bump back to main and push the git tags
+# With no pending changeset the run is a no-op.
 on:
   push:
     branches: [main]
 
-# Never run two releases at once (a double-publish race).
+# One release at a time — never let two runs publish concurrently.
 concurrency: release-${{ github.ref }}
 
 permissions:
-  contents: write # create the Version Packages PR / commit + tags
-  pull-requests: write # open/update the Version Packages PR
+  contents: write # push the version-bump commit + tags back to main
 
 jobs:
   release:
@@ -30,14 +31,34 @@ jobs:
           cache: npm
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      - uses: changesets/action@v1
-        with:
-          # Bump versions on the Version Packages PR…
-          version: npx changeset version
-          # …and publish once that PR merges (build runs inside `release`).
-          publish: npm run release
+
+      - name: Version + publish if a changeset is pending
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # `changeset publish` → `npm publish`, which reads this via the .npmrc
           # actions/setup-node wrote for registry.npmjs.org.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          pending="$(find .changeset -name '*.md' ! -name 'README.md' || true)"
+          if [ -z "$pending" ]; then
+            echo "No pending changeset — nothing to release."
+            exit 0
+          fi
+          echo "Pending changeset(s):"; echo "$pending"
+
+          # 1. Apply the bump: package.json versions + CHANGELOGs, delete changesets.
+          npx changeset version
+
+          # 2. Build, then publish to npm. `changeset publish` is idempotent — it
+          #    skips any version already on the registry and tags the ones it ships.
+          npm run release
+
+          # 3. Commit the bump back to main + push the tags. Pushed with the default
+          #    GITHUB_TOKEN, so it does NOT retrigger workflows; [skip ci] is a
+          #    belt-and-suspenders guard if this ever moves to a PAT.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: release packages [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin --tags

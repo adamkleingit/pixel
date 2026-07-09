@@ -18,8 +18,7 @@ that changes `packages/*` without one.
 
 ## What happens on merge to `main`
 
-1. The `Release` workflow opens/updates a **"Version Packages"** PR that runs
-   `changeset version` — applying the bumps, updating changelogs, and deleting the
-   consumed changeset files.
-2. Merging that PR (with no changesets left) triggers the same workflow to run
-   `changeset publish`, publishing the new version to npm.
+The `Release` workflow runs on the merge and, in **one** automatic run (no separate
+release PR): `changeset version` (apply the bumps, update changelogs, delete the
+consumed changesets) → build → `changeset publish` (publish to npm) → commit the bump
+back to `main` and push the tags. A merge with no pending changeset publishes nothing.

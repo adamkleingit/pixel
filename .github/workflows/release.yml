@@ -6,7 +6,12 @@ name: Release
 #   1. `changeset version` — apply the bump + changelogs, delete the changeset
 #   2. build + `changeset publish` — publish the new version to npm
 #   3. commit the bump back to main and push the git tags
-# With no pending changeset the run is a no-op.
+#
+# main is protected by a ruleset (PRs required), so the bump commit is pushed with
+# a dedicated GitHub App token that is on the ruleset's bypass list — humans still
+# go through PRs + checks; only this job can push straight to main. Steps that need
+# the App token / secrets only run when there's actually a release to cut, so a
+# no-op push (no changeset) never touches them.
 on:
   push:
     branches: [main]
@@ -15,36 +20,57 @@ on:
 concurrency: release-${{ github.ref }}
 
 permissions:
-  contents: write # push the version-bump commit + tags back to main
+  contents: read
 
 jobs:
   release:
     name: release
     runs-on: ubuntu-latest
     steps:
+      # Read-only checkout first, just to see whether a changeset is pending.
       - uses: actions/checkout@v5
+      - id: check
+        run: |
+          pending="$(find .changeset -name '*.md' ! -name 'README.md' || true)"
+          if [ -n "$pending" ]; then
+            echo "Pending changeset(s):"; echo "$pending"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No pending changeset — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Everything below runs ONLY when a release is actually due.
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # Re-checkout authed as the App so the bump commit can push to protected main.
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+          token: ${{ steps.app-token.outputs.token }}
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
           registry-url: 'https://registry.npmjs.org'
-      - run: npm ci
+      - if: steps.check.outputs.release == 'true'
+        run: npm ci
 
-      - name: Version + publish if a changeset is pending
+      - if: steps.check.outputs.release == 'true'
+        name: Version, publish, and push the bump
         env:
           # `changeset publish` → `npm publish`, which reads this via the .npmrc
           # actions/setup-node wrote for registry.npmjs.org.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          pending="$(find .changeset -name '*.md' ! -name 'README.md' || true)"
-          if [ -z "$pending" ]; then
-            echo "No pending changeset — nothing to release."
-            exit 0
-          fi
-          echo "Pending changeset(s):"; echo "$pending"
 
           # 1. Apply the bump: package.json versions + CHANGELOGs, delete changesets.
           npx changeset version
@@ -53,9 +79,9 @@ jobs:
           #    skips any version already on the registry and tags the ones it ships.
           npm run release
 
-          # 3. Commit the bump back to main + push the tags. Pushed with the default
-          #    GITHUB_TOKEN, so it does NOT retrigger workflows; [skip ci] is a
-          #    belt-and-suspenders guard if this ever moves to a PAT.
+          # 3. Commit the bump back to main + push the tags. The App token bypasses
+          #    the ruleset; [skip ci] stops this commit from re-triggering workflows
+          #    (App-token pushes, unlike the default GITHUB_TOKEN, otherwise would).
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

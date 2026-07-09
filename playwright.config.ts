@@ -11,6 +11,10 @@ import {
 
 export default defineConfig({
   testDir: './e2e',
+  // The packaging smoke suite lives under e2e/pack/ but needs its OWN servers
+  // (the installed tarballs) — it runs via playwright.pack.config.ts, not here.
+  // Exclude it so this workspace-linked run doesn't pick it up recursively.
+  testIgnore: '**/pack/**',
   // The recording pipeline is stateful (shared dropbox), so run serially.
   fullyParallel: false,
   workers: 1,

@@ -63,7 +63,12 @@ the rest — but say so explicitly in the plan and PR.
 npm run typecheck -w @getpixel/ui   # types
 npm test                            # unit (vitest run)
 npm run test:e2e                    # e2e (playwright; builds @getpixel/ui + starts servers)
+npm run test:pack                   # packaging smoke (only if you touched build/exports/files/bin/deps)
 ```
+
+- Run `test:pack` when the change could affect what ships — a package's `exports`,
+  `files`, `bin`, `dependencies`, or the build/bundle output. It packs the tarballs
+  and installs them into a clean app; skip it for pure logic/UI changes.
 
 - The e2e harness serves the example on port 5281 and the ingest server on 41890;
   free them first if a stray `npm run dev` holds them:
@@ -78,7 +83,38 @@ Read the repo `README.md` (and any package README) and update anything the featu
 changes — new config, new install/usage step, new capability, changed behavior.
 Skip if nothing is affected, but always look.
 
-## 7. Open the PR (don't merge it)
+## 7. Add a changeset (bump the version)
+
+If the feature changes a **published package** (`packages/ui` or `packages/server`),
+add a changeset so the next merge to `main` bumps the version and publishes. CI's
+`changeset` job fails a PR that touches `packages/*` without one.
+
+- **Classify the bump** from what actually changed (the two packages version in
+  **lockstep** — one bump applies to both):
+  - **patch** — bug fixes, internal refactors, no API change.
+  - **minor** — new backwards-compatible capability (new prop/export/endpoint,
+    additive behavior).
+  - **major** — a breaking change (removed/renamed export or prop, changed default,
+    anything a consumer must adapt to). Pre-1.0, still call a real break `major`.
+- Write the changeset (a file under `.changeset/`, committed with the PR):
+  ```bash
+  npx changeset            # pick the bump level + a one-line summary
+  ```
+  Or write `.changeset/<slug>.md` directly:
+  ```md
+  ---
+  '@getpixel/ui': minor
+  '@getpixel/server': minor
+  ---
+
+  Add <feature>: <one-line, user-facing summary>.
+  ```
+  List **both** packages at the same level (they're a fixed group). Verify with
+  `npx changeset status --since=origin/main` — it must exit clean.
+- If the change is infra-only (CI, tests, docs, examples) and touches no package
+  source, skip this — no changeset needed, and the gate won't require one.
+
+## 8. Open the PR (don't merge it)
 
 - Commit with a clear message; end it with:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
@@ -87,7 +123,7 @@ Skip if nothing is affected, but always look.
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 - Do **not** merge. The human reviews.
 
-## 8. Drive CI to green
+## 9. Drive CI to green
 
 ```bash
 gh pr checks <n> --watch --interval 20
@@ -96,7 +132,7 @@ gh pr checks <n> --watch --interval 20
 If any check fails: open the failing job (`gh run view --log-failed`), fix the cause,
 commit, push, and re-watch. **Repeat until every check passes.** Don't hand back a red PR.
 
-## 9. Attach screenshots + a screencast GIF (committed in the PR branch)
+## 10. Attach screenshots + a screencast GIF (committed in the PR branch)
 
 Record the working feature and put the media **in this same branch** (not a temp
 branch), in a dedicated folder **`demos/<feature-slug>/`**, so it's part of the PR.

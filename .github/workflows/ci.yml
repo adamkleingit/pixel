@@ -42,3 +42,46 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  # Gate: a PR that changes packages/* must ship a changeset, so the next merge to
+  # main bumps the version. `changeset status` exits non-zero when packages changed
+  # without a covering changeset. Skipped on the "Version Packages" PR (it consumes
+  # changesets) — that PR touches packages/* but legitimately has none.
+  changeset:
+    name: changeset
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx changeset status --since=origin/${{ github.base_ref }}
+
+  pack-smoke:
+    name: pack-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Build → pack → fresh-install the tarballs into a clean app → assert the
+      # published bits actually work (server connects, an edit round-trips). Catches
+      # packaging regressions the workspace-linked e2e suite can't (files/exports/bin).
+      - run: npm run test:pack
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: pack-smoke-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

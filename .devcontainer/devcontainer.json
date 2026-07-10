@@ -13,17 +13,12 @@
     "41889": { "label": "pixel server", "visibility": "public", "onAutoForward": "silent" }
   },
 
-  // Set these at https://github.com/settings/codespaces (or repo → Settings →
-  // Secrets → Codespaces). See .devcontainer/README.md for how to generate them.
+  // Set at https://github.com/settings/codespaces (or repo → Settings → Secrets →
+  // Codespaces). See .devcontainer/README.md for how to generate the value.
+  // If unset, `claude` simply prompts /login on first run.
   "secrets": {
     "CLAUDE_CREDENTIALS_JSON": {
-      "description": "Contents of a real OAuth ~/.claude/.credentials.json. Enables auto-auth AND /remote-control. Preferred."
-    },
-    "CLAUDE_CODE_OAUTH_TOKEN": {
-      "description": "Alternative: a `claude setup-token` token. Auto-auths but DISABLES /remote-control."
-    },
-    "ANTHROPIC_API_KEY": {
-      "description": "Alternative fallback API key. Auto-auths but DISABLES /remote-control."
+      "description": "Contents of a real OAuth ~/.claude/.credentials.json. Auto-auths AND keeps /remote-control working."
     }
   },
 

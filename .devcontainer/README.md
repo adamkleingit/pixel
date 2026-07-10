@@ -15,21 +15,18 @@ ready for `/remote-control`.
 
 ## One-time setup
 
-### 1. Add secrets
+### 1. Add the Claude credentials secret
 At **https://github.com/settings/codespaces** → *Secrets*, scoped to this repo, add
-**one** of these (in order of preference):
-
-- **`CLAUDE_CREDENTIALS_JSON`** — real OAuth credentials. Auto-auths **and** keeps
-  `/remote-control` working. **Recommended.** How to get its value:
+**`CLAUDE_CREDENTIALS_JSON`** — real OAuth credentials, which auto-auth **and** keep
+`/remote-control` working. How to get its value:
   1. Spin up a throwaway Codespace (or any Linux box), run `claude`, do `/login`,
      finish the browser OAuth.
   2. `cat ~/.claude/.credentials.json` — copy the whole JSON blob.
   3. Paste it as the secret value.
-  (macOS stores these in the Keychain, not a file, so you can't `cat` them on your
-  Mac — hence the throwaway-box step.)
-- **`CLAUDE_CODE_OAUTH_TOKEN`** — from `claude setup-token` (a 1-year token). Simpler,
-  but **disables `/remote-control`**.
-- **`ANTHROPIC_API_KEY`** — plain API key. Also **disables `/remote-control`**.
+
+(macOS stores these in the Keychain, not a file, so you can't `cat` them on your
+Mac — hence the throwaway-box step. If you skip this secret entirely, `claude` just
+prompts `/login` on first run.)
 
 Add any other keys your skills need the same way (Vercel token, R2/S3, `GEMINI_API_KEY`,
 `ELEVENLABS_API_KEY`, …).

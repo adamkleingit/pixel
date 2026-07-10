@@ -1,43 +1,90 @@
 name: Release
 
-# The publish half of the flow. On every push to main, changesets/action either:
-#   • opens/updates a "Version Packages" PR that runs `changeset version` (applies the
-#     bumps + changelogs, deletes consumed changesets) — this is the version bump; or
-#   • if that PR was just merged (no changesets left), runs `npm run release`
-#     (build + `changeset publish`) to publish the new version to npm.
+# Auto-release on merge to main — NO intermediate "Version Packages" PR. When a
+# feature PR that carried a changeset lands on main, this run does everything in
+# one shot:
+#   1. `changeset version` — apply the bump + changelogs, delete the changeset
+#   2. build + `changeset publish` — publish the new version to npm
+#   3. commit the bump back to main and push the git tags
+#
+# main is protected by a ruleset (PRs required), so the bump commit is pushed with
+# a dedicated GitHub App token that is on the ruleset's bypass list — humans still
+# go through PRs + checks; only this job can push straight to main. Steps that need
+# the App token / secrets only run when there's actually a release to cut, so a
+# no-op push (no changeset) never touches them.
 on:
   push:
     branches: [main]
 
-# Never run two releases at once (a double-publish race).
+# One release at a time — never let two runs publish concurrently.
 concurrency: release-${{ github.ref }}
 
 permissions:
-  contents: write # create the Version Packages PR / commit + tags
-  pull-requests: write # open/update the Version Packages PR
+  contents: read
 
 jobs:
   release:
     name: release
     runs-on: ubuntu-latest
     steps:
+      # Read-only checkout first, just to see whether a changeset is pending.
       - uses: actions/checkout@v5
+      - id: check
+        run: |
+          pending="$(find .changeset -name '*.md' ! -name 'README.md' || true)"
+          if [ -n "$pending" ]; then
+            echo "Pending changeset(s):"; echo "$pending"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No pending changeset — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Everything below runs ONLY when a release is actually due.
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # Re-checkout authed as the App so the bump commit can push to protected main.
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+          token: ${{ steps.app-token.outputs.token }}
+      - if: steps.check.outputs.release == 'true'
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
           registry-url: 'https://registry.npmjs.org'
-      - run: npm ci
-      - uses: changesets/action@v1
-        with:
-          # Bump versions on the Version Packages PR…
-          version: npx changeset version
-          # …and publish once that PR merges (build runs inside `release`).
-          publish: npm run release
+      - if: steps.check.outputs.release == 'true'
+        run: npm ci
+
+      - if: steps.check.outputs.release == 'true'
+        name: Version, publish, and push the bump
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # `changeset publish` → `npm publish`, which reads this via the .npmrc
           # actions/setup-node wrote for registry.npmjs.org.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # 1. Apply the bump: package.json versions + CHANGELOGs, delete changesets.
+          npx changeset version
+
+          # 2. Build, then publish to npm. `changeset publish` is idempotent — it
+          #    skips any version already on the registry and tags the ones it ships.
+          npm run release
+
+          # 3. Commit the bump back to main + push the tags. The App token bypasses
+          #    the ruleset; [skip ci] stops this commit from re-triggering workflows
+          #    (App-token pushes, unlike the default GITHUB_TOKEN, otherwise would).
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: release packages [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin --tags

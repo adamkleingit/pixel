@@ -417,11 +417,19 @@ Versioning + publishing is automated with [changesets](https://github.com/change
 `@getpixel/ui` and `@getpixel/server` are versioned in **lockstep** (same version, always
 published together).
 
+Releases are **fully automatic on merge to `main`** — there's no separate release PR
+to approve.
+
 1. **On a PR** that changes a package, add a changeset: `npx changeset` → pick
    **patch** / **minor** / **major** and a one-line summary, then commit the generated
    file. CI's `changeset` job fails a package-touching PR that has none.
-2. **On merge to `main`**, the `Release` workflow opens a **"Version Packages"** PR
-   that applies the bumps and updates the changelogs (this is the version bump).
-3. **Merging that PR** publishes the new version to npm (`changeset publish`), authed
-   via the `NPM_TOKEN` repo secret.
+2. **On merge to `main`**, the `Release` workflow ([release.yml](.github/workflows/release.yml))
+   does everything in one run: `changeset version` (apply the bump + changelogs, delete
+   the changeset) → build → `changeset publish` (publish to npm via the `NPM_TOKEN`
+   secret) → commit the bump back to `main` and push the tags.
+3. A merge with **no** pending changeset (docs, CI, tests…) publishes nothing — the
+   run is a no-op.
+
+Every merged changeset publishes immediately, so a PR with no changeset ships no
+release. To batch several changes into one version, land them together.
 

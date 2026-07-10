@@ -3,7 +3,9 @@
   "build": { "dockerfile": "Dockerfile" },
 
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Required for `gh codespace ssh` — the base image ships no SSH server.
+    "ghcr.io/devcontainers/features/sshd:1": {}
   },
 
   // Dev servers. `npm run dev` starts the example app (Vite) and the Pixel server.

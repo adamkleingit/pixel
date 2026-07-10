@@ -51,8 +51,16 @@ terminal, run `claude`.
 
 ### Live URLs
 `npm run dev` starts the example app on **5280** and the Pixel server on **41889**;
-both are forwarded as **public HTTPS URLs** (see the Ports panel). Public = anyone
-with the URL can reach it — flip to Private in the Ports panel if you don't want that.
+both auto-forward to HTTPS URLs (see the Ports panel). The devcontainer *requests*
+public visibility, but GitHub sometimes forwards the first time as **private**
+(reachable in your own GitHub-authed browser, but not shareable). To make them
+truly public:
+
+```bash
+gh codespace ports visibility 5280:public 41889:public -c <codespace-name>
+```
+
+or toggle each in the Ports panel. Public = anyone with the URL can reach it.
 
 ### Multiple sessions on one box
 A Codespace is one VM. Attach from browser VS Code, desktop VS Code, and

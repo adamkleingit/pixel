@@ -1,0 +1,14 @@
+{
+  "install": ".cursor/scripts/bootstrap.sh",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "description": "UI watch + Pixel ingest server (41889) + example app (5280)"
+    }
+  ],
+  "ports": [
+    { "name": "example app", "port": 5280 },
+    { "name": "pixel server", "port": 41889 }
+  ]
+}

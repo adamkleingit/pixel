@@ -8,6 +8,10 @@ packages/server/skill
 # transient README copies created at pack/publish time (source of truth is root README.md)
 packages/*/README.md
 
+# Pixel skills copied from skills/ at Cloud bootstrap (canonical source: skills/)
+.claude/skills/pixel/
+.claude/skills/stop-pixel/
+
 # e2e (Playwright) artifacts
 e2e/.artifacts/
 # pack smoke test: provisioned clean install + tarballs (generated per run)

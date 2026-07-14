@@ -156,12 +156,13 @@ function CommentPin({
             rows={3}
             onChange={(e) => onChangeBody(e.target.value)}
           />
+          <p className="pixel-comment-hint">Stays pinned — Save in the bar sends every pin as one batch.</p>
           <div className="pixel-comment-composer-actions">
             <button type="button" className="pixel-comment-btn danger" onClick={onDelete}>
               Delete
             </button>
-            <button type="button" className="pixel-comment-btn primary" onClick={onClose}>
-              Done
+            <button type="button" className="pixel-comment-btn secondary" onClick={onClose}>
+              Close
             </button>
           </div>
         </div>

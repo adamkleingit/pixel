@@ -160,7 +160,22 @@ const CSS = `
 }
 /* Save (diskette) tinted green to read as the primary/confirm action. */
 .pixel-rec .pixel-rec-save {
+  position: relative;
   color: #4ade80;
+}
+.pixel-rec .pixel-rec-save-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #16a34a;
+  color: #fff;
+  font: 700 9px/14px system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
 }
 .pixel-rec .pixel-rec-time {
   min-width: 58px;
@@ -649,14 +664,19 @@ html.pixel-commenting body *:not([class*='pixel-']):not(.pixel-overlay *):not([d
   font: 600 12px system-ui, sans-serif;
   cursor: pointer;
 }
-.pixel-comment-btn.primary {
-  background: #f59e0b;
-  color: #1a1000;
+.pixel-comment-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
 }
 .pixel-comment-btn.danger {
   background: transparent;
   color: #fca5a5;
   border: 1px solid rgba(252, 165, 165, 0.35);
+}
+.pixel-comment-hint {
+  margin: 0;
+  font: 11px/1.35 system-ui, sans-serif;
+  color: #c4b5a0;
 }
 .pixel-confirm-backdrop {
   position: fixed;

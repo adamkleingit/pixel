@@ -92,12 +92,26 @@ describe('comment mode', () => {
     fireEvent.change(screen.getByPlaceholderText('Leave a comment…'), {
       target: { value: 'Make this primary' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    // Second pin — one Save must POST both together.
+    window.dispatchEvent(
+      new MouseEvent('click', { clientX: 200, clientY: 120, bubbles: true, cancelable: true }),
+    )
+    await waitFor(() => expect(screen.getByPlaceholderText('Leave a comment…')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('Leave a comment…'), {
+      target: { value: 'Tighten spacing' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    const save = screen.getByRole('button', { name: 'Save 2 comments' })
+    fireEvent.click(save)
     await waitFor(() => expect(saved).not.toBeNull())
-    expect(saved!.comments).toHaveLength(1)
-    expect(saved!.comments[0].body).toBe('Make this primary')
+    expect(saved!.comments).toHaveLength(2)
+    expect(saved!.comments.map((c) => c.body).sort()).toEqual([
+      'Make this primary',
+      'Tighten spacing',
+    ])
     expect(saved!.comments[0].target.some((t) => t.id === 'target-btn' || t.tag === 'button')).toBe(
       true,
     )

@@ -115,23 +115,40 @@ test('place a comment, Save → comments.json with target; changelog shows comme
   const input = page.locator('.pixel-comment-input')
   await expect(input).toBeVisible()
   await input.fill('Make this button wider')
-  await page.getByRole('button', { name: 'Done' }).click()
+  await page.getByRole('button', { name: 'Close' }).click()
 
+  // Second pin in the same session — both must land in ONE task on Save.
+  const invite = page.getByRole('button', { name: 'Invite' })
+  const box2 = await invite.boundingBox()
+  if (!box2) throw new Error('no Invite box')
+  await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height / 2)
+  await expect(page.locator('.pixel-comment-input')).toBeVisible()
+  await page.locator('.pixel-comment-input').fill('Invite copy is unclear')
+  await page.getByRole('button', { name: 'Close' }).click()
+
+  await expect(page.locator('.pixel-rec [data-pixel-tour="save"]')).toHaveAttribute(
+    'aria-label',
+    'Save 2 comments',
+  )
   await saveBtn(page).click()
   const id = await waitForCommentTask()
   const payload = JSON.parse(await readFile(join(INBOX_DIR, id, 'comments.json'), 'utf8')) as {
     comments: Array<{ body: string; target: Array<{ tag: string; text?: string }> }>
   }
-  expect(payload.comments).toHaveLength(1)
-  expect(payload.comments[0].body).toBe('Make this button wider')
+  expect(payload.comments).toHaveLength(2)
+  expect(payload.comments.map((c) => c.body).sort()).toEqual([
+    'Invite copy is unclear',
+    'Make this button wider',
+  ])
   expect(payload.comments[0].target.some((t) => t.tag === 'button')).toBe(true)
 
-  // Changelog shows the comment kind icon once the task poll picks it up.
+  // One changelog row for the whole batch, labeled with the count.
   await expect(commentBtn(page)).toBeVisible()
   const taskLog = page.locator('.pixel-rec').getByRole('button', { name: 'Task log' })
   await expect(taskLog).toBeVisible({ timeout: 15_000 })
   await taskLog.click()
   await expect(page.locator('.pixel-tasks-kind.comment')).toBeVisible()
+  await expect(page.locator('.pixel-tasks-id')).toContainText('2 comments')
 })
 
 test('Cancel with pins shows confirm; Discard exits without saving', async ({ page }) => {

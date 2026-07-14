@@ -177,6 +177,17 @@ function formatStamp(t: Task): string {
   return `${d.getDate()}.${d.getMonth() + 1}.${yy} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
+/** Changelog row label: for comment/edit batches, surface the item count so a
+ *  multi-pin Save reads as one batch (e.g. "3 comments") rather than a lone stamp. */
+function formatTaskLabel(t: Task): string {
+  const stamp = formatStamp(t)
+  const n = t.eventCount
+  if (n == null || n < 1) return stamp
+  if (t.kind === 'comment') return n === 1 ? `1 comment · ${stamp}` : `${n} comments · ${stamp}`
+  if (t.kind === 'edit') return n === 1 ? `1 edit · ${stamp}` : `${n} edits · ${stamp}`
+  return stamp
+}
+
 /** Place the popup just outside the bar, on whichever side the bar is docked. */
 function panelAnchor(position: BarPosition): CSSProperties {
   const gap = 10
@@ -547,14 +558,16 @@ function CommentControls() {
   }, [save, cancel])
 
   const n = drafts.filter((d) => d.body.trim()).length
+  const saveLabel =
+    n === 0 ? 'Save comments' : n === 1 ? 'Save 1 comment' : `Save ${n} comments`
 
   return (
     <>
       <button
         type="button"
         className="pixel-rec-btn pixel-rec-save"
-        title="Save comments"
-        aria-label="Save"
+        title={`${saveLabel} — sends every pin to the agent as one batch`}
+        aria-label={saveLabel}
         onClick={() => void save()}
         disabled={saving || n === 0}
         data-pixel-tour="save"
@@ -569,6 +582,7 @@ function CommentControls() {
             strokeLinejoin="round"
           />
         </svg>
+        {n > 0 && <span className="pixel-rec-save-count">{n}</span>}
       </button>
       <button
         type="button"
@@ -829,7 +843,7 @@ function TasksPanel({
               >
                 <span className="pixel-tasks-label">
                   <TaskKindIcon kind={t.kind} />
-                  <span className="pixel-tasks-id">{formatStamp(t)}</span>
+                  <span className="pixel-tasks-id">{formatTaskLabel(t)}</span>
                 </span>
                 <span className={`pixel-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
               </button>

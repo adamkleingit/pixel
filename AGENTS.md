@@ -2,11 +2,27 @@
 
 ## Cursor Cloud specific instructions
 
-Pixel is an npm-workspaces monorepo (Node 22+). The dependency-refresh step (`npm ci`
-and the Playwright Chromium browser) is handled by the Cloud environment's update
-script, so you normally don't need to reinstall anything. The notes below cover the
-non-obvious bits of running/testing the code; standard commands live in the root
-`package.json` scripts and `README.md`.
+Pixel is an npm-workspaces monorepo (Node 22+). The Cloud environment's `install`
+script (`.cursor/scripts/bootstrap.sh`) runs `npm ci`, installs Playwright
+Chromium, builds `@getpixel/ui`, and copies the **`pixel`** and **`stop-pixel`**
+skills into `.claude/skills/`. A **`dev`** terminal starts automatically with
+`npm run dev` (UI watch + ingest server + example app).
+
+### Pixel skill — start watching on every session
+
+This repo is set up to exercise Pixel end-to-end. **At the start of every agent
+session**, follow the **`pixel`** skill (`.claude/skills/pixel/SKILL.md`):
+
+1. Confirm the dev servers are up (the `dev` terminal runs `npm run dev`; example
+   at http://localhost:5280/, ingest server at http://localhost:41889).
+2. Start `npx @getpixel/server watch` **in the background** and enter the watch
+   loop (claim → read → apply edits/recordings → `done` → watch again).
+3. Tell the user how to use Pixel (record with double-tap Space, or edit with the
+   pencil and Save) — the skill has the exact wording.
+
+The user should be able to record, edit, and comment on the example app and have
+you apply those changes in source. Stop only when the user says "stop pixel"
+(`stop-pixel` skill).
 
 ### Workspaces / services
 - `@getpixel/ui` (`packages/ui`) — in-page React SDK, built with `tsup`. The example

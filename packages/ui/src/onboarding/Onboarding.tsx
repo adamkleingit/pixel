@@ -41,8 +41,10 @@ const STAGES: Record<
   },
   recording: {
     cta: 'Got it',
+    // Match bar order: primary actions (Stop / Cancel) first, then tools.
     targets: [
-      { tour: 'stop', text: <>Stop — click here or double-tap <K>Space</K>.</> },
+      { tour: 'stop', text: <>Stop &amp; send — click here or double-tap <K>Space</K>.</> },
+      { tour: 'cancel', text: <>Cancel — <K>X</K> or <K>Esc</K> discards the recording.</> },
       {
         tour: 'mouse',
         text: (
@@ -53,7 +55,6 @@ const STAGES: Record<
         ),
       },
       { tour: 'pause', text: <>Pause / resume — or tap <K>Space</K>.</> },
-      { tour: 'cancel', text: <>Cancel — <K>X</K> or <K>Esc</K>.</> },
     ],
     popup: (
       <>
@@ -73,14 +74,21 @@ const STAGES: Record<
   },
   editing: {
     cta: 'Got it',
-    // Order matters: within each side, callouts stack in this order. `design`
-    // (a full-height pane) is listed last so its bubble sits below the bar-button
-    // callouts (Save / Cancel / Change history) rather than in their middle.
+    // Order matches the bar: Save / Cancel lead, then mouse tool / history;
+    // panes last so their bubbles sit below the primary-action callouts.
     targets: [
-      { tour: 'elements', text: <>Layers — every element on the page.</> },
       { tour: 'save', text: <>Save your edits — or double-tap <K>Enter</K>.</> },
       { tour: 'cancel-edit', text: <>Cancel — <K>X</K> or <K>Esc</K> reverts everything.</> },
+      {
+        tour: 'mouse',
+        text: (
+          <>
+            <K>M</K> toggles the mouse tool — off lets you click through to the app.
+          </>
+        ),
+      },
       { tour: 'history', text: <>Change history — jump between edits.</> },
+      { tour: 'elements', text: <>Layers — every element on the page.</> },
       { tour: 'design', text: <>Design — colors, spacing &amp; type, bound to your design tokens.</> },
     ],
     popup: (
@@ -92,8 +100,9 @@ const STAGES: Record<
   },
   commenting: {
     cta: 'Got it',
+    // Same primary-action-first order as edit / recording.
     targets: [
-      { tour: 'save', text: <>Save — sends every pin to your agent.</> },
+      { tour: 'save', text: <>Save — sends every pin to your agent as one batch.</> },
       { tour: 'cancel-comment', text: <>Cancel — <K>X</K> or <K>Esc</K> discards the pins.</> },
     ],
     popup: (

@@ -685,11 +685,14 @@ html.pixel-commenting body *:not([class*='pixel-']):not(.pixel-overlay *):not([d
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2147483500;
+  padding: 16px;
+  box-sizing: border-box;
+  z-index: 2147483600;
   pointer-events: auto;
 }
 .pixel-confirm {
   width: min(320px, calc(100vw - 32px));
+  max-width: 100%;
   padding: 16px 16px 14px;
   border-radius: 12px;
   background: #241b38;

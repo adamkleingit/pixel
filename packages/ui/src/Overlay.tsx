@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { usePixelContext } from './context'
 import { Blip } from './draw/blip'
@@ -821,13 +829,21 @@ function TasksPanel({
   tasks,
   anchor,
   onOpen,
+  panelRef,
 }: {
   tasks: Task[]
   anchor: CSSProperties
   onOpen: (id: string) => void
+  panelRef?: Ref<HTMLDivElement>
 }) {
   return (
-    <div className="pixel-tasks" style={anchor} role="dialog" aria-label="Changelog">
+    <div
+      ref={panelRef}
+      className="pixel-tasks"
+      style={anchor}
+      role="dialog"
+      aria-label="Changelog"
+    >
       <div className="pixel-tasks-head">Changelog</div>
       {tasks.length === 0 ? (
         <div className="pixel-tasks-empty">Nothing yet.</div>
@@ -882,6 +898,28 @@ function RecBar() {
   const [minimized, setMinimized] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const containRef = useContainEvents<HTMLDivElement>(true) // bar also contains Esc
+  const tasksPanelRef = useRef<HTMLDivElement | null>(null)
+
+  // Entering record / edit / comment closes the changelog — those modes hide
+  // the indicator, and leaving it open under a mode switch is confusing.
+  useEffect(() => {
+    if (!idle || editing || commenting) setPanelOpen(false)
+  }, [idle, editing, commenting])
+
+  // Any click outside the changelog panel (and its toggle) dismisses it.
+  useEffect(() => {
+    if (!panelOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target
+      if (!(t instanceof Node)) return
+      if (tasksPanelRef.current?.contains(t)) return
+      if (t instanceof Element && t.closest('.pixel-rec-tasks')) return
+      setPanelOpen(false)
+    }
+    // Capture so we close even when another layer stops propagation later.
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [panelOpen])
 
   const activeCount = tasks.filter(isActive).length
   // The changelog indicator earns a slot only while **idle** — when there's
@@ -900,7 +938,12 @@ function RecBar() {
   // The popup follows the live server state: the tasks list while connected, the
   // reused error toast (rendered by the caller) while the server is unreachable.
   const tasksPopup = panelOpen && !serverDown && (
-    <TasksPanel tasks={tasks} anchor={panelAnchor(bar.position)} onOpen={openTask} />
+    <TasksPanel
+      tasks={tasks}
+      anchor={panelAnchor(bar.position)}
+      onOpen={openTask}
+      panelRef={tasksPanelRef}
+    />
   )
   const serverDownToast = panelOpen && serverDown && (
     <ErrorToast
@@ -965,15 +1008,18 @@ function RecBar() {
           with no separator between Rec and Edit. */}
       {editing ? (
         <>
+          {/* Primary actions first (Save / Cancel), then tools below. */}
           <span className="pixel-rec-edit-dot" />
           <span className="pixel-rec-time">Editing</span>
           <span className="pixel-rec-sep" />
           <EditControls />
+          <span className="pixel-rec-sep" />
           <MouseToolToggle
             on={!passthrough}
             onToggle={() => setPassthrough(!passthrough)}
             titleOn="Mouse tool ON — select & edit, page inert (M)"
             titleOff="Mouse tool OFF — interact with the app (M)"
+            tour="mouse"
           />
         </>
       ) : commenting ? (
@@ -999,42 +1045,43 @@ function RecBar() {
               Rec
             </button>
           ) : (
-            <button
-              type="button"
-              className="pixel-rec-record"
-              title="Stop (double-tap Space)"
-              aria-label="Stop"
-              onClick={() => void stop()}
-              data-pixel-tour="stop"
-            >
-              <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
-                <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
-              </svg>
-              <span className="pixel-rec-time">
-                {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
-              </span>
-            </button>
+            // Recording: Stop (finish/save) + Cancel lead; mouse tool + pause
+            // sit in the tools section below.
+            <>
+              <button
+                type="button"
+                className="pixel-rec-record"
+                title="Stop (double-tap Space)"
+                aria-label="Stop"
+                onClick={() => void stop()}
+                data-pixel-tour="stop"
+              >
+                <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
+                  <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
+                </svg>
+                <span className="pixel-rec-time">
+                  {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
+                </span>
+              </button>
+              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke tour="cancel" />
+              <span className="pixel-rec-sep" />
+              <MouseToolToggle
+                on={!passthrough}
+                onToggle={() => setPassthrough(!passthrough)}
+                tour="mouse"
+              />
+              {recording ? (
+                <IconButton icon="pause" label="Pause (Space)" onClick={pause} tour="pause" />
+              ) : (
+                <IconButton icon="resume" label="Resume (Space)" onClick={resume} tour="pause" />
+              )}
+            </>
           )}
 
           {/* No separator between Rec and Edit — tools sit as one group. */}
           {idle && <EditToggle on={false} onToggle={toggleEdit} />}
           {idle && <CommentToggle on={false} onToggle={toggleComment} />}
           {idle && <TimeTravelToggle on={timeTravel} onToggle={toggleTimeTravel} />}
-          {!idle && (
-            <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} tour="mouse" />
-          )}
-
-          {!idle && (
-            <>
-              <span className="pixel-rec-sep" />
-              {recording ? (
-                <IconButton icon="pause" label="Pause (Space)" onClick={pause} tour="pause" />
-              ) : (
-                <IconButton icon="resume" label="Resume (Space)" onClick={resume} tour="pause" />
-              )}
-              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke tour="cancel" />
-            </>
-          )}
         </>
       )}
 

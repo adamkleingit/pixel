@@ -436,13 +436,18 @@ function EditControls() {
     return () => setEditActionHandlers(null)
   }, [save, cancel])
 
+  // Count of applied edits that Save will send (one per history entry / gesture).
+  const n = history.batch.length
+  const saveLabel =
+    n === 0 ? 'Save' : n === 1 ? 'Save 1 edit' : `Save ${n} edits`
+
   return (
     <>
       <button
         type="button"
         className="pixel-rec-btn pixel-rec-save"
-        title="Save (double-tap Enter)"
-        aria-label="Save"
+        title={`${saveLabel} (double-tap Enter)`}
+        aria-label={saveLabel}
         onClick={() => void save()}
         disabled={saving}
         data-pixel-tour="save"
@@ -457,6 +462,7 @@ function EditControls() {
             strokeLinejoin="round"
           />
         </svg>
+        {n > 0 && <span className="pixel-rec-save-count">{n}</span>}
       </button>
       <button
         type="button"

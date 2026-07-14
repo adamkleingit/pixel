@@ -521,7 +521,10 @@ test('Cancel: Esc reverts all edits and exits', async ({ page }) => {
   await selectExact(upgrade(page))
   await opacityField(page).fill('10')
   await expect.poll(() => styleOf(upgrade(page), 'opacity')).toBe('0.1')
-  // Esc #1 clears the selection; Esc #2 opens the discard confirm (dirty history).
+  // Blur so the debounced design-pane edit commits into history, then Esc #1
+  // clears selection and Esc #2 opens the discard confirm.
+  await page.locator('.pixel-rec').click()
+  await page.waitForTimeout(400)
   await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('alertdialog')).toBeVisible()

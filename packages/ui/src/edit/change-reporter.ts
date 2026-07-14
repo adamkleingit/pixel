@@ -145,6 +145,14 @@ export function drainPendingChanges(): EditChange[] {
   return out
 }
 
+/** True when a debounced edit still differs from its pre-gesture value. */
+export function hasPendingChanges(): boolean {
+  for (const p of pending.values()) {
+    if (readValue(p.target, p.kind, p.name) !== p.before) return true
+  }
+  return false
+}
+
 /**
  * Revert every open (debounced) session to its pre-gesture value and drop them —
  * for **Cancel**, so an edit made inside the debounce window is undone like any

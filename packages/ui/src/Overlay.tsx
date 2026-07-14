@@ -11,7 +11,7 @@ import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
 import { EditHistoryProvider, useEditHistory, type EditEntry } from './edit/edit-history'
 import { setEditActionHandlers } from './edit/edit-actions'
-import { drainPendingChanges } from './edit/change-reporter'
+import { drainPendingChanges, hasPendingChanges } from './edit/change-reporter'
 import { buildEditPayload } from './edit/edit-payload'
 import { TokensProvider } from './tokens-context'
 import { Onboarding } from './onboarding/Onboarding'
@@ -403,8 +403,8 @@ function EditControls() {
   }, [history, exitEdit])
 
   const cancel = useCallback(() => {
-    // Confirm only when there's something to lose.
-    if (history.batch.length > 0 || history.canUndo) {
+    // Confirm only when there's something to lose (committed or still debouncing).
+    if (history.batch.length > 0 || history.canUndo || hasPendingChanges()) {
       setConfirmOpen(true)
       return
     }

@@ -120,6 +120,46 @@ export class Store {
 
     return { id, path: dest, changeCount: changes.length }
   }
+
+  /**
+   * Persist a batch of comments (comment-mode "Save") into the same dropbox
+   * recordings/edits use. Brief is `comments.json`; `timeline.json` marks ready.
+   */
+  async saveComments(payload: CommentSaveInput): Promise<SaveCommentsResult> {
+    const id = this.newId()
+    const tmpDir = join(this.root, 'tmp', id)
+    await mkdir(tmpDir, { recursive: true })
+
+    const comments = Array.isArray(payload.comments) ? payload.comments : []
+    const createdAt = Date.now()
+    const metaOut = {
+      id,
+      kind: 'comment' as const,
+      url: payload.url ?? null,
+      eventCount: comments.length,
+      commentCount: comments.length,
+      createdAt,
+    }
+    const commentsOut = {
+      url: payload.url ?? null,
+      createdAt: payload.createdAt ?? createdAt,
+      comments,
+    }
+
+    await writeFile(join(tmpDir, 'meta.json'), JSON.stringify(metaOut, null, 2))
+    await writeFile(join(tmpDir, 'comments.json'), JSON.stringify(commentsOut, null, 2))
+    await writeFile(
+      join(tmpDir, 'timeline.json'),
+      JSON.stringify({ kind: 'comment', commentCount: comments.length, createdAt }, null, 2),
+    )
+
+    const inboxDir = join(this.root, 'inbox')
+    await mkdir(inboxDir, { recursive: true })
+    const dest = join(inboxDir, id)
+    await rename(tmpDir, dest)
+
+    return { id, path: dest, commentCount: comments.length }
+  }
 }
 
 export interface EditSaveInput {
@@ -132,4 +172,16 @@ export interface SaveEditsResult {
   id: string
   path: string
   changeCount: number
+}
+
+export interface CommentSaveInput {
+  url?: string
+  createdAt?: number
+  comments?: unknown[]
+}
+
+export interface SaveCommentsResult {
+  id: string
+  path: string
+  commentCount: number
 }

@@ -275,14 +275,25 @@ enter **edit mode**: select elements on the page and move / resize / restyle /
 retype them directly on the live DOM, with a Figma-style design pane (its
 color/spacing/radius pickers and drag-snap are bound to the project's real design
 tokens). **Save** (the disk button, or double-tap **Enter**) sends the batch to
-the server as an `/edits` task; **Cancel** (X, or **Esc**) reverts and exits.
-Saved edits land in the dropbox alongside recordings, and the agent applies them
-to source — preferring the **symbolic token form** (e.g. `bg-primary`,
-`var(--brand-coral)`) over a raw value when a change was bound to a design token.
+the server as an `/edits` task; **Cancel** (X, or **Esc**) asks for confirmation
+when there are unsaved edits, then reverts and exits. Saved edits land in the
+dropbox alongside recordings, and the agent applies them to source — preferring
+the **symbolic token form** (e.g. `bg-primary`, `var(--brand-coral)`) over a raw
+value when a change was bound to a design token.
+
+## Comments — pin notes for the agent
+
+Click the **speech-bubble** icon in the bar (just below the pencil) to enter
+**comment mode**. Click anywhere on the page to drop a pin, type a note, and
+edit or delete pins before **Save**. Each pin carries the same DOM element
+`target` chain as a recording click. **Save** posts the batch to `/comments`
+(`comments.json` in the dropbox); **Cancel** confirms when pins exist, then
+discards. Recording, edit, and comment modes are mutually exclusive — while one
+is active the other tools are hidden.
 
 ## Time travel — state history (pixel-react)
 
-Click the **rewind-clock** icon in the bar (just below the Edit pencil) to open
+Click the **rewind-clock** icon in the bar (just below Comment) to open
 the **States** pane — a right-docked, expand/collapse panel (like the design
 pane) that lists every captured app-state commit as a timestamp. Click a
 timestamp, or step with the **‹ ›** chevrons, to **freeze** the live app to that

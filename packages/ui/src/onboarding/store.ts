@@ -2,7 +2,7 @@
 // once and then "removed forever". One boolean per stage; a stage flips true when
 // the user dismisses it (or when it's skipped because its targets never appear).
 
-export type OnbStage = 'welcome' | 'recording' | 'postRecording' | 'editing'
+export type OnbStage = 'welcome' | 'recording' | 'postRecording' | 'editing' | 'commenting'
 
 export type OnbFlags = Record<OnbStage, boolean>
 
@@ -13,6 +13,7 @@ const DEFAULT: OnbFlags = {
   recording: false,
   postRecording: false,
   editing: false,
+  commenting: false,
 }
 
 /** Read the persisted flags, tolerating absent/corrupt storage (→ all false). */

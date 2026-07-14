@@ -171,5 +171,24 @@ describe('dropbox', () => {
         '20260613-100030-000-done3',
       ])
     })
+
+    it('maps on-disk kind edit/comment onto Task.kind', async () => {
+      const editDir = join(root, 'inbox', '20260613-130000-000-editxx')
+      await mkdir(editDir, { recursive: true })
+      await writeFile(join(editDir, 'timeline.json'), '{}')
+      await writeFile(join(editDir, 'meta.json'), JSON.stringify({ kind: 'edit', eventCount: 2 }))
+
+      const commentDir = join(root, 'inbox', '20260613-140000-000-commxx')
+      await mkdir(commentDir, { recursive: true })
+      await writeFile(join(commentDir, 'timeline.json'), '{}')
+      await writeFile(join(commentDir, 'meta.json'), JSON.stringify({ kind: 'comment', eventCount: 3 }))
+
+      await seed(root, '20260613-120000-000-recxxx') // no kind → recording
+
+      const byId = Object.fromEntries(listTasks(root).map((t) => [t.id, t]))
+      expect(byId['20260613-130000-000-editxx'].kind).toBe('edit')
+      expect(byId['20260613-140000-000-commxx'].kind).toBe('comment')
+      expect(byId['20260613-120000-000-recxxx'].kind).toBe('recording')
+    })
   })
 })

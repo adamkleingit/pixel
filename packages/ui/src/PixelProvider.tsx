@@ -20,6 +20,7 @@ import { freezeTo, restoreLive } from './pixel-react/control'
 import { installKeyboard } from './capture/keys'
 import { describeElementChain } from './capture/hittest'
 import { requestEditCancel, requestEditSave } from './edit/edit-actions'
+import { requestCommentCancel } from './comments/comment-actions'
 import { setHmrSessionActive } from './hmr-guard'
 import { captureFullFrame, captureRegion, captureStroke } from './capture/snapshot'
 import { Recorder } from './recorder'
@@ -34,7 +35,15 @@ import { installConsoleCapture } from './bug-report'
 import type { BlipData } from './draw/blip'
 import { eventInInlineEdit, eventInOwnUI } from './own-ui'
 import type { Token } from './pixel-common'
-import type { EditPayload, Recording, PixelConfig, PixelState, StrokePoint, Task } from './types'
+import type {
+  CommentPayload,
+  EditPayload,
+  Recording,
+  PixelConfig,
+  PixelState,
+  StrokePoint,
+  Task,
+} from './types'
 
 /** Movement (px) past which a pointer gesture is a drag-rectangle, not a click. */
 const DRAG_THRESHOLD = 6
@@ -157,12 +166,15 @@ export function PixelProvider({
   // and both belong to one session. v1 just owns the flag + entry/exit; the
   // edit engine and combined Save batch land in later steps.
   const [editing, setEditing] = useState(false)
+  const [commenting, setCommenting] = useState(false)
 
   // Live state mirror so stable callbacks and the key listener read current state.
   const stateRef = useRef(state)
   stateRef.current = state
   const editingRef = useRef(editing)
   editingRef.current = editing
+  const commentingRef = useRef(commenting)
+  commentingRef.current = commenting
 
   // Keep the latest config/callbacks in refs so the stable `toggle` closure and
   // the double-tap listener always see current values.
@@ -339,6 +351,25 @@ export function PixelProvider({
     }
   }, [])
 
+  const saveComments = useCallback(async (payload: CommentPayload): Promise<{ id: string }> => {
+    const sink = configRef.current.sink
+    if (!sink?.saveComments) {
+      throw new Error('No sink configured to save comments.')
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      return await sink.saveComments(payload)
+    } catch (err) {
+      const message = "Couldn't save your comments — is the Pixel server running?"
+      setSaveError(message)
+      console.error('[pixel] failed to save comments:', err)
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
   /** Ask the sink (server) to open a recording's folder in the OS file manager. */
   const openTask = useCallback((id: string) => {
     configRef.current.sink?.openTask?.(id)?.catch(() => {
@@ -349,7 +380,10 @@ export function PixelProvider({
   const start = useCallback(async () => {
     // The recorderRef guard also prevents a double-start right after adoption:
     // an adopted provider already holds the in-flight recorder.
+    // Recording / edit / comment are mutually exclusive — refuse to start while
+    // another mode is active (those tools are also hidden from the bar).
     if (!enabledRef.current || recorderRef.current) return
+    if (editingRef.current || commentingRef.current) return
     const cfg = configRef.current
     const recorder = new Recorder({ pointerHz: cfg.pointerHz })
     recorderRef.current = recorder
@@ -441,9 +475,11 @@ export function PixelProvider({
   }, [start, stop])
 
   // Entering edit is gated on `isEnabled` so a disabled SDK stays fully inert;
-  // exiting is always allowed (turning the session off is safe).
+  // exiting is always allowed (turning the session off is safe). Mutually
+  // exclusive with recording + comment mode.
   const enterEdit = useCallback(() => {
     if (!enabledRef.current) return
+    if (stateRef.current !== 'idle' || commentingRef.current) return
     setPassthrough(false) // start in select mode (mouse tool on), not passthrough
     setEditing(true)
   }, [setPassthrough])
@@ -457,12 +493,34 @@ export function PixelProvider({
   }, [])
   const toggleEdit = useCallback(() => {
     if (!enabledRef.current) return
-    if (!editingRef.current) setPassthrough(false) // entering edit → select mode
-    setEditing((e) => {
-      // Exiting edit via the toggle also resumes live if we were time-traveling.
-      if (e) resumeAfterEditRef.current()
-      return !e
-    })
+    if (editingRef.current) {
+      setEditing(false)
+      resumeAfterEditRef.current()
+      return
+    }
+    if (stateRef.current !== 'idle' || commentingRef.current) return
+    setPassthrough(false) // entering edit → select mode
+    setEditing(true)
+  }, [setPassthrough])
+
+  const enterComment = useCallback(() => {
+    if (!enabledRef.current) return
+    if (stateRef.current !== 'idle' || editingRef.current) return
+    setPassthrough(false)
+    setCommenting(true)
+  }, [setPassthrough])
+  const exitComment = useCallback(() => {
+    setCommenting(false)
+  }, [])
+  const toggleComment = useCallback(() => {
+    if (!enabledRef.current) return
+    if (commentingRef.current) {
+      setCommenting(false)
+      return
+    }
+    if (stateRef.current !== 'idle' || editingRef.current) return
+    setPassthrough(false)
+    setCommenting(true)
   }, [setPassthrough])
 
   // --- Time travel (pixel-react state history) -----------------------------
@@ -528,15 +586,15 @@ export function PixelProvider({
     })
   }, [cancelTimeTravel])
 
-  // Hold back dev-server HMR while a session (editing OR recording/paused) is
-  // live, so a rebuild can't wipe in-progress edits or reset the recording
+  // Hold back dev-server HMR while a session (editing / commenting / recording)
+  // is live, so a rebuild can't wipe in-progress work or reset the recording
   // clock. Deferred updates are applied as one reload the moment the gate
   // closes. Requires the host to have wired `installHmrGuard(import.meta.hot)`;
   // otherwise this just toggles an unread flag. The unmount cleanup (separate
   // effect) releases the gate so HMR resumes if the provider goes away.
   useEffect(() => {
-    setHmrSessionActive(editing || state !== 'idle')
-  }, [editing, state])
+    setHmrSessionActive(editing || commenting || state !== 'idle')
+  }, [editing, commenting, state])
   useEffect(() => () => setHmrSessionActive(false), [])
 
   const removeBlip = useCallback((id: number) => {
@@ -559,17 +617,19 @@ export function PixelProvider({
         if (stateRef.current === 'recording') pause()
         else if (stateRef.current === 'paused') resume()
       },
-      // Esc while editing → Cancel (discard + exit); the Selection layer handles
-      // the first Esc (clear selection) and stops propagation, so this fires only
-      // once nothing is selected. Otherwise Esc cancels a recording.
+      // Esc while editing/commenting → Cancel (discard + exit); the Selection
+      // layer handles the first Esc (clear selection) and stops propagation, so
+      // this fires only once nothing is selected. Otherwise Esc cancels a recording.
       onEscape: () => {
         if (editingRef.current) requestEditCancel()
+        else if (commentingRef.current) requestCommentCancel()
         else if (stateRef.current !== 'idle') cancel()
       },
-      // Double-Enter enters edit mode when not editing; once editing, it Saves.
+      // Double-Enter enters edit mode when idle (and not commenting); once
+      // editing, it Saves. Blocked while commenting (modes are exclusive).
       onEditDouble: () => {
         if (editingRef.current) requestEditSave()
-        else enterEdit()
+        else if (!commentingRef.current) enterEdit()
       },
     })
   }, [isEnabled, config.activation, start, stop, pause, resume, cancel, enterEdit])
@@ -809,6 +869,31 @@ export function PixelProvider({
     }
   }, [editing, state, passthrough, setPassthrough])
 
+  // Comment-mode input gate: inert the page so clicks place pins (CommentLayer)
+  // instead of activating the app. `click` is still swallowed for activation;
+  // CommentLayer's own window-capture listener still runs (same target).
+  useEffect(() => {
+    if (!commenting) return
+
+    const pageMouseEvents = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'contextmenu']
+    const swallow = (e: Event) => {
+      if (eventInOwnUI(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    if (!passthrough) {
+      for (const t of pageMouseEvents) window.addEventListener(t, swallow, true)
+      const active = document.activeElement as HTMLElement | null
+      if (active && !active.closest('.pixel-overlay') && !active.closest('[data-pixel-ui]')) {
+        active.blur?.()
+      }
+    }
+
+    return () => {
+      for (const t of pageMouseEvents) window.removeEventListener(t, swallow, true)
+    }
+  }, [commenting, passthrough])
+
   const bar = useMemo<ResolvedBarConfig>(
     () => ({
       always: config.bar?.always ?? false,
@@ -832,6 +917,11 @@ export function PixelProvider({
       exitEdit,
       toggleEdit,
       saveEdits,
+      commenting,
+      enterComment,
+      exitComment,
+      toggleComment,
+      saveComments,
       passthrough,
       setPassthrough,
       bar,
@@ -861,7 +951,52 @@ export function PixelProvider({
       stepStateForward,
       cancelTimeTravel,
     }),
-    [state, start, stop, pause, resume, cancel, toggle, editing, enterEdit, exitEdit, toggleEdit, saveEdits, passthrough, bar, lastRecording, saveError, saving, resend, tasks, serverDown, openTask, designTokens, config.bugReport, config.onboarding, blips, removeBlip, dragRect, rectFlashes, removeRectFlash, drawStroke, drawStrokes, timeTravel, toggleTimeTravel, stateFrames, frozenIndex, gotoState, stepStateBack, stepStateForward, cancelTimeTravel],
+    [
+      state,
+      start,
+      stop,
+      pause,
+      resume,
+      cancel,
+      toggle,
+      editing,
+      enterEdit,
+      exitEdit,
+      toggleEdit,
+      saveEdits,
+      commenting,
+      enterComment,
+      exitComment,
+      toggleComment,
+      saveComments,
+      passthrough,
+      bar,
+      lastRecording,
+      saveError,
+      saving,
+      resend,
+      tasks,
+      serverDown,
+      openTask,
+      designTokens,
+      config.bugReport,
+      config.onboarding,
+      blips,
+      removeBlip,
+      dragRect,
+      rectFlashes,
+      removeRectFlash,
+      drawStroke,
+      drawStrokes,
+      timeTravel,
+      toggleTimeTravel,
+      stateFrames,
+      frozenIndex,
+      gotoState,
+      stepStateBack,
+      stepStateForward,
+      cancelTimeTravel,
+    ],
   )
 
   return <PixelContext.Provider value={value}>{children}</PixelContext.Provider>

@@ -1,5 +1,5 @@
 import type { Token } from '../pixel-common'
-import type { EditPayload, Recording, RecordingSink, Task } from '../types'
+import type { CommentPayload, EditPayload, Recording, RecordingSink, Task } from '../types'
 
 export const DEFAULT_SERVER_URL = 'http://localhost:41789'
 
@@ -82,6 +82,17 @@ export function httpSink(
     },
     async saveEdits(payload: EditPayload): Promise<{ id: string }> {
       const res = await fetch(`${root}/edits`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        throw new Error(`pixel server responded ${res.status}`)
+      }
+      return (await res.json()) as { id: string }
+    },
+    async saveComments(payload: CommentPayload): Promise<{ id: string }> {
+      const res = await fetch(`${root}/comments`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),

@@ -35,6 +35,7 @@ const STAGES: Record<
     targets: [
       { tour: 'record', text: <>Record what you want — click here or double-tap <K>Space</K>.</> },
       { tour: 'edit', text: <>Edit your UI directly — click here or double-tap <K>Enter</K>.</> },
+      { tour: 'comment', text: <>Comment — pin notes on anything for your agent.</> },
       { tour: 'time-travel', text: <>Time-travel between your app’s states.</> },
     ],
   },
@@ -66,7 +67,7 @@ const STAGES: Record<
     targets: [
       {
         tour: 'changelog',
-        text: <>Your recordings &amp; edits show up here — track their status in the changelog.</>,
+        text: <>Your recordings, edits &amp; comments show up here — track their status in the changelog.</>,
       },
     ],
   },
@@ -86,6 +87,19 @@ const STAGES: Record<
       <>
         Select with <strong>click, double-click, or ⌘-click</strong>. It works just like
         Figma — modifier keys, multi-select, and undo/redo (<K>⌘Z</K> / <K>⇧⌘Z</K>).
+      </>
+    ),
+  },
+  commenting: {
+    cta: 'Got it',
+    targets: [
+      { tour: 'save', text: <>Save — sends every pin to your agent.</> },
+      { tour: 'cancel-comment', text: <>Cancel — <K>X</K> or <K>Esc</K> discards the pins.</> },
+    ],
+    popup: (
+      <>
+        Click anywhere to <strong>drop a comment pin</strong>. Edit or delete pins before
+        you Save.
       </>
     ),
   },
@@ -233,15 +247,40 @@ function TourLayer({
     }
     setPositions((prev) => (posSig(prev) === posSig(out) ? prev : out))
 
-    // Center the CTA under the tooltip column. Keep it fully on screen: place it
-    // just below the group, but if there's no room (a tall column near the bottom
-    // edge) flip it just above the group instead, so the button is never clipped.
+    // Place the CTA under the *dominant* tip column (the side with more tips),
+    // not the bounding box of both sides. Averaging left+right when Elements
+    // (left pane) and Design/bar (right) both have tips parks "Got it" in the
+    // middle of the page — away from the wizard bubbles.
     const CTA_H = 40
     let cta: { left: number; top: number } | null = null
     if (items.length) {
-      let top = box.bottom + 12
-      if (top + CTA_H + 12 > vh) top = Math.max(12, box.top - CTA_H - 12)
-      cta = { left: Math.max(64, Math.min(vw - 64, (box.left + box.right) / 2)), top }
+      const leftCount = items.filter((i) => i.side === 'left').length
+      const rightCount = items.filter((i) => i.side === 'right').length
+      const dominant: 'left' | 'right' = rightCount >= leftCount ? 'right' : 'left'
+      let sLeft = Infinity
+      let sRight = -Infinity
+      let sTop = Infinity
+      let sBottom = -Infinity
+      for (const it of items.filter((i) => i.side === dominant)) {
+        const p = out[it.tour]
+        if (!p) continue
+        const w = tipRefs.current[it.tour]?.offsetWidth ?? 220
+        const leftEdge = p.left ?? vw - (p.right ?? 0) - w
+        const rightEdge = p.left != null ? p.left + w : vw - (p.right ?? 0)
+        sLeft = Math.min(sLeft, leftEdge)
+        sRight = Math.max(sRight, rightEdge)
+        sTop = Math.min(sTop, p.top)
+        sBottom = Math.max(sBottom, p.top + it.h)
+      }
+      if (Number.isFinite(sLeft)) {
+        let top = sBottom + 12
+        if (top + CTA_H + 12 > vh) top = Math.max(12, sTop - CTA_H - 12)
+        cta = { left: Math.max(64, Math.min(vw - 64, (sLeft + sRight) / 2)), top }
+      } else {
+        let top = box.bottom + 12
+        if (top + CTA_H + 12 > vh) top = Math.max(12, box.top - CTA_H - 12)
+        cta = { left: Math.max(64, Math.min(vw - 64, (box.left + box.right) / 2)), top }
+      }
     }
     setCtaPos((prev) =>
       prev && cta && Math.round(prev.left) === Math.round(cta.left) && Math.round(prev.top) === Math.round(cta.top)
@@ -329,7 +368,7 @@ function OnbPopup({ text, cta, onDismiss }: { text: ReactNode; cta: string; onDi
  * or every stage is done.
  */
 export function Onboarding() {
-  const { state, editing, onboarding } = usePixelContext()
+  const { state, editing, commenting, onboarding } = usePixelContext()
   const [flags, setFlags] = useState<OnbFlags>(() => readFlags())
   const [justRecorded, setJustRecorded] = useState(false)
   const prevState = useRef(state)
@@ -347,13 +386,20 @@ export function Onboarding() {
     ? null
     : editing && !flags.editing
       ? 'editing'
-      : recording && !flags.recording
-        ? 'recording'
-        : idle && justRecorded && !flags.postRecording
-          ? 'postRecording'
-          : idle && !flags.welcome && !flags.recording && !flags.editing && !flags.postRecording
-            ? 'welcome'
-            : null
+      : commenting && !flags.commenting
+        ? 'commenting'
+        : recording && !flags.recording
+          ? 'recording'
+          : idle && justRecorded && !flags.postRecording
+            ? 'postRecording'
+            : idle &&
+                !flags.welcome &&
+                !flags.recording &&
+                !flags.editing &&
+                !flags.commenting &&
+                !flags.postRecording
+              ? 'welcome'
+              : null
 
   const [phase, setPhase] = useState<'labels' | 'popup'>('labels')
   // Reset to the labels phase whenever the active stage changes.

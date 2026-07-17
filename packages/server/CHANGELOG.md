@@ -1,5 +1,11 @@
 # @getpixel/server
 
+## 0.3.0
+
+### Minor Changes
+
+- 95c8dfc: Add comment mode: pin notes on the page, Save as `comments.json` for the agent, with cancel confirms and changelog icon.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@getpixel/ui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "In-page React SDK for recording a point-and-narrate session (audio + clicks + drag regions).",
   "license": "MIT",
   "repository": {

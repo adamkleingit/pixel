@@ -28,4 +28,8 @@ export type {
   RecordingSink,
   Task,
   TaskStatus,
+  EditPayload,
+  EditChangeRecord,
+  CommentPayload,
+  CommentRecord,
 } from './types'

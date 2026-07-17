@@ -51,5 +51,8 @@ export default defineConfig({
     // Offset from main's 5180 so the worktree example can run in parallel.
     port: 5280,
     fs: { allow: [workspaceRoot] },
+    // Allow Cloudflare/localtunnel hostnames when the example is previewed
+    // through a public tunnel (or a Codespaces forwarded URL).
+    allowedHosts: true,
   },
 })

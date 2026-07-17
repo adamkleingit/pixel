@@ -284,6 +284,20 @@ function startServer(): void {
     }
   })
 
+  // Comment-mode "Save": a JSON batch of pins. Same dropbox / claim pipeline;
+  // the brief is comments.json.
+  app.post('/comments', async (req, res) => {
+    try {
+      const payload = (req.body ?? {}) as { url?: string; createdAt?: number; comments?: unknown[] }
+      const { id, path, commentCount } = await store.saveComments(payload)
+      console.log(`[pixel] saved comments ${id} — ${commentCount} comments → ${path}`)
+      res.json({ id })
+    } catch (err) {
+      console.error('[pixel] save comments failed:', err)
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
   const server = app.listen(PORT, () => {
     console.log(`@getpixel/server listening on http://localhost:${PORT}`)
     console.log(`  recordings → ${join(ROOT, 'inbox')}`)

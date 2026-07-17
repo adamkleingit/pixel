@@ -120,8 +120,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
-  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
-  kind?: 'recording' | 'edit'
+  /** What produced the task: a screen `recording`, a saved `edit` batch, or comments. */
+  kind?: 'recording' | 'edit' | 'comment'
   createdAt?: number
   durationMs?: number
   eventCount?: number
@@ -158,6 +158,24 @@ export interface EditPayload {
   changes: EditChangeRecord[]
 }
 
+/** One pin left in comment mode, serialized for the agent. */
+export interface CommentRecord {
+  /** DOM ancestor chain (outermost → innermost) — same shape as a recording click. */
+  target: ElementInfo[]
+  /** The note the user typed. */
+  body: string
+  /** Click position in client coordinates (where the pin was placed). */
+  x: number
+  y: number
+}
+
+/** A saved batch of comments — the "Save" analog of a Recording / EditPayload. */
+export interface CommentPayload {
+  url: string
+  createdAt: number
+  comments: CommentRecord[]
+}
+
 /** Where a finished recording is sent. The default is an HTTP sink (see `httpSink`). */
 export interface RecordingSink {
   save(rec: Recording): Promise<{ id: string }>
@@ -167,6 +185,11 @@ export interface RecordingSink {
    * exactly like a recording. Omit to disable saving edits.
    */
   saveEdits?(payload: EditPayload): Promise<{ id: string }>
+  /**
+   * Optional: persist a batch of comments from comment mode. Written to the same
+   * dropbox the agent watches (`comments.json`). Omit to disable saving comments.
+   */
+  saveComments?(payload: CommentPayload): Promise<{ id: string }>
   /**
    * Optional: list the recordings the server currently knows about, for the
    * floating-bar status indicator. The provider polls this when present; a

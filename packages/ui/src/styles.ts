@@ -151,9 +151,31 @@ const CSS = `
   background: #3b82f6;
   box-shadow: 0 0 8px #3b82f6;
 }
+.pixel-rec .pixel-rec-comment-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
 /* Save (diskette) tinted green to read as the primary/confirm action. */
 .pixel-rec .pixel-rec-save {
+  position: relative;
   color: #4ade80;
+}
+.pixel-rec .pixel-rec-save-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #16a34a;
+  color: #fff;
+  font: 700 9px/14px system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
 }
 .pixel-rec .pixel-rec-time {
   min-width: 58px;
@@ -289,6 +311,7 @@ const CSS = `
 }
 .pixel-tasks-kind.recording { color: #c4b5fd; }
 .pixel-tasks-kind.edit { color: #f0abfc; }
+.pixel-tasks-kind.comment { color: #fbbf24; }
 .pixel-tasks-id {
   font: 500 11px ui-monospace, monospace;
   color: #e9d5ff;
@@ -564,6 +587,150 @@ html.pixel-editing body *:not([class*='pixel-']):not(.pixel-overlay *):not([data
   cursor: default !important;
   user-select: none !important;
   -webkit-user-select: none !important;
+}
+/* Comment mode: comment cursor over the page; leave Pixel chrome alone. */
+html.pixel-commenting body *:not([class*='pixel-']):not(.pixel-overlay *):not([data-pixel-ui]):not([data-pixel-ui] *) {
+  cursor: cell !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.pixel-comments {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483015;
+}
+.pixel-comment-pin {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font: 700 11px/18px system-ui, sans-serif;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 2147483016;
+}
+.pixel-comment-pin.open,
+.pixel-comment-pin.filled {
+  background: #d97706;
+}
+.pixel-comment-composer {
+  position: fixed;
+  width: 240px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #1f152e;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  z-index: 2147483017;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pixel-comment-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 64px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f8fafc;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+.pixel-comment-input:focus {
+  outline: 1px solid #f59e0b;
+  border-color: #f59e0b;
+}
+.pixel-comment-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.pixel-comment-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 7px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+.pixel-comment-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+.pixel-comment-btn.danger {
+  background: transparent;
+  color: #fca5a5;
+  border: 1px solid rgba(252, 165, 165, 0.35);
+}
+.pixel-comment-hint {
+  margin: 0;
+  font: 11px/1.35 system-ui, sans-serif;
+  color: #c4b5a0;
+}
+.pixel-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 8, 18, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  z-index: 2147483600;
+  pointer-events: auto;
+}
+.pixel-confirm {
+  width: min(320px, calc(100vw - 32px));
+  max-width: 100%;
+  padding: 16px 16px 14px;
+  border-radius: 12px;
+  background: #241b38;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  color: #f4f1fb;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.pixel-confirm-title {
+  font-size: 14px;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+.pixel-confirm-msg {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #d6d0e6;
+  margin-bottom: 14px;
+}
+.pixel-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pixel-confirm-btn {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: none;
+  font: 600 12.5px system-ui, sans-serif;
+  cursor: pointer;
+}
+.pixel-confirm-btn.keep {
+  background: rgba(255, 255, 255, 0.08);
+  color: #efeaff;
+}
+.pixel-confirm-btn.discard {
+  background: #ef4444;
+  color: #fff;
 }
 html.pixel-editing [data-pixel-editing],
 html.pixel-editing [data-pixel-editing] * {

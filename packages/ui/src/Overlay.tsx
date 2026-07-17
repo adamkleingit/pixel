@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { usePixelContext } from './context'
 import { Blip } from './draw/blip'
@@ -11,12 +19,19 @@ import { Selection } from './Selection'
 import { SelectionProvider } from './selection/selection-store'
 import { EditHistoryProvider, useEditHistory, type EditEntry } from './edit/edit-history'
 import { setEditActionHandlers } from './edit/edit-actions'
-import { drainPendingChanges } from './edit/change-reporter'
+import { drainPendingChanges, hasPendingChanges } from './edit/change-reporter'
 import { buildEditPayload } from './edit/edit-payload'
 import { TokensProvider } from './tokens-context'
 import { Onboarding } from './onboarding/Onboarding'
 import { useContainEvents } from './useContainEvents'
 import { startBugRecording, uploadBugReport, type BugRecording } from './bug-report'
+import { ConfirmDialog } from './comments/ConfirmDialog'
+import {
+  CommentLayer,
+  draftsToPayload,
+  type CommentDraft,
+} from './comments/CommentLayer'
+import { setCommentActionHandlers } from './comments/comment-actions'
 import type { BarPosition, Task, TaskStatus } from './types'
 
 export interface OverlayProps {
@@ -55,6 +70,8 @@ const ICONS = {
   // Undo / redo: arrowhead + a curved arc back the other way.
   undo: 'M9 6 L4 11 L9 16 M4 11 H13 A5 5 0 1 1 13 21 H9',
   redo: 'M15 6 L20 11 L15 16 M20 11 H11 A5 5 0 1 0 11 21 H15',
+  // Speech-bubble comment tool (and changelog kind glyph).
+  comment: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   // Bug (Lucide "bug"): body + legs + antennae.
   bug: 'm8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4',
   check: 'M5 12l5 5L20 7',
@@ -166,6 +183,17 @@ function formatStamp(t: Task): string {
   const p = (n: number) => String(n).padStart(2, '0')
   const yy = String(d.getFullYear()).slice(2)
   return `${d.getDate()}.${d.getMonth() + 1}.${yy} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+/** Changelog row label: for comment/edit batches, surface the item count so a
+ *  multi-pin Save reads as one batch (e.g. "3 comments") rather than a lone stamp. */
+function formatTaskLabel(t: Task): string {
+  const stamp = formatStamp(t)
+  const n = t.eventCount
+  if (n == null || n < 1) return stamp
+  if (t.kind === 'comment') return n === 1 ? `1 comment · ${stamp}` : `${n} comments · ${stamp}`
+  if (t.kind === 'edit') return n === 1 ? `1 edit · ${stamp}` : `${n} edits · ${stamp}`
+  return stamp
 }
 
 /** Place the popup just outside the bar, on whichever side the bar is docked. */
@@ -361,6 +389,7 @@ function EditLog() {
 function EditControls() {
   const history = useEditHistory()
   const { saveEdits, exitEdit, saving } = usePixelContext()
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const save = useCallback(async () => {
     // Fold any in-flight (debounced) edit into the batch so a change made just
@@ -387,10 +416,19 @@ function EditControls() {
     }
   }, [history, saveEdits, exitEdit])
 
-  const cancel = useCallback(() => {
+  const discardAndExit = useCallback(() => {
     history.discard() // revert the live DOM, then exit
     exitEdit()
   }, [history, exitEdit])
+
+  const cancel = useCallback(() => {
+    // Confirm only when there's something to lose (committed or still debouncing).
+    if (history.batch.length > 0 || history.canUndo || hasPendingChanges()) {
+      setConfirmOpen(true)
+      return
+    }
+    discardAndExit()
+  }, [history.batch.length, history.canUndo, discardAndExit])
 
   // Bridge the same actions to the provider's double-Enter / Esc shortcuts.
   useEffect(() => {
@@ -398,13 +436,18 @@ function EditControls() {
     return () => setEditActionHandlers(null)
   }, [save, cancel])
 
+  // Count of applied edits that Save will send (one per history entry / gesture).
+  const n = history.batch.length
+  const saveLabel =
+    n === 0 ? 'Save' : n === 1 ? 'Save 1 edit' : `Save ${n} edits`
+
   return (
     <>
       <button
         type="button"
         className="pixel-rec-btn pixel-rec-save"
-        title="Save (double-tap Enter)"
-        aria-label="Save"
+        title={`${saveLabel} (double-tap Enter)`}
+        aria-label={saveLabel}
         onClick={() => void save()}
         disabled={saving}
         data-pixel-tour="save"
@@ -419,6 +462,7 @@ function EditControls() {
             strokeLinejoin="round"
           />
         </svg>
+        {n > 0 && <span className="pixel-rec-save-count">{n}</span>}
       </button>
       <button
         type="button"
@@ -439,6 +483,152 @@ function EditControls() {
           />
         </svg>
       </button>
+      {confirmOpen && (
+        <ConfirmDialog
+          title="Discard unsaved edits?"
+          message="Your in-progress edits will be reverted."
+          onConfirm={() => {
+            setConfirmOpen(false)
+            discardAndExit()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function CommentToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`pixel-rec-btn${on ? ' active' : ''}`}
+      title={on ? 'Exit comment mode (Esc)' : 'Comment'}
+      aria-label="Comment"
+      aria-pressed={on}
+      onClick={onToggle}
+      data-pixel-tour="comment"
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path
+          d={ICONS.comment}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * Comment-mode bar controls + pin layer. Save posts the draft batch; Cancel
+ * confirms when any pins exist, then discards and exits.
+ */
+function CommentControls() {
+  const { saveComments, exitComment, saving, passthrough } = usePixelContext()
+  const [drafts, setDrafts] = useState<CommentDraft[]>([])
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const draftsRef = useRef(drafts)
+  draftsRef.current = drafts
+
+  const save = useCallback(async () => {
+    const comments = draftsToPayload(draftsRef.current)
+    if (comments.length === 0) {
+      exitComment()
+      return
+    }
+    try {
+      await saveComments({
+        url: typeof location !== 'undefined' ? location.href : '',
+        createdAt: Date.now(),
+        comments,
+      })
+      setDrafts([])
+      exitComment()
+    } catch {
+      /* stay in comment mode — provider surfaced the error */
+    }
+  }, [saveComments, exitComment])
+
+  const discardAndExit = useCallback(() => {
+    setDrafts([])
+    exitComment()
+  }, [exitComment])
+
+  const cancel = useCallback(() => {
+    if (draftsRef.current.length > 0) {
+      setConfirmOpen(true)
+      return
+    }
+    discardAndExit()
+  }, [discardAndExit])
+
+  useEffect(() => {
+    setCommentActionHandlers({ save: () => void save(), cancel })
+    return () => setCommentActionHandlers(null)
+  }, [save, cancel])
+
+  const n = drafts.filter((d) => d.body.trim()).length
+  const saveLabel =
+    n === 0 ? 'Save comments' : n === 1 ? 'Save 1 comment' : `Save ${n} comments`
+
+  return (
+    <>
+      <button
+        type="button"
+        className="pixel-rec-btn pixel-rec-save"
+        title={`${saveLabel} — sends every pin to the agent as one batch`}
+        aria-label={saveLabel}
+        onClick={() => void save()}
+        disabled={saving || n === 0}
+        data-pixel-tour="save"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d={ICONS.save}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {n > 0 && <span className="pixel-rec-save-count">{n}</span>}
+      </button>
+      <button
+        type="button"
+        className="pixel-rec-btn"
+        title="Cancel (Esc)"
+        aria-label="Cancel"
+        onClick={cancel}
+        data-pixel-tour="cancel-comment"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+          <path
+            d={ICONS.cancel}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      <CommentLayer drafts={drafts} onChange={setDrafts} active={!passthrough} />
+      {confirmOpen && (
+        <ConfirmDialog
+          title={drafts.length === 1 ? 'Discard 1 comment?' : `Discard ${drafts.length} comments?`}
+          message="Your pinned comments will be thrown away."
+          onConfirm={() => {
+            setConfirmOpen(false)
+            discardAndExit()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
     </>
   )
 }
@@ -619,18 +809,16 @@ function BugButton() {
   )
 }
 
-/** Leading glyph marking a changelog row as an edit (pencil) or a recording (mic). */
+/** Leading glyph marking a changelog row as edit / recording / comment. */
 function TaskKindIcon({ kind }: { kind: Task['kind'] }) {
-  const edit = kind === 'edit'
+  const k = kind === 'edit' ? 'edit' : kind === 'comment' ? 'comment' : 'recording'
+  const label = k === 'edit' ? 'Saved edit' : k === 'comment' ? 'Comments' : 'Recording'
+  const icon = k === 'edit' ? ICONS.edit : k === 'comment' ? ICONS.comment : ICONS.mic
   return (
-    <span
-      className={`pixel-tasks-kind ${edit ? 'edit' : 'recording'}`}
-      title={edit ? 'Saved edit' : 'Recording'}
-      aria-label={edit ? 'Saved edit' : 'Recording'}
-    >
+    <span className={`pixel-tasks-kind ${k}`} title={label} aria-label={label}>
       <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
         <path
-          d={edit ? ICONS.edit : ICONS.mic}
+          d={icon}
           fill="none"
           stroke="currentColor"
           strokeWidth={2}
@@ -647,13 +835,21 @@ function TasksPanel({
   tasks,
   anchor,
   onOpen,
+  panelRef,
 }: {
   tasks: Task[]
   anchor: CSSProperties
   onOpen: (id: string) => void
+  panelRef?: Ref<HTMLDivElement>
 }) {
   return (
-    <div className="pixel-tasks" style={anchor} role="dialog" aria-label="Changelog">
+    <div
+      ref={panelRef}
+      className="pixel-tasks"
+      style={anchor}
+      role="dialog"
+      aria-label="Changelog"
+    >
       <div className="pixel-tasks-head">Changelog</div>
       {tasks.length === 0 ? (
         <div className="pixel-tasks-empty">Nothing yet.</div>
@@ -669,7 +865,7 @@ function TasksPanel({
               >
                 <span className="pixel-tasks-label">
                   <TaskKindIcon kind={t.kind} />
-                  <span className="pixel-tasks-id">{formatStamp(t)}</span>
+                  <span className="pixel-tasks-id">{formatTaskLabel(t)}</span>
                 </span>
                 <span className={`pixel-tasks-pill ${t.status}`}>{STATUS_LABEL[t.status]}</span>
               </button>
@@ -692,6 +888,8 @@ function RecBar() {
     cancel,
     editing,
     toggleEdit,
+    commenting,
+    toggleComment,
     timeTravel,
     toggleTimeTravel,
     passthrough,
@@ -706,14 +904,35 @@ function RecBar() {
   const [minimized, setMinimized] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const containRef = useContainEvents<HTMLDivElement>(true) // bar also contains Esc
+  const tasksPanelRef = useRef<HTMLDivElement | null>(null)
+
+  // Entering record / edit / comment closes the changelog — those modes hide
+  // the indicator, and leaving it open under a mode switch is confusing.
+  useEffect(() => {
+    if (!idle || editing || commenting) setPanelOpen(false)
+  }, [idle, editing, commenting])
+
+  // Any click outside the changelog panel (and its toggle) dismisses it.
+  useEffect(() => {
+    if (!panelOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target
+      if (!(t instanceof Node)) return
+      if (tasksPanelRef.current?.contains(t)) return
+      if (t instanceof Element && t.closest('.pixel-rec-tasks')) return
+      setPanelOpen(false)
+    }
+    // Capture so we close even when another layer stops propagation later.
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [panelOpen])
 
   const activeCount = tasks.filter(isActive).length
   // The changelog indicator earns a slot only while **idle** — when there's
   // something to show (active tasks, a server error, or a popup the user
-  // opened). While editing or recording it's hidden: edit mode surfaces the
-  // in-session change history (undo/redo) instead, and recording keeps the bar
-  // focused on the capture controls.
-  const showIndicator = idle && !editing && (serverDown || tasks.length > 0 || panelOpen)
+  // opened). While editing/commenting/recording it's hidden.
+  const showIndicator =
+    idle && !editing && !commenting && (serverDown || tasks.length > 0 || panelOpen)
   const indicator = showIndicator && (
     <TaskIndicator
       activeCount={activeCount}
@@ -725,7 +944,12 @@ function RecBar() {
   // The popup follows the live server state: the tasks list while connected, the
   // reused error toast (rendered by the caller) while the server is unreachable.
   const tasksPopup = panelOpen && !serverDown && (
-    <TasksPanel tasks={tasks} anchor={panelAnchor(bar.position)} onOpen={openTask} />
+    <TasksPanel
+      tasks={tasks}
+      anchor={panelAnchor(bar.position)}
+      onOpen={openTask}
+      panelRef={tasksPanelRef}
+    />
   )
   const serverDownToast = panelOpen && serverDown && (
     <ErrorToast
@@ -765,6 +989,7 @@ function RecBar() {
     (vertical ? ' vertical' : '') +
     (idle ? ' idle' : recording ? '' : ' paused') +
     (editing ? ' editing' : '') +
+    (commenting ? ' commenting' : '') +
     (minimized ? ' minimized' : '')
 
   if (minimized) {
@@ -784,25 +1009,31 @@ function RecBar() {
   return (
     <>
     <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
-      {/* Editing and recording are separated: in edit mode the bar shows the
-          edit label + Save/Cancel (no Rec); while recording it shows the rec
-          controls (no Edit). Both appear only when idle. */}
+      {/* Recording / edit / comment are mutually exclusive: each mode's bar
+          hides the other two tools. Idle shows Rec + Edit + Comment together
+          with no separator between Rec and Edit. */}
       {editing ? (
         <>
+          {/* Primary actions first (Save / Cancel), then tools below. */}
           <span className="pixel-rec-edit-dot" />
           <span className="pixel-rec-time">Editing</span>
           <span className="pixel-rec-sep" />
-          {/* Save/Cancel lead (the primary edit actions); the mouse-tool toggle
-              follows. */}
           <EditControls />
-          {/* Mouse tool: ON = select/edit (page inert); OFF (M) = pointer +
-              keyboard pass through to the real app. Toggling back re-freezes. */}
+          <span className="pixel-rec-sep" />
           <MouseToolToggle
             on={!passthrough}
             onToggle={() => setPassthrough(!passthrough)}
             titleOn="Mouse tool ON — select & edit, page inert (M)"
             titleOff="Mouse tool OFF — interact with the app (M)"
+            tour="mouse"
           />
+        </>
+      ) : commenting ? (
+        <>
+          <span className="pixel-rec-comment-dot" />
+          <span className="pixel-rec-time">Commenting</span>
+          <span className="pixel-rec-sep" />
+          <CommentControls />
         </>
       ) : (
         <>
@@ -820,52 +1051,46 @@ function RecBar() {
               Rec
             </button>
           ) : (
-            // While recording/paused the same leading slot becomes the Stop
-            // button (a red square where the record dot was), so you stop from
-            // exactly where you started; the timer keeps the live/paused cue.
-            <button
-              type="button"
-              className="pixel-rec-record"
-              title="Stop (double-tap Space)"
-              aria-label="Stop"
-              onClick={() => void stop()}
-              data-pixel-tour="stop"
-            >
-              <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
-                <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
-              </svg>
-              <span className="pixel-rec-time">
-                {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
-              </span>
-            </button>
-          )}
-
-          <span className="pixel-rec-sep" />
-          {/* Edit + Time-travel are offered only when idle — hidden while a
-              recording is active. Time-travel sits just below Edit. */}
-          {idle && <EditToggle on={false} onToggle={toggleEdit} />}
-          {idle && <TimeTravelToggle on={timeTravel} onToggle={toggleTimeTravel} />}
-          {/* The mouse tool only governs recording's block/passthrough. */}
-          {!idle && (
-            <MouseToolToggle on={!passthrough} onToggle={() => setPassthrough(!passthrough)} tour="mouse" />
-          )}
-
-          {!idle && (
+            // Recording: Stop (finish/save) + Cancel lead; mouse tool + pause
+            // sit in the tools section below.
             <>
+              <button
+                type="button"
+                className="pixel-rec-record"
+                title="Stop (double-tap Space)"
+                aria-label="Stop"
+                onClick={() => void stop()}
+                data-pixel-tour="stop"
+              >
+                <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
+                  <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
+                </svg>
+                <span className="pixel-rec-time">
+                  {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
+                </span>
+              </button>
+              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke tour="cancel" />
               <span className="pixel-rec-sep" />
+              <MouseToolToggle
+                on={!passthrough}
+                onToggle={() => setPassthrough(!passthrough)}
+                tour="mouse"
+              />
               {recording ? (
                 <IconButton icon="pause" label="Pause (Space)" onClick={pause} tour="pause" />
               ) : (
                 <IconButton icon="resume" label="Resume (Space)" onClick={resume} tour="pause" />
               )}
-              <IconButton icon="cancel" label="Cancel (Esc)" onClick={cancel} stroke tour="cancel" />
             </>
           )}
+
+          {/* No separator between Rec and Edit — tools sit as one group. */}
+          {idle && <EditToggle on={false} onToggle={toggleEdit} />}
+          {idle && <CommentToggle on={false} onToggle={toggleComment} />}
+          {idle && <TimeTravelToggle on={timeTravel} onToggle={toggleTimeTravel} />}
         </>
       )}
 
-      {/* Task log section: the change-history (edit-log) clock sits at the top,
-          above the server task indicator. */}
       {(editing || showIndicator) && (
         <>
           <span className="pixel-rec-sep" />
@@ -875,8 +1100,6 @@ function RecBar() {
       )}
 
       <span className="pixel-rec-sep" />
-      {/* Always available (any mode) so a bug can be reported whenever it happens.
-          Renders nothing unless `config.bugReport` is set. */}
       <BugButton />
       <IconButton icon="minimize" label="Minimize" onClick={() => setMinimized(true)} stroke />
       {tasksPopup}
@@ -946,6 +1169,7 @@ export function Overlay({ className }: OverlayProps) {
     tasks,
     serverDown,
     editing,
+    commenting,
     timeTravel,
     passthrough,
     designTokens,
@@ -956,7 +1180,8 @@ export function Overlay({ className }: OverlayProps) {
   const active = state === 'recording' || state === 'paused'
   // Surface the bar (and its indicator) whenever there's status worth showing,
   // even while idle: active recordings on the server, or a connection error.
-  const showBar = active || bar.always || serverDown || tasks.length > 0 || editing || timeTravel
+  const showBar =
+    active || bar.always || serverDown || tasks.length > 0 || editing || commenting || timeTravel
 
   return createPortal(
     <EditHistoryProvider>

@@ -2,25 +2,28 @@
 name: pixel
 description: >
   Pick up Pixel tasks dropped on disk and carry them out in the codebase. A
-  task is either a **recording** (voice + clicks + selected regions, acted on as an
-  implementation brief) or a **saved edit** (direct visual changes the user made in
-  the running app's in-app edit mode and hit Save). Use when the user says "pixel",
-  "start pixel", "check for recordings", "watch pixel", "process my
-  recording", "apply my edits", or points you at a .pixel dropbox folder. On
-  "pixel" / "start pixel", start the ingest server and watch for tasks (steps 1 → 6).
+  task is a **recording** (voice + clicks + selected regions), a **saved edit**
+  (direct visual changes from edit mode), or **comments** (pinned notes from
+  comment mode). Use when the user says "pixel", "start pixel", "check for
+  recordings", "watch pixel", "process my recording", "apply my edits", "apply
+  my comments", or points you at a .pixel dropbox folder. On "pixel" /
+  "start pixel", start the ingest server and watch for tasks (steps 1 → 6).
 ---
 
 # Pixel watch
 
 Pixel drops **tasks** into an on-disk **dropbox** for you to carry out in the
-current codebase. A task is one of two kinds:
+current codebase. A task is one of three kinds:
 
 - a **recording** — a short session of microphone audio (transcribed), mouse
   movements/clicks, and drag-selected regions (with screenshots), acted on as a
   spoken implementation **brief**; or
 - a **saved edit** — a batch of direct visual changes the user made in the app's
   in-app **edit mode** (move / resize / restyle / retype elements) and hit
-  **Save**. Your job is to write those changes into the source so they persist.
+  **Save**. Your job is to write those changes into the source so they persist; or
+- **comments** — pinned notes the user left in **comment mode** (click to place,
+  type a note, Save). Each pin carries the same DOM `target` chain as a recording
+  click; treat the note body as the brief for that element.
 
 Claim a task, recognize which kind it is (step 4), and carry it out.
 
@@ -28,7 +31,7 @@ Claim a task, recognize which kind it is (step 4), and carry it out.
 user how to use Pixel** (verbatim):
 
 ```
-Two ways to point me at changes — I pick up either automatically:
+Three ways to point me at changes — I pick up any of them automatically:
 
 🎙  Record what you want
 1. Double-tap Space inside your app to start; describe your changes out loud
@@ -38,6 +41,11 @@ Two ways to point me at changes — I pick up either automatically:
 1. Click the pencil in the bar (or double-tap Enter) to enter edit mode
 2. Move / resize / restyle / retype elements right on the page
 3. Save (the disk button, or double-tap Enter) to send them — Esc discards
+
+💬  Comment
+1. Click the comment bubble in the bar
+2. Click anywhere to pin a note; edit or delete pins as needed
+3. Save to send them — Esc discards (with confirm)
 
 Either way, I do the rest.
 ```
@@ -124,10 +132,25 @@ blocks, this is also your watch loop — see step 6 for how to run it.
 
 ## 4. Read the task
 
-**First check whether the task is a _saved edit_ or a _recording_** — they need
-different handling, and you should describe to the user what actually landed
-(e.g. "A saved edit batch landed (3 changes) — applying them" or "A new recording
-landed — reading the brief"). Don't call an edit a recording.
+**First check whether the task is a _saved edit_, _comments_, or a _recording_** —
+they need different handling, and you should describe to the user what actually
+landed (e.g. "A saved edit batch landed (3 changes) — applying them", "3 comments
+landed — reading them", or "A new recording landed — reading the brief"). Don't
+call an edit or comment a recording.
+
+If `<dir>` contains a `comments.json`, it's a **Save from comment mode** — pinned
+notes with element targets (no audio/beats). Read and act on each note:
+
+`comments.json` = `{ url, createdAt, comments: [...] }`. Each comment is:
+
+- `target` — DOM ancestor chain (outermost → innermost), the **same shape as a
+  recording click target** (`tag` · `id` · `classes` · `text`). The **last** entry
+  is the element under the pin. Locate it in source the same way as an edit.
+- `body` — the user's note (the brief for that pin).
+- `x` / `y` — client coordinates where the pin was placed (spatial hint only).
+
+Carry out what the notes ask for in the codebase, then finish exactly as in
+step 5 (`done <id> ...`).
 
 If `<dir>` contains an `edits.json`, it's a **Save from edit mode** — a direct
 batch of visual changes the user made in the running app (no audio/beats). Apply

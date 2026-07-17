@@ -1,7 +1,16 @@
 import { createContext, useContext } from 'react'
 import type { BlipData } from './draw/blip'
 import type { Token } from './pixel-common'
-import type { BarPosition, BugReportConfig, EditPayload, Recording, PixelState, StrokePoint, Task } from './types'
+import type {
+  BarPosition,
+  BugReportConfig,
+  CommentPayload,
+  EditPayload,
+  Recording,
+  PixelState,
+  StrokePoint,
+  Task,
+} from './types'
 
 export interface ResolvedBarConfig {
   always: boolean
@@ -40,8 +49,8 @@ export interface PixelContextValue {
   cancel: () => void
   toggle: () => void
   /**
-   * Edit mode. Orthogonal to `state` (recording) — you can edit and record at
-   * once; both belong to one session (see complete-refactor.md §4.3).
+   * Edit mode. Mutually exclusive with recording and comment mode — entering
+   * one exits/hides the others.
    */
   editing: boolean
   enterEdit: () => void
@@ -50,6 +59,17 @@ export interface PixelContextValue {
   /** Persist a batch of edit-mode changes to the sink (Save). Rejects on failure
    *  so the caller can keep the user in edit mode. No-op sink → rejects. */
   saveEdits: (payload: EditPayload) => Promise<{ id: string }>
+  /**
+   * Comment mode. Mutually exclusive with recording and edit mode — entering
+   * one exits/hides the others.
+   */
+  commenting: boolean
+  enterComment: () => void
+  exitComment: () => void
+  toggleComment: () => void
+  /** Persist a batch of comments to the sink (Save). Rejects on failure so the
+   *  caller can keep the user in comment mode. No-op sink → rejects. */
+  saveComments: (payload: CommentPayload) => Promise<{ id: string }>
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void

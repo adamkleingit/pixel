@@ -123,3 +123,32 @@ describe('Store.saveEdits', () => {
     expect(JSON.parse(await readFile(join(result.path, 'edits.json'), 'utf8')).changes).toEqual([])
   })
 })
+
+describe('Store.saveComments', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'pixel-store-'))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('writes comments.json + a ready timeline.json into inbox/<id>', async () => {
+    const store = new Store(root)
+    const comments = [
+      { target: [{ tag: 'button', classes: ['primary'], id: 'go' }], body: 'Make this wider', x: 10, y: 20 },
+    ]
+    const result = await store.saveComments({ url: 'http://app/', createdAt: 9, comments })
+
+    expect(result.commentCount).toBe(1)
+    expect(result.path).toBe(join(root, 'inbox', result.id))
+    expect(existsSync(join(result.path, 'timeline.json'))).toBe(true)
+
+    const meta = JSON.parse(await readFile(join(result.path, 'meta.json'), 'utf8'))
+    expect(meta).toMatchObject({ id: result.id, kind: 'comment', eventCount: 1, commentCount: 1 })
+
+    const body = JSON.parse(await readFile(join(result.path, 'comments.json'), 'utf8'))
+    expect(body).toMatchObject({ url: 'http://app/', createdAt: 9, comments })
+  })
+})

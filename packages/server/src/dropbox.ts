@@ -115,8 +115,8 @@ export type TaskStatus = 'pending' | 'executing' | 'done' | 'error'
 export interface Task {
   id: string
   status: TaskStatus
-  /** What produced the task: a screen `recording`, or a saved `edit` batch. */
-  kind?: 'recording' | 'edit'
+  /** What produced the task: a screen `recording`, a saved `edit` batch, or comments. */
+  kind?: 'recording' | 'edit' | 'comment'
   /** Epoch ms the recording was written (from meta.json), if available. */
   createdAt?: number
   durationMs?: number
@@ -158,10 +158,12 @@ export function taskDir(root: string, id: string): string | null {
 type Meta = { kind?: string; createdAt?: number; durationMs?: number; eventCount?: number }
 
 /** Normalize a meta block into the fields the bar's task list wants, mapping the
- *  on-disk `kind` ("edit" | absent) to the closed union the UI renders. */
+ *  on-disk `kind` ("edit" | "comment" | absent) to the closed union the UI renders. */
 function taskMeta(m: Meta): Omit<Task, 'id' | 'status'> {
   const { kind, ...rest } = m
-  return { kind: kind === 'edit' ? 'edit' : 'recording', ...rest }
+  const mapped: Task['kind'] =
+    kind === 'edit' ? 'edit' : kind === 'comment' ? 'comment' : 'recording'
+  return { kind: mapped, ...rest }
 }
 
 /**

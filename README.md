@@ -1,13 +1,13 @@
 # Pixel - the missing visual layer of coding agents
 
-Pixel lets you point your coding agent at UI changes two ways: **record** them
-(audio + mouse movements/clicks + drag-selected regions) as a spoken brief, or
-**edit** the running app directly (Figma-style move/resize/restyle/retype) and
-**Save**. Either way the change lands in a dropbox your agent watches and applies
-to the source.  
-It seamlessly integrates with your existing coding agent  
+Pixel lets you edit your user interface visually:
+1. Figma style inline editing, multi select, undo/redo, snap to design tokens and all the features you can dream of
+2. Record your screen, point, click, draw on the screen and talk with your agent
+3. Leave inline comments
 
-## Getting Started with your agent
+These are all automatically handled by your coding agent without any copy-pasting
+
+## Instructions for human:
 Simply copy-paste this into your existing coding agent:
 
 ```
@@ -15,8 +15,11 @@ Install and setup Pixel by following this guide:
 https://github.com/adamkleingit/pixel#installation
 ```
 
+Your agent will guide you through the installation.  
+After it's done - you will have an onboarding wizard inside your app/storybook
 
-## Installation
+
+## Installation instructions for agents (and brave humans):
 First install @getpixel/ui and @getpixel/server in your codebase, and add to your package.json  
 
 Using npm/yarn/bun:

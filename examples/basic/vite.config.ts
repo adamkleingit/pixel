@@ -52,7 +52,7 @@ export default defineConfig({
     port: 5280,
     fs: { allow: [workspaceRoot] },
     // Allow Cloudflare/localtunnel hostnames when the example is previewed
-    // through a public tunnel (or a Codespaces forwarded URL).
+    // through a public tunnel.
     allowedHosts: true,
   },
 })

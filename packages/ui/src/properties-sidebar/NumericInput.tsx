@@ -69,13 +69,12 @@ export function NumericInput({
           digits, which is all this control ever shows. */}
       <span
         style={{
-          // Shrinkable (0 1 auto) so in tight cells the value group gives up
-          // width before the suffix / token label is clipped.
-          flex: '0 1 auto',
+          // Never shrink the value group — the digits must stay visible. When a
+          // token label is present it ellipsize-shrinks instead (flex: 1 below).
+          flex: '0 0 auto',
           display: 'inline-flex',
           alignItems: 'center',
           gap: 4,
-          minWidth: 0,
         }}
       >
         {prefix && (
@@ -114,9 +113,9 @@ export function NumericInput({
             // below content in very tight cells (minWidth: 0) so the suffix is
             // never clipped.
             width: `calc(${contentChars}ch + 2px)`,
+            minWidth: `calc(${Math.max(1, contentChars)}ch + 2px)`,
             maxWidth: 44,
-            flex: '0 1 auto',
-            minWidth: 0,
+            flex: '0 0 auto',
             background: 'transparent',
             border: 'none',
             outline: 'none',

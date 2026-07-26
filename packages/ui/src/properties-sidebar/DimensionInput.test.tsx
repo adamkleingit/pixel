@@ -49,4 +49,18 @@ describe('DimensionInput — px default when there is no numeric length', () => 
     fireEvent.change(screen.getByLabelText('Line height'), { target: { value: '2' } })
     expect(onChange).toHaveBeenCalledWith('2', undefined, undefined)
   })
+
+  it('compact mode omits the unit dropdown and shows a px suffix', () => {
+    render(
+      <DimensionInput
+        ariaLabel="Top-left radius"
+        value="12px"
+        options={LETTER_SPACING_OPTIONS}
+        compact
+      />,
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByText('px')).toBeTruthy()
+    expect((screen.getByLabelText('Top-left radius') as HTMLInputElement).value).toBe('12')
+  })
 })

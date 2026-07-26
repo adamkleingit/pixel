@@ -159,6 +159,36 @@ test('Appearance: opacity, corner radius, and z-index apply', async ({ page }) =
   await expect.poll(() => styleOf(upgrade(page), 'z-index')).toBe('7')
 })
 
+test('Appearance: per-corner radius values are visible and editable', async ({ page }) => {
+  await enterEdit(page)
+  await selectExact(upgrade(page))
+
+  await field(page, 'Corner radius (all)').fill('12')
+  await expect.poll(() => styleOf(upgrade(page), 'border-radius')).toBe('12px')
+
+  await pane(page).getByTitle('Independent corners').click()
+
+  const tl = field(page, 'Top-left radius')
+  const tr = field(page, 'Top-right radius')
+  const bl = field(page, 'Bottom-left radius')
+  const br = field(page, 'Bottom-right radius')
+
+  await expect(tl).toHaveValue('12')
+  await expect(tr).toHaveValue('12')
+  await expect(bl).toHaveValue('12')
+  await expect(br).toHaveValue('12')
+
+  await tl.fill('8')
+  await tr.fill('16')
+  await bl.fill('4')
+  await br.fill('20')
+
+  await expect.poll(() => styleOf(upgrade(page), 'border-top-left-radius')).toBe('8px')
+  await expect.poll(() => styleOf(upgrade(page), 'border-top-right-radius')).toBe('16px')
+  await expect.poll(() => styleOf(upgrade(page), 'border-bottom-left-radius')).toBe('4px')
+  await expect.poll(() => styleOf(upgrade(page), 'border-bottom-right-radius')).toBe('20px')
+})
+
 // --- Position ----------------------------------------------------------------
 
 test('Position: rotation applies via the design pane', async ({ page }) => {

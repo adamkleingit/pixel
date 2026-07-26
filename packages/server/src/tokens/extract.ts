@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { TOKENS_CACHE_VERSION, type TokensCache } from './common.js'
 import { buildDetectContext } from './adapters/helpers.js'
@@ -29,13 +29,30 @@ export function emptyCache(): TokensCache {
 }
 
 /**
- * The project whose design tokens we extract. Defaults to the parent of the
- * dropbox root — i.e. the workspace dir the dev runs the server from, where
- * package.json / globals.css / tailwind.config live. Overridable for tests and
- * unusual layouts via `PIXEL_PROJECT_DIR`.
+ * Resolve the app directory whose design tokens we extract. Required — the
+ * server refuses to start without it so agents always point at the right package
+ * (especially in monorepos where the dropbox root ≠ the app root).
  */
-export function resolveProjectDir(root: string): string {
-  return process.env.PIXEL_PROJECT_DIR ?? dirname(root)
+export function requireProjectDir(cwd: string = process.cwd()): string {
+  const raw = process.env.PIXEL_PROJECT_DIR?.trim()
+  if (!raw) {
+    throw new Error(
+      'PIXEL_PROJECT_DIR is required — set it to the directory that contains your app ' +
+        '(package.json, globals.css, tailwind.config, …).\n' +
+        '  Single-package app:  PIXEL_PROJECT_DIR=. npx @getpixel/server\n' +
+        '  Monorepo app pkg:    PIXEL_PROJECT_DIR=packages/client npx @getpixel/server',
+    )
+  }
+  const projectDir = isAbsolute(raw) ? raw : resolve(cwd, raw)
+  if (!existsSync(projectDir)) {
+    throw new Error(`PIXEL_PROJECT_DIR points to a missing directory: ${projectDir}`)
+  }
+  return projectDir
+}
+
+/** @deprecated Use `requireProjectDir()` — kept for callers that already import this name. */
+export function resolveProjectDir(_root: string): string {
+  return requireProjectDir()
 }
 
 /** Read the cached tokens, or null if absent/unparseable. */

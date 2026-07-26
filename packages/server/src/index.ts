@@ -9,12 +9,12 @@ import multer from 'multer'
 import { Store } from './store.js'
 import { fileTranscriber, transcribeRecording, whisperTranscriber } from './transcribe.js'
 import { correlateRecording } from './correlate.js'
-import { finish, listTasks, resolveRoot, taskDir, watchAndClaim } from './dropbox.js'
+import { finish, listTasks, reapStaleTasks, resolveRoot, taskDir, watchAndClaim } from './dropbox.js'
 import {
   emptyCache,
   extractAndCacheTokens,
   readTokenCache,
-  resolveProjectDir,
+  requireProjectDir,
   TOKENS_FILE,
   watchTokenSources,
 } from './tokens/extract.js'
@@ -176,6 +176,14 @@ switch (process.argv[2]) {
 }
 
 function startServer(): void {
+  let projectDir: string
+  try {
+    projectDir = requireProjectDir()
+  } catch (err) {
+    console.error(`[pixel] ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  }
+
   const TRANSCRIBE = process.env.PIXEL_TRANSCRIBE !== '0'
   const PORT = Number(process.env.PIXEL_PORT ?? 41789)
   const ROOT = resolveRoot()
@@ -211,7 +219,8 @@ function startServer(): void {
 
   // Current + recent recordings and their lifecycle status, for the client's
   // floating-bar indicator. Cheap enough to poll (a directory scan + small reads).
-  app.get('/tasks', (_req, res) => {
+  app.get('/tasks', async (_req, res) => {
+    await reapStaleTasks(ROOT)
     res.json({ tasks: listTasks(ROOT) })
   })
 
@@ -301,11 +310,21 @@ function startServer(): void {
   const server = app.listen(PORT, () => {
     console.log(`@getpixel/server listening on http://localhost:${PORT}`)
     console.log(`  recordings → ${join(ROOT, 'inbox')}`)
+    console.log(`  design tokens → ${projectDir} (PIXEL_PROJECT_DIR)`)
     console.log(`  transcription: ${TRANSCRIBE ? 'on' : 'off (PIXEL_TRANSCRIBE=0)'}`)
     console.log(
       `  bug reports: ${bugReportEnabled() ? 'on (POST /bug-report → Vercel Blob)' : 'off (set BLOB_READ_WRITE_TOKEN)'}`,
     )
   })
+
+  // Close out tasks stuck in working/ when an agent skips `done`. Runs on every
+  // GET /tasks poll too; this interval catches idle projects with no open app.
+  const STALE_REAP_MS = 30_000
+  setInterval(() => {
+    void reapStaleTasks(ROOT).then((reaped) => {
+      for (const id of reaped) console.log(`[pixel] reaped stale task ${id}`)
+    })
+  }, STALE_REAP_MS).unref()
 
   // A stale server (often an orphaned `tsx watch` child from a Ctrl+C'd dev run)
   // may still hold the port. Fail with a clear, actionable message instead of an
@@ -327,7 +346,6 @@ function startServer(): void {
   // files (globals.css / tailwind.config / @theme CSS) and re-extract on change.
   // This is the "watcher creates the design-tokens file and watches for changes"
   // half of the feature; the in-app pane reads it over GET /tokens.
-  const projectDir = resolveProjectDir(ROOT)
   void (async () => {
     try {
       const cache = await extractAndCacheTokens(projectDir, ROOT)

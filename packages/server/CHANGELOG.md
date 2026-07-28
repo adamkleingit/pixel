@@ -1,5 +1,11 @@
 # @getpixel/server
 
+## 0.4.0
+
+### Minor Changes
+
+- dac78eb: Require `PIXEL_PROJECT_DIR` when starting the ingest server so design-token extraction always targets the correct app package. Fix Next.js time-travel by aliasing both `react` and Next's compiled/react hook imports through `withPixel`.
+
 ## 0.3.0
 
 ### Minor Changes

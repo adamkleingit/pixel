@@ -394,6 +394,14 @@ per-render capture cursor.
 
 ### Caveats
 
+- **React 18 only (for time-travel).** pixel-react keys hook state by reading
+  `ReactCurrentOwner` from React's private internals. React 19 removed that API
+  (`__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE` has no
+  equivalent owner fiber), so capture collapses to a single `@root` bucket and
+  restore misaligns — e.g. a loading flag stuck `true` after mount/unmount
+  transitions. Pin `react@18` and `react-dom@18` in apps that use the
+  pixel-react alias (`@getpixel/ui/vite` or `@getpixel/ui/next`). Recording,
+  edit mode, and comments work on React 19; only the **States** pane needs 18.
 - **Client components only.** Server components / static DOM have no client hook
   state; they simply aren't captured (they stay as-is in the frozen view).
 - **Effects are suppressed while frozen** — a frozen frame won't re-fetch or

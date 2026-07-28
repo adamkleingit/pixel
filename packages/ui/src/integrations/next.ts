@@ -48,6 +48,9 @@ export interface WithPixelOptions extends ResolveAppSourceOptions {
  * const nextConfig: NextConfig = { /* your config *\/ }
  * export default withPixel(nextConfig, { rootDir: __dirname, appDir: 'src' })
  * ```
+ *
+ * Requires **React 18** — pixel-react reads `ReactCurrentOwner` from React
+ * internals, which React 19 removed. Pin `react@18` / `react-dom@18`.
  */
 export function withPixel<T extends NextConfigLike>(config: T, options: WithPixelOptions = {}): T {
   const rootDir = options.rootDir ?? process.cwd()

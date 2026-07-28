@@ -37,11 +37,21 @@ export function currentFiber(): Fiber | null {
   const owner = internals?.ReactCurrentOwner?.current ?? null
   if (!owner && !warnedNoFiber) {
     warnedNoFiber = true
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[pixel-react] React current-owner fiber is unavailable — state capture ' +
-        'falls back to a single flat key and may misalign. (React internals moved?)',
-    )
+    const major = parseInt(React.version.split('.')[0] ?? '0', 10)
+    if (major >= 19) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[pixel-react] React 19+ is not supported for time-travel — ReactCurrentOwner was ' +
+          'removed from React internals. Pin react@18 (and react-dom@18). State capture ' +
+          'falls back to a single flat key and restore will misalign.',
+      )
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[pixel-react] React current-owner fiber is unavailable — state capture ' +
+          'falls back to a single flat key and may misalign. (React internals moved?)',
+      )
+    }
   }
   return owner
 }

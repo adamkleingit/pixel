@@ -54,8 +54,8 @@
     "html-to-image": "^1.11.13"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
+    "react": ">=18 <19",
+    "react-dom": ">=18 <19",
     "vite": ">=5"
   },
   "devDependencies": {

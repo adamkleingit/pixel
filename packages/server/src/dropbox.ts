@@ -1,6 +1,17 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+
+const CLAIMED_FILE = 'claimed.json'
+const DEFAULT_TASK_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
+
+/** How long a task may sit in working/ before auto-closing (env: PIXEL_TASK_TIMEOUT_MS). */
+export function resolveTaskTimeoutMs(): number {
+  const raw = process.env.PIXEL_TASK_TIMEOUT_MS
+  if (raw == null || raw === '') return DEFAULT_TASK_TIMEOUT_MS
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_TASK_TIMEOUT_MS
+}
 
 /**
  * The on-disk dropbox layout — the single source of truth for where recordings
@@ -46,6 +57,8 @@ export interface Claimed {
   id: string
   /** Absolute path to the claimed recording under working/. */
   dir: string
+  /** True when watch re-emitted a task already in working/ (agent skipped `done`). */
+  resumed?: boolean
 }
 
 /**
@@ -56,6 +69,56 @@ export interface Claimed {
  */
 function isReady(dir: string): boolean {
   return existsSync(join(dir, 'timeline.json'))
+}
+
+function readClaimedAt(workingDir: string): number {
+  const fromFile = readJsonSync<{ claimedAt?: number }>(join(workingDir, CLAIMED_FILE))
+  if (typeof fromFile?.claimedAt === 'number') return fromFile.claimedAt
+  try {
+    return statSync(workingDir).mtimeMs
+  } catch {
+    return Date.now()
+  }
+}
+
+async function markClaimed(workingDir: string): Promise<void> {
+  await writeFile(
+    join(workingDir, CLAIMED_FILE),
+    JSON.stringify({ claimedAt: Date.now() }, null, 2),
+  )
+}
+
+/** Oldest task still in working/, if any. */
+export function getExistingWorking(root = resolveRoot()): Claimed | null {
+  const ids = listBucket(root, 'working')
+  if (ids.length === 0) return null
+  const id = ids[0]!
+  return { id, dir: join(root, 'working', id), resumed: true }
+}
+
+/**
+ * Move tasks stuck in working/ past the timeout to done/ with status error so
+ * the UI never shows "Executing" forever. Returns ids that were reaped.
+ */
+export async function reapStaleTasks(
+  root = resolveRoot(),
+  { timeoutMs = resolveTaskTimeoutMs() }: { timeoutMs?: number } = {},
+): Promise<string[]> {
+  const reaped: string[] = []
+  const now = Date.now()
+  for (const id of listBucket(root, 'working')) {
+    const dir = join(root, 'working', id)
+    if (now - readClaimedAt(dir) < timeoutMs) continue
+    const mins = Math.round(timeoutMs / 60_000)
+    await finish(root, id, {
+      status: 'error',
+      message:
+        `Timed out after ${mins}m — the agent did not confirm completion. ` +
+        'Changes may still have been applied; check your source files.',
+    })
+    reaped.push(id)
+  }
+  return reaped
 }
 
 /**
@@ -78,6 +141,7 @@ export async function claimNext(root = resolveRoot()): Promise<Claimed | null> {
     try {
       await mkdir(join(root, 'working'), { recursive: true })
       await rename(src, dir)
+      await markClaimed(dir)
       return { id, dir }
     } catch {
       continue // claimed/removed by someone else between readdir and rename
@@ -96,6 +160,9 @@ export async function watchAndClaim(
   { intervalMs = 1000 }: { intervalMs?: number } = {},
 ): Promise<Claimed> {
   for (;;) {
+    await reapStaleTasks(root)
+    const existing = getExistingWorking(root)
+    if (existing) return existing
     const claimed = await claimNext(root)
     if (claimed) return claimed
     await new Promise((r) => setTimeout(r, intervalMs))

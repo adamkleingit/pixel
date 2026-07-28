@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { claimNext, finish, listTasks, watchAndClaim } from './dropbox'
+import { claimNext, finish, getExistingWorking, listTasks, reapStaleTasks, watchAndClaim } from './dropbox'
 
 /** Drop a recording into inbox/<id>; `ready` controls whether timeline.json exists. */
 async function seed(root: string, id: string, { ready = true } = {}): Promise<void> {
@@ -39,6 +39,7 @@ describe('dropbox', () => {
       expect(claimed?.dir).toBe(join(root, 'working', claimed!.id))
       expect(existsSync(claimed!.dir)).toBe(true)
       expect(existsSync(join(root, 'inbox', claimed!.id))).toBe(false)
+      expect(existsSync(join(claimed!.dir, 'claimed.json'))).toBe(true)
     })
 
     it('skips recordings without timeline.json (still being processed)', async () => {
@@ -68,6 +69,56 @@ describe('dropbox', () => {
       const claimed = await pending
       expect(claimed.id).toBe('20260613-100000-000-aaaaaa')
       expect(existsSync(claimed.dir)).toBe(true)
+    })
+
+    it('re-emits a task already in working/ (agent skipped done)', async () => {
+      await seed(root, '20260613-100000-000-aaaaaa')
+      await claimNext(root)
+      const reclaimed = await watchAndClaim(root, { intervalMs: 5 })
+      expect(reclaimed).toMatchObject({
+        id: '20260613-100000-000-aaaaaa',
+        resumed: true,
+      })
+    })
+  })
+
+  describe('reapStaleTasks', () => {
+    it('moves working tasks past the timeout to done/ with status error', async () => {
+      await seed(root, '20260613-100000-000-aaaaaa')
+      const { id, dir } = (await claimNext(root))!
+      await writeFile(
+        join(dir, 'claimed.json'),
+        JSON.stringify({ claimedAt: Date.now() - 60_000 }),
+      )
+      const reaped = await reapStaleTasks(root, { timeoutMs: 30_000 })
+      expect(reaped).toEqual([id])
+      expect(existsSync(join(root, 'working', id))).toBe(false)
+      const result = JSON.parse(await readFile(join(root, 'done', id, 'result.json'), 'utf8'))
+      expect(result.status).toBe('error')
+      expect(result.message).toMatch(/Timed out/)
+    })
+
+    it('leaves fresh working tasks alone', async () => {
+      await seed(root, '20260613-100000-000-aaaaaa')
+      const { id } = (await claimNext(root))!
+      const reaped = await reapStaleTasks(root, { timeoutMs: 60_000 })
+      expect(reaped).toEqual([])
+      expect(existsSync(join(root, 'working', id))).toBe(true)
+    })
+  })
+
+  describe('getExistingWorking', () => {
+    it('returns null when working/ is empty', () => {
+      expect(getExistingWorking(root)).toBeNull()
+    })
+
+    it('returns the oldest working task with resumed: true', async () => {
+      await seed(root, '20260613-100000-000-aaaaaa')
+      await claimNext(root)
+      expect(getExistingWorking(root)).toMatchObject({
+        id: '20260613-100000-000-aaaaaa',
+        resumed: true,
+      })
     })
   })
 

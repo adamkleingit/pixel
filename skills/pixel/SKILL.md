@@ -65,7 +65,20 @@ start it (it stays up; run it in the background):
 npx @getpixel/server        # http://localhost:41789 → writes .pixel/inbox/<id>/
 ```
 
-Set `PIXEL_DIR` to control where it writes, and `PIXEL_WHISPER_LANG`
+**Required:** set `PIXEL_PROJECT_DIR` to the directory that contains your app's
+design-token sources (`package.json`, `globals.css`, `tailwind.config`, …). The
+server refuses to start without it — in a monorepo this is usually the app
+package, not the repo root:
+
+```bash
+# single-package app
+PIXEL_PROJECT_DIR=. npx @getpixel/server
+
+# monorepo app package
+PIXEL_PROJECT_DIR=packages/client npx @getpixel/server
+```
+
+Set `PIXEL_DIR` to control where recordings are written, and `PIXEL_WHISPER_LANG`
 (e.g. `hebrew`) if narration isn't English.
 
 On startup the same server also **extracts the project's design tokens** (from
@@ -73,9 +86,7 @@ shadcn `globals.css`, a Tailwind config, or `@theme` CSS) into
 `.pixel/design-tokens.json`, and **watches those source files** — re-extracting
 whenever they change. This is automatic; there's no separate command. The in-app
 design pane reads the file over `GET /tokens` so its color/spacing/radius pickers
-and on-canvas drag-snap reflect the real design system. It also extracts from the
-directory the server runs in; set `PIXEL_PROJECT_DIR` to point at a different
-project root.
+and on-canvas drag-snap reflect the real design system.
 
 > **If Pixel isn't installed or isn't configured correctly** (the command fails,
 > the package is missing, or the server won't start), follow the project README to
@@ -224,6 +235,15 @@ npx @getpixel/server done <id> --status ok --summary "<one line>" --files a.ts,b
 If you couldn't complete it, use `--status error --message "<why>"` instead; it
 still moves to `done/`.
 
+**You MUST run `done` before starting `watch` again.** The UI shows "Executing"
+while a task sits in `working/`; skipping `done` leaves the user stuck. If
+`watch` prints `"resumed": true`, the task was already claimed — call `done`
+(now, without redoing the work unless needed), then restart `watch`.
+
+If an agent never calls `done`, the server auto-closes the task after
+`PIXEL_TASK_TIMEOUT_MS` (default 10 minutes) and shows an error in the
+changelog.
+
 ## 6. Watch loop (default)
 
 You **cannot watch files passively.** When you end a turn, nothing wakes you — so
@@ -239,12 +259,14 @@ re-invokes you when it exits, so the user can still talk to you while it waits.
 The loop:
 
 1. Start `watch` in the background.
-2. When it exits, read the printed `{id, dir}`, process the task (steps 4 → 5:
-   read `<dir>/` — `edits.json` or `timeline.json` — do the work, `done <id> ...`).
-3. Start `watch` again and wait. Repeat forever.
+2. When it exits, read the printed `{id, dir}` (and `resumed` if present).
+   Process the task (steps 4 → 5: read `<dir>/`, do the work).
+3. **Run `done <id> ...` and wait for it to succeed.** Do not skip this step.
+4. Only then start `watch` again. Repeat forever.
 
 The running `watch` *is* the loop — never replace it with a passive "waiting"
-message and then stop.
+message and then stop. **Never restart `watch` before `done` succeeds** — that
+is the most common cause of a task stuck on "Executing".
 
 **Keep looping until the user explicitly asks to stop** ("stop", "stop pixel",
 "stop watching") — don't stop just because the inbox is momentarily empty, since

@@ -156,6 +156,10 @@ disabled). Toggle it live from the bar, with the **`M`** key while recording, or
 via `usePixel().setPassthrough(...)`; pausing always makes the page live.
 
 Server (env vars):
+- `PIXEL_PROJECT_DIR` (**required**) — directory containing your app's design-token
+  sources (`package.json`, `globals.css`, `tailwind.config`, `@theme` CSS, …).
+  The server **refuses to start** without it. In a monorepo, point at the app
+  package — not the repo root — e.g. `PIXEL_PROJECT_DIR=packages/client`.
 - `PIXEL_PORT` (default `41789`)
 - `PIXEL_DIR` (default: `.pixel/` at the workspace root)
 - `PIXEL_TRANSCRIBE` (`0` to disable transcription)
@@ -163,6 +167,16 @@ Server (env vars):
 - `PIXEL_WHISPER_LANG` — spoken language, e.g. `english`. **Unset → Whisper
   defaults to English**, so set this if you narrate in another language.
 - `PIXEL_WHISPER_TASK` — `transcribe` (default) or `translate` (→ English).
+
+Start the server with `PIXEL_PROJECT_DIR` set:
+
+```bash
+# single-package app (run from the app root)
+PIXEL_PROJECT_DIR=. npx @getpixel/server
+
+# monorepo — point at the package that owns the UI + design tokens
+PIXEL_PROJECT_DIR=packages/client npx @getpixel/server
+```
 
 > **Using a component workbench?** See [Using Pixel with Storybook](#using-pixel-with-storybook) —
 > recordings keep running across story switches.
@@ -176,7 +190,7 @@ brief that spans several of them.
 **1. Run the server** (same as any other app):
 
 ```bash
-npx @getpixel/server      # writes ./.pixel/inbox/<id>/, listens on http://localhost:41789
+PIXEL_PROJECT_DIR=. npx @getpixel/server      # writes ./.pixel/inbox/<id>/, listens on http://localhost:41789
 ```
 
 **2. Add a dev-only decorator** in `.storybook/preview.tsx`. The `import.meta.env.DEV`
@@ -322,35 +336,40 @@ boundary component so it can remount the app to apply a frame.
 **1. Alias `react` → `@getpixel/ui/pixel-react` for your app source only.** This
 is the "mock the React import" step. Scope it to your `src/` — do **not** alias
 `node_modules` (that would capture `@getpixel/ui`'s own UI and React itself).
-Vite example (`vite.config.ts`):
+
+Vite — add the bundled plugin (`vite.config.ts`):
 
 ```ts
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import type { Plugin } from 'vite'
-
-const appSrc = resolve(fileURLToPath(new URL('.', import.meta.url)), 'src')
-
-function pixelReactAlias(): Plugin {
-  return {
-    name: 'pixel-react-alias',
-    enforce: 'pre',
-    apply: 'serve', // dev only — never in a production build
-    async resolveId(source, importer) {
-      if (source !== 'react') return null
-      if (!importer || !importer.startsWith(appSrc)) return null // app source ONLY
-      return (await this.resolve('@getpixel/ui/pixel-react', importer, { skipSelf: true }))?.id ?? null
-    },
-  }
-}
+import { pixelReactAlias } from '@getpixel/ui/vite'
 
 export default defineConfig({
-  plugins: [pixelReactAlias(), react()],
+  plugins: [pixelReactAlias({ appDir: resolve(__dirname, 'src') }), react()],
   optimizeDeps: { include: ['@getpixel/ui/pixel-react'] },
 })
 ```
 
-Scope by `src/` path (not "exclude node_modules"): Vite pre-bundles
+Next.js — wrap your config (`next.config.ts` / `next.config.js`):
+
+```ts
+import type { NextConfig } from 'next'
+import { withPixel } from '@getpixel/ui/next'
+
+const nextConfig: NextConfig = {
+  // your existing config…
+}
+
+export default withPixel(nextConfig, { rootDir: __dirname, appDir: 'src' })
+```
+
+`withPixel` adds dev-only client webpack wiring: transpiles `@getpixel/ui`,
+unifies Next's compiled React with your app's real React, and routes both `react`
+and Next's `compiled/react` hook imports → pixel-react for files under `appDir`
+only (SWC may split hooks across those two entry points — aliasing just `react`
+breaks time-travel). In a monorepo, point `rootDir` at the package that owns
+`next.config` (often `__dirname`) and set `appDir` to that package's source root.
+
+Scope by app source path (not "exclude node_modules"): bundlers pre-bundle
 `@getpixel/ui` through esbuild where importer paths aren't reliably under
 `node_modules`, so a substring exclusion leaks the alias into the SDK — which
 would capture and freeze Pixel's own UI.

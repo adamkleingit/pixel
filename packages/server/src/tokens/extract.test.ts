@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { selectAdapter } from './adapters/registry.js'
-import { extractAndCacheTokens, readTokenCache, TOKENS_FILE } from './extract.js'
+import { extractAndCacheTokens, readTokenCache, requireProjectDir, TOKENS_FILE } from './extract.js'
 
 const dirs: string[] = []
 function tmpProject(): string {
@@ -34,6 +34,29 @@ const SHADCN_GLOBALS = `
 `
 
 describe('token extraction', () => {
+  it('requireProjectDir fails without PIXEL_PROJECT_DIR', () => {
+    const prev = process.env.PIXEL_PROJECT_DIR
+    delete process.env.PIXEL_PROJECT_DIR
+    try {
+      expect(() => requireProjectDir()).toThrow(/PIXEL_PROJECT_DIR is required/)
+    } finally {
+      if (prev === undefined) delete process.env.PIXEL_PROJECT_DIR
+      else process.env.PIXEL_PROJECT_DIR = prev
+    }
+  })
+
+  it('requireProjectDir resolves relative paths from cwd', () => {
+    const project = tmpProject()
+    const prev = process.env.PIXEL_PROJECT_DIR
+    process.env.PIXEL_PROJECT_DIR = '.'
+    try {
+      expect(requireProjectDir(project)).toBe(project)
+    } finally {
+      if (prev === undefined) delete process.env.PIXEL_PROJECT_DIR
+      else process.env.PIXEL_PROJECT_DIR = prev
+    }
+  })
+
   it('shadcn: extracts :root vars with utility/css-var spellings + writes the cache', async () => {
     const project = tmpProject()
     const root = join(project, '.pixel')

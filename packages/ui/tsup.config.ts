@@ -5,7 +5,12 @@ export default defineConfig({
   // which the app aliases as `react` for state capture / time-travel. Shared
   // modules (the capture store) split into a common chunk; the store is also
   // pinned to a `globalThis` singleton so both entries see one instance.
-  entry: ['src/index.tsx', 'src/pixel-react/index.tsx'],
+  entry: [
+    'src/index.tsx',
+    'src/pixel-react/index.tsx',
+    'src/integrations/next.ts',
+    'src/integrations/vite.ts',
+  ],
   format: ['esm'],
   splitting: true,
   dts: true,

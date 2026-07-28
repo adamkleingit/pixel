@@ -127,6 +127,8 @@ export interface PixelContextValue {
   stepStateForward: () => void
   /** Leave time-travel: resume the pre-freeze live state and keep capturing. */
   cancelTimeTravel: () => void
+  /** Resume live and close the state-history pane. */
+  resumeLive: () => void
 }
 
 /** Lightweight frame descriptor for the states list UI. */

@@ -8,7 +8,7 @@ import { usePixelContext } from './context'
  * `<html>`; collapse; drag-resize the left edge) so it feels like the design
  * panel. Its body is the pixel-react frame timeline: every captured commit as a
  * timestamp row. Click a row — or the ‹ › chevrons — to freeze the app to that
- * state; "Resume live" (or closing the pane) returns to the live app.
+ * state; "Resume live" closes the pane and returns to the live app.
  *
  * Frames only appear when the app routes its `react` through pixel-react (a
  * dev-only bundler alias — see the README). Without it the list stays empty and
@@ -49,7 +49,7 @@ export function StatesPane() {
     gotoState,
     stepStateBack,
     stepStateForward,
-    cancelTimeTravel,
+    resumeLive,
   } = usePixelContext()
 
   const [collapsed, setCollapsed] = useState(false)
@@ -180,7 +180,7 @@ export function StatesPane() {
               <button
                 type="button"
                 className="pixel-states-resume"
-                onClick={cancelTimeTravel}
+                onClick={resumeLive}
                 title="Resume the live app (back to passthrough)"
               >
                 Resume live

@@ -314,8 +314,8 @@ Click the **rewind-clock** icon in the bar (just below Comment) to open
 the **States** pane — a right-docked, expand/collapse panel (like the design
 pane) that lists every captured app-state commit as a timestamp. Click a
 timestamp, or step with the **‹ ›** chevrons, to **freeze** the live app to that
-state; **Resume live** (or closing the pane) returns to the live app and keeps
-monitoring.
+state; **Resume live** closes the pane and returns to the live app (closing the
+pane without resuming also unfreezes if you were frozen).
 
 This is powered by **pixel-react**, a thin wrapper around React that the app
 loads in place of `react` in development. It has three modes:

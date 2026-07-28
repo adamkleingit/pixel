@@ -48,9 +48,10 @@ test('freezing rewinds the DOM to a captured state; resume restores it', async (
   // The frozen (historical) DOM has no dialog.
   await expect(page.getByText('Test dialog')).toHaveCount(0)
 
-  // Resume live → the pre-freeze state is restored (dialog visible again).
+  // Resume live → the pre-freeze state is restored (dialog visible again) and
+  // the state-history pane closes.
   await statesPane(page).getByRole('button', { name: 'Resume live' }).click()
-  await expect(frozenBanner(page)).toHaveCount(0)
+  await expect(statesPane(page)).toHaveCount(0)
   await expect(page.getByText('Test dialog')).toBeVisible()
 })
 
@@ -118,9 +119,9 @@ test('typing in the dialog is captured; time-travel rewinds the typed text', asy
   await back.click() // 'ABC'
   await expect(input).toHaveValue('ABC')
 
-  // Resume live → the full typed text is restored.
+  // Resume live → the full typed text is restored and the pane closes.
   await statesPane(page).getByRole('button', { name: 'Resume live' }).click()
-  await expect(frozenBanner(page)).toHaveCount(0)
+  await expect(statesPane(page)).toHaveCount(0)
   await expect(page.locator('.dialog-panel input[type="text"]')).toHaveValue('ABCDE')
 })
 

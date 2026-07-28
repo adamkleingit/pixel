@@ -575,6 +575,11 @@ export function PixelProvider({
     preFreezeRef.current = null
     setFrozenIndex(null)
   }, [])
+  /** Resume the pre-freeze live app and close the state-history pane. */
+  const resumeLive = useCallback(() => {
+    cancelTimeTravel()
+    setTimeTravel(false)
+  }, [cancelTimeTravel])
   // exitEdit (defined above) resumes live through this when a time-traveled edit ends.
   resumeAfterEditRef.current = cancelTimeTravel
 
@@ -950,6 +955,7 @@ export function PixelProvider({
       stepStateBack,
       stepStateForward,
       cancelTimeTravel,
+      resumeLive,
     }),
     [
       state,
@@ -996,6 +1002,7 @@ export function PixelProvider({
       stepStateBack,
       stepStateForward,
       cancelTimeTravel,
+      resumeLive,
     ],
   )
 

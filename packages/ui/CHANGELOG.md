@@ -1,5 +1,11 @@
 # @getpixel/ui
 
+## 0.4.2
+
+### Patch Changes
+
+- dd089df: Resume live closes the state history pane.
+
 ## 0.4.1
 
 ### Patch Changes

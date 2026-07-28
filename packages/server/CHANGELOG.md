@@ -1,5 +1,11 @@
 # @getpixel/server
 
+## 0.4.1
+
+### Patch Changes
+
+- 589a586: Fix per-corner radius values invisible in the design pane.
+
 ## 0.4.0
 
 ### Minor Changes

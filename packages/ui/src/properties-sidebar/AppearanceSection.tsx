@@ -318,6 +318,7 @@ export function AppearanceSection({ elements = [] }: AppearanceSectionProps = {}
                   value={corners[c.key]}
                   placeholder={cornersShared[c.key] === 'multiple' ? MULTIPLE_PLACEHOLDER : ''}
                   disabled={cornersShared[c.key] === 'multiple'}
+                  compact
                   onChange={onCorner(c.key, c.property)}
                   snapTargets={radiusMatch.snapTargets}
                   tokenLabel={
@@ -344,6 +345,7 @@ function RadiusInput({
   value,
   placeholder = '',
   disabled = false,
+  compact = false,
   onChange,
   snapTargets,
   tokenLabel,
@@ -353,6 +355,8 @@ function RadiusInput({
   value: string
   placeholder?: string
   disabled?: boolean
+  /** Per-corner cells are too narrow for a unit dropdown — show suffix only. */
+  compact?: boolean
   onChange: (value: string, mods?: unknown, extras?: ScrubExtras) => void
   snapTargets: ReturnType<typeof useTokenMatch>['snapTargets']
   tokenLabel: string | null
@@ -364,6 +368,7 @@ function RadiusInput({
       value={value}
       placeholder={placeholder}
       disabled={disabled}
+      compact={compact}
       onChange={onChange}
       options={LENGTH_OPTIONS}
       min={0}

@@ -28,6 +28,9 @@ export interface DimensionInputProps {
   snap?: { targets: SnapTarget[]; threshold: number }
   /** Token name the current value coincides with (tints the field). */
   tokenLabel?: string | null
+  /** Hide the unit dropdown and show the unit as a suffix — for tight cells
+   *  (e.g. the per-corner radius grid) where a full picker won't fit. */
+  compact?: boolean
 }
 
 /**
@@ -48,6 +51,7 @@ export function DimensionInput({
   step = 1,
   snap,
   tokenLabel = null,
+  compact = false,
 }: DimensionInputProps) {
   const { num, unit } = parseDimension(value)
   const isKeyword = unit !== '' && !isLengthUnit(unit)
@@ -79,6 +83,8 @@ export function DimensionInput({
     snap: numUnit === 'px' ? snap : undefined,
   })
 
+  const unitSuffix = isLengthUnit(displayUnit) && displayUnit !== '' ? displayUnit : ''
+
   return (
     <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0, alignItems: 'center' }}>
       <NumericInput
@@ -90,18 +96,21 @@ export function DimensionInput({
         disabled={disabled}
         prefixProps={scrub.prefixProps}
         tokenLabel={tokenLabel}
+        suffix={compact && !tokenLabel ? unitSuffix : ''}
       />
-      <div style={{ width: 52, flexShrink: 0 }}>
-        <Dropdown
-          value={displayUnit}
-          onChange={emitUnit}
-          options={options}
-          disabled={disabled}
-          renderTrigger={cur => (
-            <span style={{ fontSize: 11 }}>{cur ? cur.label : '—'}</span>
-          )}
-        />
-      </div>
+      {!compact && (
+        <div style={{ width: 52, flexShrink: 0 }}>
+          <Dropdown
+            value={displayUnit}
+            onChange={emitUnit}
+            options={options}
+            disabled={disabled}
+            renderTrigger={cur => (
+              <span style={{ fontSize: 11 }}>{cur ? cur.label : '—'}</span>
+            )}
+          />
+        </div>
+      )}
     </div>
   )
 }

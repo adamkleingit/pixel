@@ -4,11 +4,13 @@ import { COLORS, FONT_SIZE, FONTS, RADIUS } from '../design-system'
 import type { Rect } from '../selection/selection-utils'
 import { isDragging as isResizeOrRotateDragging } from './drag-session'
 import { maybeBeginInlineEditFromHandle } from './handle-inline-edit'
+import { gapId, marginId, paddingId } from './handle-proximity'
 import { getActiveSpacingDrag, startSpacingDrag, type SpacingAxis } from './spacing-drag'
 import { setSnapTargets } from './token-snap'
 import { tokenDisplayLabel } from '../properties-sidebar/token-mapping'
 import { useTokenMatch } from '../properties-sidebar/useTokenMatch'
 import type { Token } from '../pixel-common'
+import { handlePointerEvents } from './use-closest-handle'
 
 /** Match a raw px value to a spacing token and return the picker-consistent
  *  bare display name (e.g. `space-3`), or null. Shared by the padding/margin
@@ -110,15 +112,16 @@ export function SpacingHandles({
   rect,
   element,
   getMultiEditPeers,
+  activeHandleId,
+  chromeRevealed,
 }: {
   rect: Rect
   element: Element
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
+  chromeRevealed?: boolean
 }) {
   useDragFrame()
-  // Publish spacing tokens to the drag registry so on-canvas padding/margin/gap
-  // drags can snap to them (the drag sessions are non-React). One spacing kind
-  // covers padding, margin and gap.
   const spacingMatch = useTokenMatch('padding-top')
   useEffect(() => {
     setSnapTargets(
@@ -126,60 +129,15 @@ export function SpacingHandles({
       spacingMatch.snapTargets.map(t => ({ value: t.numericValue, token: t.token })),
     )
   }, [spacingMatch.snapTargets])
-  // Reveal logic — the handles only render after the pointer has rested over
-  // the element (or its margin band, plus a small buffer so the user can
-  // travel to a bar) for `HOVER_DELAY_MS`. An active spacing drag forces them
-  // visible so they can't disappear while the user is dragging outside the
-  // trigger area. Cleared instantly when the pointer leaves.
-  const [hoveringElement, setHoveringElement] = useState(false)
-  const [delayed, setDelayed] = useState(false)
-
-  useEffect(() => {
-    if (!(element instanceof HTMLElement)) return
-    function onMove(e: PointerEvent) {
-      if (isResizeOrRotateDragging()) {
-        setHoveringElement(false)
-        return
-      }
-      const r = (element as HTMLElement).getBoundingClientRect()
-      const cs = getComputedStyle(element)
-      // Margin in CSS px, scaled to screen px for hit-testing against the
-      // (already-scaled) bounding rect.
-      const sc = getViewportScale() || 1
-      const ml = px(cs.marginLeft)   * sc
-      const mr = px(cs.marginRight)  * sc
-      const mt = px(cs.marginTop)    * sc
-      const mb = px(cs.marginBottom) * sc
-      const inside =
-        e.clientX >= r.left   - ml - HOVER_PAD &&
-        e.clientX <= r.right  + mr + HOVER_PAD &&
-        e.clientY >= r.top    - mt - HOVER_PAD &&
-        e.clientY <= r.bottom + mb + HOVER_PAD
-      setHoveringElement(prev => (prev === inside ? prev : inside))
-    }
-    document.addEventListener('pointermove', onMove)
-    return () => document.removeEventListener('pointermove', onMove)
-  }, [element])
-
-  useEffect(() => {
-    if (!hoveringElement) {
-      setDelayed(false)
-      return
-    }
-    const t = window.setTimeout(() => setDelayed(true), HOVER_DELAY_MS)
-    return () => window.clearTimeout(t)
-  }, [hoveringElement])
 
   if (!(element instanceof HTMLElement)) return null
   if (Math.round(rect.rotation) !== 0) return null
-  // Resize / rotate gestures own the pointer — suppress spacing hover chrome.
   if (isResizeOrRotateDragging()) return null
 
-  // Force-visible while any spacing drag is active on this element so the
-  // bars don't blink off as the pointer leaves the trigger area mid-drag.
   const drag = getActiveSpacingDrag()
   const dragActive = !!drag && drag.element === element
-  if (!delayed && !dragActive) return null
+  const revealed = chromeRevealed ?? false
+  if (!revealed && !dragActive) return null
 
   const cs = getComputedStyle(element)
   const W = rect.width
@@ -230,6 +188,7 @@ export function SpacingHandles({
           element={element}
           matchToken={spacingMatch.matchToken}
           getMultiEditPeers={getMultiEditPeers}
+          activeHandleId={activeHandleId}
         />
       ))}
       {SIDES.map(spec => (
@@ -245,6 +204,7 @@ export function SpacingHandles({
           element={element}
           matchToken={spacingMatch.matchToken}
           getMultiEditPeers={getMultiEditPeers}
+          activeHandleId={activeHandleId}
         />
       ))}
       <GapHandles
@@ -254,6 +214,7 @@ export function SpacingHandles({
         scale={scale}
         matchToken={spacingMatch.matchToken}
         getMultiEditPeers={getMultiEditPeers}
+        activeHandleId={activeHandleId}
       />
     </div>
   )
@@ -367,6 +328,7 @@ function Bar({
   element,
   matchToken,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   kind: Kind
   spec: SideSpec
@@ -378,6 +340,7 @@ function Bar({
   element: HTMLElement
   matchToken: MatchToken
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
 }) {
   const [hovered, setHovered] = useState(false)
   const horizontal = spec.axis === 'y'
@@ -467,7 +430,10 @@ function Bar({
           width: hit.width,
           height: hit.height,
           cursor: spec.cursor,
-          pointerEvents: 'auto',
+          pointerEvents: handlePointerEvents(
+            activeHandleId,
+            kind === 'padding' ? paddingId(spec.side) : marginId(spec.side),
+          ),
           touchAction: 'none',
           background: 'transparent',
         }}
@@ -572,6 +538,7 @@ function GapHandles({
   scale,
   matchToken,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   rect: Rect
   element: HTMLElement
@@ -579,6 +546,7 @@ function GapHandles({
   scale: number
   matchToken: MatchToken
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
 }) {
   if (!cs.display.includes('flex')) return null
   const column = cs.flexDirection.startsWith('column')
@@ -621,6 +589,7 @@ function GapHandles({
         return (
           <GapBar
             key={`gap-${i}`}
+            index={i}
             x={x}
             y={y}
             column={column}
@@ -635,6 +604,7 @@ function GapHandles({
             scale={scale}
             matchToken={matchToken}
             getMultiEditPeers={getMultiEditPeers}
+            activeHandleId={activeHandleId}
           />
         )
       })}
@@ -643,15 +613,17 @@ function GapHandles({
 }
 
 function GapBar({
-  x, y, column, len, value, spreadMode, property, cursor, element,
+  index, x, y, column, len, value, spreadMode, property, cursor, element,
   draggingThis, dragSomethingElse, scale, matchToken, getMultiEditPeers,
+  activeHandleId,
 }: {
-  x: number; y: number; column: boolean; len: number; value: number;
+  index: number; x: number; y: number; column: boolean; len: number; value: number;
   spreadMode: string | null;
   property: string; cursor: string; element: HTMLElement;
   draggingThis: boolean; dragSomethingElse: boolean; scale: number;
   matchToken: MatchToken;
   getMultiEditPeers?: () => HTMLElement[];
+  activeHandleId?: string | null;
 }) {
   const [hovered, setHovered] = useState(false)
   // Gap "band" is the strip between the two children (along the gap axis).
@@ -712,7 +684,7 @@ function GapBar({
           width:  column ? len + HIT_ALONG * 2 : BAR + HIT_OFFSET * 2,
           height: column ? BAR + HIT_OFFSET * 2 : len + HIT_ALONG * 2,
           cursor,
-          pointerEvents: 'auto',
+          pointerEvents: handlePointerEvents(activeHandleId, gapId(index)),
           touchAction: 'none',
         }}
       />

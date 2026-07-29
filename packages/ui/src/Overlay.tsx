@@ -922,14 +922,21 @@ function RecBar() {
   const recording = state === 'recording'
   const idle = state === 'idle'
   const [minimized, setMinimized] = useState(false)
+  // Explicit dismiss — bar gone, but hotkeys (double Space / double Enter) stay live.
+  const [hidden, setHidden] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const containRef = useContainEvents<HTMLDivElement>(true) // bar also contains Esc
   const tasksPanelRef = useRef<HTMLDivElement | null>(null)
 
   // Entering record / edit / comment closes the changelog — those modes hide
   // the indicator, and leaving it open under a mode switch is confusing.
+  // Also re-surface a dismissed bar so hotkey-started sessions have controls.
   useEffect(() => {
-    if (!idle || editing || commenting) setPanelOpen(false)
+    if (!idle || editing || commenting) {
+      setPanelOpen(false)
+      setHidden(false)
+      setMinimized(false)
+    }
   }, [idle, editing, commenting])
 
   // Any click outside the changelog panel (and its toggle) dismisses it.
@@ -1012,17 +1019,23 @@ function RecBar() {
     (commenting ? ' commenting' : '') +
     (minimized ? ' minimized' : '')
 
+  if (hidden) return null
+
   if (minimized) {
     return (
-      <>
-        <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
-          {!idle && <span className="pixel-rec-dot" />}
-          {indicator}
-          <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
-          {tasksPopup}
-        </div>
-        {serverDownToast}
-      </>
+      <div ref={containRef} className={cls} style={{ opacity: bar.opacity }}>
+        {!idle && <span className="pixel-rec-dot" />}
+        <IconButton icon="expand" label="Expand" onClick={() => setMinimized(false)} stroke />
+        <IconButton
+          icon="cancel"
+          label="Hide bar"
+          onClick={() => {
+            setPanelOpen(false)
+            setHidden(true)
+          }}
+          stroke
+        />
+      </div>
     )
   }
 
@@ -1121,7 +1134,24 @@ function RecBar() {
 
       <span className="pixel-rec-sep" />
       <BugButton />
-      <IconButton icon="minimize" label="Minimize" onClick={() => setMinimized(true)} stroke />
+      <IconButton
+        icon="minimize"
+        label="Minimize"
+        onClick={() => {
+          setPanelOpen(false)
+          setMinimized(true)
+        }}
+        stroke
+      />
+      <IconButton
+        icon="cancel"
+        label="Hide bar"
+        onClick={() => {
+          setPanelOpen(false)
+          setHidden(true)
+        }}
+        stroke
+      />
       {tasksPopup}
     </div>
     {serverDownToast}

@@ -1,5 +1,11 @@
 # @getpixel/ui
 
+## 0.6.0
+
+### Minor Changes
+
+- 6780dd7: Add a close (X) control on the state-history pane that resumes live — including when collapsed.
+
 ## 0.5.3
 
 ### Patch Changes

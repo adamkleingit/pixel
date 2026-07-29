@@ -14,6 +14,7 @@ import {
   readGapCandidates,
   readSideSpacing,
   type HandleId,
+  syncHandlePointerEvents,
 } from './handle-proximity'
 import { isRadiusDragging } from './radius-drag'
 import { resolveAnchor } from './resolve-anchor'
@@ -110,9 +111,18 @@ export function useClosestHandle(
         // Flush so pointerdown in the same gesture sees the gated hit target.
         flushSync(() => setActiveId(next))
       }
+      syncHandlePointerEvents(activeIdRef.current)
+    }
+    // Capture-phase pointerdown: re-sync so down never hits a stale loser.
+    function onDown() {
+      syncHandlePointerEvents(activeIdRef.current)
     }
     document.addEventListener('pointermove', onMove)
-    return () => document.removeEventListener('pointermove', onMove)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerdown', onDown, true)
+    }
   }, [element, rect, chromeRevealed])
 
   // Newly revealed spacing/radius must not inherit a prior "null/far" gate that
@@ -120,6 +130,7 @@ export function useClosestHandle(
   useEffect(() => {
     activeIdRef.current = undefined
     setActiveId(undefined)
+    syncHandlePointerEvents(undefined)
   }, [chromeRevealed, element])
 
   return activeId

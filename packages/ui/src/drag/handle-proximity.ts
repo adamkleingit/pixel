@@ -489,3 +489,58 @@ export function readCornerRadii(element: Element): Record<HandleCorner, number> 
     bl: px('border-bottom-left-radius'),
   }
 }
+
+
+/** Map a live handle DOM node to its proximity id. */
+export function handleIdFromElement(el: Element): HandleId | null {
+  const resize = el.getAttribute('data-resize-handle')
+  if (resize === 'corner') {
+    const c = el.getAttribute('data-corner')
+    return c ? resizeCornerId(c as HandleCorner) : null
+  }
+  if (resize === 'edge') {
+    const s = el.getAttribute('data-side')
+    return s ? resizeEdgeId(s as HandleSide) : null
+  }
+  if (resize === 'rotate') {
+    const c = el.getAttribute('data-corner')
+    return c ? rotateId(c as HandleCorner) : null
+  }
+  if (resize === 'radius') {
+    const c = el.getAttribute('data-corner')
+    return c ? radiusId(c as HandleCorner) : null
+  }
+  const spacing = el.getAttribute('data-spacing-handle')
+  if (spacing === 'padding' || spacing === 'margin') {
+    // Infer side from title "padding-top: …" or position — bars set title `${property}:`.
+    const title = el.getAttribute('title') || ''
+    const m = title.match(/^(?:padding|margin)-(top|right|bottom|left)/)
+    if (!m) return null
+    return spacing === 'padding' ? paddingId(m[1] as HandleSide) : marginId(m[1] as HandleSide)
+  }
+  if (spacing === 'gap') {
+    // Gaps share one property; index is not in the DOM. Treat any gap as active
+    // when the winner is any gap:* id by returning a sentinel checked in sync.
+    return 'gap:*'
+  }
+  return null
+}
+
+/**
+ * Imperatively gate hit targets so the winner is interactive before React
+ * re-renders (Playwright move→down races the commit otherwise).
+ */
+export function syncHandlePointerEvents(activeHandleId: HandleId | null | undefined): void {
+  for (const node of document.querySelectorAll<HTMLElement>('[data-resize-handle], [data-spacing-handle]')) {
+    const id = handleIdFromElement(node)
+    if (!id) continue
+    if (activeHandleId === undefined) {
+      node.style.pointerEvents = 'auto'
+      continue
+    }
+    const match =
+      activeHandleId === id ||
+      (id === 'gap:*' && typeof activeHandleId === 'string' && activeHandleId.startsWith('gap:'))
+    node.style.pointerEvents = match ? 'auto' : 'none'
+  }
+}

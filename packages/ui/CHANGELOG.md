@@ -1,5 +1,11 @@
 # @getpixel/ui
 
+## 0.5.1
+
+### Patch Changes
+
+- 3729c6e: Hide the changelog indicator when the bar is minimized, and add a Hide control on both the expanded and minimized bar that dismisses it while keeping double Space / double Enter hotkeys active.
+
 ## 0.5.0
 
 ### Minor Changes

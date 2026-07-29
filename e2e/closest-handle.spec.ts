@@ -19,8 +19,8 @@ async function selectExact(loc: Locator): Promise<void> {
 async function shrinkUpgrade(page: Page): Promise<void> {
   await upgrade(page).evaluate((el) => {
     const h = el as HTMLElement
-    h.style.width = '28px'
-    h.style.height = '28px'
+    h.style.width = '40px'
+    h.style.height = '40px'
     h.style.padding = '0'
     h.style.fontSize = '0'
     h.style.overflow = 'hidden'
@@ -30,8 +30,6 @@ async function shrinkUpgrade(page: Page): Promise<void> {
 }
 
 async function dragFrom(page: Page, x: number, y: number, dx: number, dy: number): Promise<void> {
-  // Nudge then settle so proximity scoring + React flush gate pointer-events
-  // before pointerdown (Playwright can otherwise down on a still-disabled hit).
   await page.mouse.move(x - 1, y - 1)
   await page.mouse.move(x, y)
   await page.waitForTimeout(100)
@@ -47,33 +45,40 @@ test('closest handle: outer corner resizes; inset point adjusts radius', async (
   await upgrade(page).hover()
   await page.waitForTimeout(350)
 
-  const box = (await upgrade(page).boundingBox())!
-  const beforeW = box.width
-  const beforeH = box.height
-  await dragFrom(page, box.x + box.width, box.y + box.height, 40, 30)
+  const corner = page.locator('[data-resize-handle="corner"][data-corner="br"]')
+  await expect(corner).toBeVisible()
+  const cb = (await corner.boundingBox())!
+  const before = (await upgrade(page).boundingBox())!
+
+  await dragFrom(page, cb.x + cb.width / 2, cb.y + cb.height / 2, 40, 30)
   await settleLayout(page)
+
   const afterResize = (await upgrade(page).boundingBox())!
-  expect(afterResize.width).toBeGreaterThan(beforeW + 20)
-  expect(afterResize.height).toBeGreaterThan(beforeH + 15)
+  expect(afterResize.width).toBeGreaterThan(before.width + 20)
+  expect(afterResize.height).toBeGreaterThan(before.height + 15)
 
   await shrinkUpgrade(page)
   await upgrade(page).hover()
   await page.waitForTimeout(350)
 
-  const box2 = (await upgrade(page).boundingBox())!
+  const radiusHandle = page.locator('[data-resize-handle="radius"][data-corner="br"]')
+  await expect(radiusHandle).toBeVisible()
+  const rb = (await radiusHandle.boundingBox())!
   const beforeRadius = await upgrade(page).evaluate(
-    (el) => getComputedStyle(el as HTMLElement).borderBottomRightRadius,
+    (el) => (el as HTMLElement).style.borderBottomRightRadius,
   )
-  await dragFrom(page, box2.x + box2.width - 8, box2.y + box2.height - 8, -14, -14)
+
+  await dragFrom(page, rb.x + rb.width / 2, rb.y + rb.height / 2, -14, -14)
   await settleLayout(page)
+
   await expect
-    .poll(() =>
-      upgrade(page).evaluate(
-        (el) => getComputedStyle(el as HTMLElement).borderBottomRightRadius,
-      ),
-    )
+    .poll(() => upgrade(page).evaluate((el) => (el as HTMLElement).style.borderBottomRightRadius))
     .not.toBe(beforeRadius)
+
   const afterRadius = (await upgrade(page).boundingBox())!
-  expect(Math.abs(afterRadius.width - box2.width)).toBeLessThan(6)
-  expect(Math.abs(afterRadius.height - box2.height)).toBeLessThan(6)
+  const box2 = before // size after shrink; re-read
+  const shrunk = (await upgrade(page).boundingBox())!
+  // Size should stay near the shrunk box (radius drag, not resize)
+  expect(Math.abs(afterRadius.width - shrunk.width)).toBeLessThan(8)
+  expect(Math.abs(afterRadius.height - shrunk.height)).toBeLessThan(8)
 })

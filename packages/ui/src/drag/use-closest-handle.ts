@@ -100,15 +100,18 @@ export function useClosestHandle(
         gaps: chromeRevealed ? readGapCandidates(element, rect, cs) : undefined,
         scale,
       })
-      const next = pickClosestHandle(
+      const picked = pickClosestHandle(
         candidates,
         { x: e.clientX, y: e.clientY },
         rect,
-        { currentId: activeIdRef.current },
+        // Only apply hysteresis against a real winner — not against "ungated".
+        { currentId: typeof activeIdRef.current === 'string' ? activeIdRef.current : null },
       )
+      // Far from every handle → ungated (undefined). Gating to `null` used to
+      // disable *all* hit targets, so the pointer could never land on one.
+      const next: typeof activeIdRef.current = picked ?? undefined
       if (next !== activeIdRef.current) {
         activeIdRef.current = next
-        // Flush so pointerdown in the same gesture sees the gated hit target.
         flushSync(() => setActiveId(next))
       }
       syncHandlePointerEvents(activeIdRef.current)

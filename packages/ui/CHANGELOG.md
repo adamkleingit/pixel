@@ -1,5 +1,11 @@
 # @getpixel/ui
 
+## 0.5.2
+
+### Patch Changes
+
+- 7aa3be0: Document `<PixelStateRoot>` in the install path (README + pixel skill) so fresh installs include the time-travel remount boundary instead of skipping it.
+
 ## 0.5.1
 
 ### Patch Changes

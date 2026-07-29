@@ -418,7 +418,11 @@ function EditControls() {
       history.clear()
       exitEdit()
     } catch {
-      /* stay in edit mode — the provider already surfaced the error */
+      // Stay in edit mode — the provider already surfaced the error. Draining
+      // took the in-flight edit out of the reporter, so commit it as an entry;
+      // otherwise it would vanish from the batch a Resend (or a second Save)
+      // sends, even though it's still applied on the page.
+      if (drained.length) history.commit(drained, 'edit')
     }
   }, [history, saveEdits, exitEdit])
   saveRef.current = () => void save()

@@ -128,3 +128,27 @@ describe('buildHandleCandidates rotation gating', () => {
     expect(c.some(x => x.kind === 'padding')).toBe(false)
   })
 })
+
+describe('hysteresis vs overlapping edge/radius', () => {
+  it('edge band does not trap the pointer away from a closer radius anchor', () => {
+    const rect = { top: 100, left: 100, width: 80, height: 40, rotation: 0 }
+    const candidates = buildHandleCandidates({
+      rect,
+      layout: FULL_LAYOUT,
+      chromeRevealed: true,
+      radii: { tl: 0, tr: 0, br: 0, bl: 0 },
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      scale: 1,
+    })
+    // First over the right edge mid → edge wins
+    const edgePtr = { x: 100 + 78, y: 100 + 20 }
+    const edgeWinner = pickClosestHandle(candidates, edgePtr, rect)
+    expect(edgeWinner).toBe(resizeEdgeId('right'))
+    // Then onto the BR radius dot — must switch despite hysteresis
+    const radiusPtr = { x: 100 + 72, y: 100 + 32 }
+    expect(
+      pickClosestHandle(candidates, radiusPtr, rect, { currentId: edgeWinner, hysteresisPx: 2 }),
+    ).toBe(radiusId('br'))
+  })
+})

@@ -427,7 +427,15 @@ export function pickClosestHandle(
   const currentId = opts.currentId ?? null
   if (currentId && currentId !== best.c.id) {
     const current = scored.find(s => s.c.id === currentId)
-    if (current && best.primary + hysteresis >= current.primary) {
+    // Keep the current winner only when the challenger is not meaningfully
+    // closer on BOTH distance-to-hit and distance-to-anchor. Otherwise an
+    // edge band (huge hit rect, primary 0 across the border) hysteretically
+    // traps the pointer and radius/resize corners can never take over.
+    if (
+      current &&
+      best.primary + hysteresis >= current.primary &&
+      best.secondary + hysteresis >= current.secondary
+    ) {
       return currentId
     }
   }

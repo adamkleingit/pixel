@@ -149,3 +149,48 @@ test('chevrons step between captured states', async ({ page }) => {
   await statesPane(page).getByRole('button', { name: 'Next state' }).click()
   await expect(frozenBanner(page)).toContainText('Frozen at state')
 })
+
+test('header X closes the pane (same as toggling the bar icon off)', async ({ page }) => {
+  await page.goto('/')
+  await statesBtn(page).click()
+  await expect(statesPane(page)).toBeVisible()
+  await expect(statesBtn(page)).toHaveAttribute('aria-pressed', 'true')
+
+  await statesPane(page).getByRole('button', { name: 'Close state history' }).click()
+  await expect(statesPane(page)).toHaveCount(0)
+  await expect(statesBtn(page)).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('header X while frozen resumes live and closes the pane', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Open dialog' }).click()
+  await expect(page.getByText('Test dialog')).toBeVisible()
+
+  await statesBtn(page).click()
+  await expect(async () => {
+    expect(await stateRows(page).count()).toBeGreaterThan(1)
+  }).toPass()
+
+  await statesPane(page).getByTitle('Freeze to state 1').click()
+  await expect(frozenBanner(page)).toBeVisible()
+  await expect(page.getByText('Test dialog')).toHaveCount(0)
+
+  await statesPane(page).getByRole('button', { name: 'Close state history' }).click()
+  await expect(statesPane(page)).toHaveCount(0)
+  await expect(page.getByText('Test dialog')).toBeVisible()
+  await expect(statesBtn(page)).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('header X is available when the pane is collapsed', async ({ page }) => {
+  await page.goto('/')
+  await statesBtn(page).click()
+  await expect(statesPane(page)).toBeVisible()
+
+  await statesPane(page).getByRole('button', { name: 'Collapse state history pane' }).click()
+  await expect(statesPane(page)).toHaveClass(/collapsed/)
+  await expect(statesPane(page).getByRole('button', { name: 'Close state history' })).toBeVisible()
+
+  await statesPane(page).getByRole('button', { name: 'Close state history' }).click()
+  await expect(statesPane(page)).toHaveCount(0)
+  await expect(statesBtn(page)).toHaveAttribute('aria-pressed', 'false')
+})

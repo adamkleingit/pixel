@@ -805,7 +805,8 @@ html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
   white-space: nowrap;
   overflow: hidden;
 }
-.pixel-pane-collapse {
+.pixel-pane-collapse,
+.pixel-pane-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -818,10 +819,18 @@ html.pixel-editing:has([data-pixel-editing]) [data-spacing-handle] {
   color: #6b5b8a;
   flex-shrink: 0;
 }
-.pixel-pane-collapse:hover { background: #efe9ff; }
+.pixel-pane-collapse:hover,
+.pixel-pane-close:hover { background: #efe9ff; }
 .pixel-pane.collapsed .pixel-pane-head {
   padding: 0;
   justify-content: center;
+}
+/* State-history pane keeps collapse + close in the thin strip — stack them. */
+.pixel-pane[aria-label="State history pane"].collapsed .pixel-pane-head {
+  flex-direction: column;
+  height: auto;
+  padding: 6px 0;
+  gap: 2px;
 }
 .pixel-pane-body {
   flex: 1;

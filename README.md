@@ -33,9 +33,8 @@ Then add the provider and overlay to your app:
 ```tsx
 import { PixelProvider, Overlay, httpSink } from '@getpixel/ui'
 
-// Pixel is a dev-time tool — gate it on your bundler's dev flag so it never
-// ships to production. Vite: import.meta.env.DEV. Webpack/CRA/Next:
-// process.env.NODE_ENV !== 'production'.
+// Pixel is a dev-time tool — gate it on your bundler's dev flag. Vite:
+// import.meta.env.DEV. Webpack/CRA/Next: process.env.NODE_ENV !== 'production'.
 const enabled = import.meta.env.DEV
 
 export function Root() {
@@ -52,9 +51,90 @@ export function Root() {
 ```
 
 `isEnabled={false}` makes the provider completely inert — no styles, no keyboard
-shortcuts, no event capture, and `start()` does nothing — so Pixel adds nothing
-to a production build. Render `<Overlay />` behind the same flag so the floating
-bar is dev-only too.
+shortcuts, no event capture, and `start()` does nothing. Render `<Overlay />`
+behind the same flag so the floating bar is dev-only too.
+
+Then add the bundler plugin, below — **the runtime flag alone does not keep Pixel
+out of your production bundle.**
+
+### Keep Pixel out of your production bundle
+
+`isEnabled={false}` is a *runtime* switch. The `import` above is still static, so
+your bundler has no way to know the flag is constant and the whole SDK (~550 KB
+unminified) stays in the graph and ships. Point `@getpixel/ui` at its inert build
+for production instead — same exports, same shapes, no behaviour — and the SDK
+drops out entirely while every import site keeps compiling.
+
+Vite (`vite.config.ts`):
+
+```ts
+import { resolve } from 'node:path'
+import { pixel } from '@getpixel/ui/vite'
+
+export default defineConfig({
+  plugins: [pixel({ appDir: resolve(__dirname, 'src') }), react()],
+  optimizeDeps: { include: ['@getpixel/ui/pixel-react'] },
+})
+```
+
+Next.js (`next.config.ts`):
+
+```ts
+import type { NextConfig } from 'next'
+import { withPixel } from '@getpixel/ui/next'
+
+const nextConfig: NextConfig = {
+  // your existing config…
+}
+
+export default withPixel(nextConfig, { rootDir: __dirname, appDir: 'src' })
+```
+
+Both helpers also wire up [time travel](#time-travel--state-history-pixel-react)
+in development; `withPixel` additionally turns `reactStrictMode` off in dev (see
+[StrictMode](#strictmode), below). Pass `stripInProduction: false` /
+use `pixelReactAlias()` alone to opt out of the production swap.
+
+On another bundler, alias the package yourself for production builds:
+
+| from | to |
+|---|---|
+| `@getpixel/ui` | `@getpixel/ui/noop` |
+
+Verify it worked by grepping a production build for `pixel-overlay` — a correctly
+configured build has no match.
+
+### Next.js specifics
+
+Pixel is a client-side tool, so the provider and overlay belong in a **client
+component**. In the App Router, put them in a `"use client"` file and render it
+from `app/layout.tsx`:
+
+```tsx
+// app/pixel-root.tsx
+'use client'
+
+import { PixelProvider, Overlay, httpSink } from '@getpixel/ui'
+import type { ReactNode } from 'react'
+
+const enabled = process.env.NODE_ENV !== 'production'
+
+export function PixelRoot({ children }: { children: ReactNode }) {
+  return (
+    <PixelProvider
+      isEnabled={enabled}
+      config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}
+    >
+      {children}
+      {enabled && <Overlay />}
+    </PixelProvider>
+  )
+}
+```
+
+The overlay is safe to render during SSR — it portals into `document.body`, which
+has no server-rendered counterpart, so it deliberately mounts only after
+hydration and contributes nothing to the server HTML.
 
 ### Defer dev-server HMR during a session (recommended)
 
@@ -254,8 +334,8 @@ like a hard refresh in any app). Everything short of a reload is preserved.
     written as `edits.json` (no transcription).
 
   It also extracts the project's **design tokens** for the in-app design pane
-  (`GET /tokens`). The bundled **`pixel` skill** drives the agent side: claim a
-  task, recognize its kind, and carry it out.
+  (`GET /tokens`) — see below. The bundled **`pixel` skill** drives the agent
+  side: claim a task, recognize its kind, and carry it out.
 - **`examples/basic`** (`@getpixel/example`) — a Vite React app that consumes
   `@getpixel/ui` as a published (built) package.
 
@@ -298,6 +378,24 @@ dropbox alongside recordings, and the agent applies them to source — preferrin
 the **symbolic token form** (e.g. `bg-primary`, `var(--brand-coral)`) over a raw
 value when a change was bound to a design token.
 
+### Where design tokens come from
+
+The server picks one adapter for the project at `PIXEL_PROJECT_DIR`, re-running
+it whenever a watched file changes. The first match wins:
+
+| adapter | detected by | tokens spelled as |
+|---|---|---|
+| **shadcn/ui** | `globals.css` declaring `--background`, `--foreground`, `--primary` | `bg-primary`, `rounded-md`, else `var(--…)` |
+| **Tailwind v4** | `tailwindcss@4` + an `@theme { … }` block | `bg-brand`, `text-lg`, `rounded-lg`, … |
+| **Tailwind v3** | `tailwindcss@3` + a `tailwind.config.*` | utilities derived from the config's `theme` |
+| **CSS variables** | any `--name: value` in a `:root` / `html` / `:host` block | `var(--name)` |
+
+The last one is the general case: hand-rolled custom properties are picked up as
+tokens with no configuration, classified by name and value (so `--z-modal: 100`
+is a z-index, not a colour) and annotated with their `.dark` /
+`[data-theme="dark"]` override where there is one. A project with no custom
+properties at all yields no tokens, and the pickers fall back to raw values.
+
 ## Comments — pin notes for the agent
 
 Click the **speech-bubble** icon in the bar (just below the pencil) to enter
@@ -337,14 +435,16 @@ boundary component so it can remount the app to apply a frame.
 is the "mock the React import" step. Scope it to your `src/` — do **not** alias
 `node_modules` (that would capture `@getpixel/ui`'s own UI and React itself).
 
-Vite — add the bundled plugin (`vite.config.ts`):
+Vite — add the bundled plugin (`vite.config.ts`). `pixel()` is the dev alias plus
+the [production stub](#keep-pixel-out-of-your-production-bundle);
+`pixelReactAlias()` is the alias on its own:
 
 ```ts
 import { resolve } from 'node:path'
-import { pixelReactAlias } from '@getpixel/ui/vite'
+import { pixel } from '@getpixel/ui/vite'
 
 export default defineConfig({
-  plugins: [pixelReactAlias({ appDir: resolve(__dirname, 'src') }), react()],
+  plugins: [pixel({ appDir: resolve(__dirname, 'src') }), react()],
   optimizeDeps: { include: ['@getpixel/ui/pixel-react'] },
 })
 ```
@@ -368,6 +468,8 @@ and Next's `compiled/react` hook imports → pixel-react for files under `appDir
 only (SWC may split hooks across those two entry points — aliasing just `react`
 breaks time-travel). In a monorepo, point `rootDir` at the package that owns
 `next.config` (often `__dirname`) and set `appDir` to that package's source root.
+It also handles [StrictMode](#strictmode) and the
+[production stub](#keep-pixel-out-of-your-production-bundle).
 
 Scope by app source path (not "exclude node_modules"): bundlers pre-bundle
 `@getpixel/ui` through esbuild where importer paths aren't reliably under
@@ -388,12 +490,26 @@ const PIXEL_ENABLED = import.meta.env.DEV
 </PixelProvider>
 ```
 
-**Do not use `<React.StrictMode>`** around aliased app code. Its dev double-invoke
-re-runs a component's hooks against the same fiber, which desyncs pixel-react's
-per-render capture cursor.
+### StrictMode
+
+**Do not use `<React.StrictMode>`** around aliased app code. Its dev
+double-invoke re-runs a component's hooks against the same fiber, which desyncs
+pixel-react's per-render capture cursor and silently corrupts captured frames.
+
+Next enables strict mode by default, so `withPixel` turns it off **in
+development** and prints a one-line notice; production builds are untouched
+(StrictMode doesn't double-invoke there). Pass `strictMode: true` to keep it and
+accept a degraded States pane. On other setups, drop the `<React.StrictMode>`
+wrapper from your dev entry — pixel-react warns in the console if it finds one.
 
 ### Caveats
 
+- **Development builds only (for time-travel).** pixel-react keys hook state by
+  the fiber React exposes on its private internals — `ReactCurrentOwner` on 18,
+  `A.getOwner()` on 19. Both work, but only development builds of `react-dom`
+  track an owner fiber at all, so a production bundle would collapse capture to a
+  single `@root` bucket. That's fine in practice: the alias is dev-only. Pixel
+  logs a warning if it ever finds itself without one.
 - **Client components only.** Server components / static DOM have no client hook
   state; they simply aren't captured (they stay as-is in the frozen view).
 - **Effects are suppressed while frozen** — a frozen frame won't re-fetch or

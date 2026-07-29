@@ -7,6 +7,7 @@
  * Ported from Pixel (pixel/packages/agent/src/adapters/shadcn.ts).
  */
 import type { Token, TokenKind, TokenSet, TokenUsage } from '../common.js'
+import { extractBlocks, parseDecls } from './css.js'
 import { classifyByName, makeToken, normalizeShadcnColor } from './helpers.js'
 import type { Adapter, DetectContext, ExtractContext } from './types.js'
 
@@ -62,43 +63,6 @@ function findGlobalsPath(ctx: DetectContext): string | null {
 function findTailwindConfigPath(ctx: DetectContext): string | null {
   for (const p of TAILWIND_CONFIG_CANDIDATES) if (ctx.exists(p)) return p
   return null
-}
-
-/** Parse `--name: value;` declarations from a CSS block. */
-const DECL_RE = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+?)\s*;/g
-
-/**
- * Pluck the body of every block whose selector matches. Handles nested braces
- * with a depth counter — robust enough for conventional shadcn / Tailwind-v4.
- */
-function extractBlocks(css: string, selectorRe: RegExp): string[] {
-  const blocks: string[] = []
-  const matchRe = new RegExp(selectorRe.source, selectorRe.flags.replace('g', '') + 'g')
-  let m: RegExpExecArray | null
-  while ((m = matchRe.exec(css))) {
-    const openIdx = css.indexOf('{', m.index + m[0].length - 1)
-    if (openIdx < 0) continue
-    let depth = 1
-    let i = openIdx + 1
-    while (i < css.length && depth > 0) {
-      const ch = css[i]
-      if (ch === '{') depth++
-      else if (ch === '}') depth--
-      i++
-    }
-    blocks.push(css.slice(openIdx + 1, i - 1))
-  }
-  return blocks
-}
-
-function parseDecls(blockBody: string): Array<{ name: string; value: string }> {
-  const out: Array<{ name: string; value: string }> = []
-  DECL_RE.lastIndex = 0
-  let m: RegExpExecArray | null
-  while ((m = DECL_RE.exec(blockBody))) {
-    out.push({ name: m[1], value: m[2] })
-  }
-  return out
 }
 
 function usageForToken(name: string, kind: TokenKind, cssVar: string): TokenUsage {

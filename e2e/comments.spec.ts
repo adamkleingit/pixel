@@ -151,6 +151,48 @@ test('place a comment, Save → comments.json with target; changelog shows comme
   await expect(page.locator('.pixel-tasks-id')).toContainText('2 comments')
 })
 
+test('a failed comment save surfaces Resend, which delivers the batch', async ({ page }) => {
+  // Fail only the first POST /comments (as if the server were down); the resend
+  // must carry the same batch through rather than silently doing nothing.
+  let attempts = 0
+  await page.route('**/comments', async (route) => {
+    attempts++
+    if (attempts === 1) await route.abort('failed')
+    else await route.continue()
+  })
+
+  await page.goto('/')
+  await commentBtn(page).click()
+  await expect(commentingBar(page)).toBeVisible()
+
+  const upgrade = page.getByRole('button', { name: 'Upgrade' })
+  const box = await upgrade.boundingBox()
+  if (!box) throw new Error('no Upgrade box')
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.locator('.pixel-comment-input')).toBeVisible()
+  await page.locator('.pixel-comment-input').fill('Make this button wider')
+  await page.getByRole('button', { name: 'Close' }).click()
+
+  await saveBtn(page).click()
+
+  const banner = page.locator('.pixel-save-error')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText(/pixel server/i)
+  expect(existsSync(INBOX_DIR)).toBe(false)
+
+  await page.getByRole('button', { name: 'Resend' }).click()
+  const id = await waitForCommentTask()
+  expect(attempts).toBe(2)
+  await expect(banner).toBeHidden()
+  // The recovered save also leaves comment mode, exactly like a first-try Save.
+  await expect(commentBtn(page)).toBeVisible()
+
+  const payload = JSON.parse(await readFile(join(INBOX_DIR, id, 'comments.json'), 'utf8')) as {
+    comments: Array<{ body: string }>
+  }
+  expect(payload.comments.map((c) => c.body)).toEqual(['Make this button wider'])
+})
+
 test('Cancel with pins shows confirm; Discard exits without saving', async ({ page }) => {
   await page.goto('/')
   await commentBtn(page).click()

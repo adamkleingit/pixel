@@ -21,6 +21,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./noop": {
+      "types": "./dist/noop.d.ts",
+      "import": "./dist/noop.js"
+    },
     "./pixel-react": {
       "types": "./dist/pixel-react/index.d.ts",
       "import": "./dist/pixel-react/index.js"

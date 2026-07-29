@@ -5,6 +5,7 @@ import {
   type RectShape,
   type ResolvedBarConfig,
   type PixelContextValue,
+  type SaveOptions,
   type StateFrameMeta,
   type Stroke,
   type StrokeShape,
@@ -147,6 +148,12 @@ export function PixelProvider({
   const recorderRef = useRef<Recorder | null>(adopted?.recorder ?? null)
   // The recording awaiting a (re)send after a failed save, if any.
   const pendingRef = useRef<Recording | null>(adopted?.pending ?? null)
+  // How to replay whatever save last failed — set by every save path (recording,
+  // edits, comments) and run by `resend`. Without this the toast's Resend could
+  // only ever replay a recording, silently doing nothing after a failed edit or
+  // comment save. Cleared on success so a later Resend can't re-post a batch
+  // that already landed.
+  const retryRef = useRef<(() => void) | null>(null)
 
   // Mirror passthrough so stable callbacks (start, the M-key toggle) read it
   // without re-creating, and so we can write it through to the session.
@@ -296,32 +303,44 @@ export function PixelProvider({
    * recording around (pendingRef) and exposes a message so the overlay can offer
    * a resend — recordings are never silently lost when the server is down.
    */
-  const saveRecording = useCallback(async (recording: Recording) => {
-    const sink = configRef.current.sink
-    if (!sink) return
-    setSaving(true)
-    setSaveError(null)
-    try {
-      const result = await sink.save(recording)
-      recording.id = result.id
-      pendingRef.current = null
-      updateActiveSession({ pending: null, saveError: null })
-      setLastRecording({ ...recording })
-      onSavedRef.current?.(result)
-    } catch (err) {
-      const message =
-        "Couldn't send the recording — is the Pixel server running? Click resend to try again."
-      pendingRef.current = recording
-      updateActiveSession({ pending: recording, saveError: message })
-      setSaveError(message)
-      console.error('[pixel] failed to save recording:', err)
-    } finally {
-      setSaving(false)
-    }
-  }, [])
+  const saveRecording: (recording: Recording) => Promise<void> = useCallback(
+    async (recording: Recording) => {
+      const sink = configRef.current.sink
+      if (!sink) return
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const result = await sink.save(recording)
+        recording.id = result.id
+        pendingRef.current = null
+        retryRef.current = null
+        updateActiveSession({ pending: null, saveError: null })
+        setLastRecording({ ...recording })
+        onSavedRef.current?.(result)
+      } catch (err) {
+        const message =
+          "Couldn't send the recording — is the Pixel server running? Click resend to try again."
+        pendingRef.current = recording
+        retryRef.current = () => void saveRecording(recording)
+        updateActiveSession({ pending: recording, saveError: message })
+        setSaveError(message)
+        console.error('[pixel] failed to save recording:', err)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [],
+  )
 
-  /** Re-attempt sending the recording that last failed to save. */
+  /** Re-attempt whichever save last failed (recording, edits, or comments). */
   const resend = useCallback(() => {
+    const retry = retryRef.current
+    if (retry) {
+      retry()
+      return
+    }
+    // A recording adopted from a session parked before a remount has no retry
+    // registered — replay it straight from the pending buffer.
     const rec = pendingRef.current
     if (rec) void saveRecording(rec)
   }, [saveRecording])
@@ -329,46 +348,56 @@ export function PixelProvider({
   /**
    * Persist a batch of edit-mode changes via the sink (Save). Resolves with the
    * created task id; rejects (surfacing a message) so the caller can keep the
-   * user in edit mode and let them retry. Mirrors `saveRecording`, but edits are
-   * stateless — there's no pending-resend buffer.
+   * user in edit mode and let them retry. Mirrors `saveRecording`: a failure
+   * registers a retry so the error toast's Resend replays this same batch.
+   * Callers pass `opts.retry` to have Resend re-run their whole save flow
+   * (exiting edit mode, clearing history) rather than just re-posting.
    */
-  const saveEdits = useCallback(async (payload: EditPayload): Promise<{ id: string }> => {
-    const sink = configRef.current.sink
-    if (!sink?.saveEdits) {
-      throw new Error('No sink configured to save edits.')
-    }
-    setSaving(true)
-    setSaveError(null)
-    try {
-      return await sink.saveEdits(payload)
-    } catch (err) {
-      const message = "Couldn't save your edits — is the Pixel server running?"
-      setSaveError(message)
-      console.error('[pixel] failed to save edits:', err)
-      throw err
-    } finally {
-      setSaving(false)
-    }
-  }, [])
+  const saveEdits: (payload: EditPayload, opts?: SaveOptions) => Promise<{ id: string }> =
+    useCallback(async (payload: EditPayload, opts?: SaveOptions): Promise<{ id: string }> => {
+      const sink = configRef.current.sink
+      if (!sink?.saveEdits) {
+        throw new Error('No sink configured to save edits.')
+      }
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const result = await sink.saveEdits(payload)
+        retryRef.current = null
+        return result
+      } catch (err) {
+        const message = "Couldn't save your edits — is the Pixel server running?"
+        retryRef.current = opts?.retry ?? (() => void saveEdits(payload, opts).catch(() => {}))
+        setSaveError(message)
+        console.error('[pixel] failed to save edits:', err)
+        throw err
+      } finally {
+        setSaving(false)
+      }
+    }, [])
 
-  const saveComments = useCallback(async (payload: CommentPayload): Promise<{ id: string }> => {
-    const sink = configRef.current.sink
-    if (!sink?.saveComments) {
-      throw new Error('No sink configured to save comments.')
-    }
-    setSaving(true)
-    setSaveError(null)
-    try {
-      return await sink.saveComments(payload)
-    } catch (err) {
-      const message = "Couldn't save your comments — is the Pixel server running?"
-      setSaveError(message)
-      console.error('[pixel] failed to save comments:', err)
-      throw err
-    } finally {
-      setSaving(false)
-    }
-  }, [])
+  const saveComments: (payload: CommentPayload, opts?: SaveOptions) => Promise<{ id: string }> =
+    useCallback(async (payload: CommentPayload, opts?: SaveOptions): Promise<{ id: string }> => {
+      const sink = configRef.current.sink
+      if (!sink?.saveComments) {
+        throw new Error('No sink configured to save comments.')
+      }
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const result = await sink.saveComments(payload)
+        retryRef.current = null
+        return result
+      } catch (err) {
+        const message = "Couldn't save your comments — is the Pixel server running?"
+        retryRef.current = opts?.retry ?? (() => void saveComments(payload, opts).catch(() => {}))
+        setSaveError(message)
+        console.error('[pixel] failed to save comments:', err)
+        throw err
+      } finally {
+        setSaving(false)
+      }
+    }, [])
 
   /** Ask the sink (server) to open a recording's folder in the OS file manager. */
   const openTask = useCallback((id: string) => {
@@ -389,6 +418,7 @@ export function PixelProvider({
     recorderRef.current = recorder
     // A new recording supersedes any prior failed-save state.
     pendingRef.current = null
+    retryRef.current = null
     setSaveError(null)
     setState('recording')
     // Park the live session so it survives a provider remount.

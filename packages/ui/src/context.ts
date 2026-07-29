@@ -39,6 +39,17 @@ export interface Stroke extends StrokeShape {
   id: number
 }
 
+/** Extras a save caller can hand the provider. */
+export interface SaveOptions {
+  /**
+   * What the error toast's Resend should run if this save fails. Defaults to
+   * re-posting the same payload; callers that do more than post on success
+   * (clearing history, leaving edit/comment mode) pass their whole save flow so
+   * Resend behaves exactly like pressing Save again.
+   */
+  retry?: () => void
+}
+
 /** Internal context shared between the provider, the overlay, and the public hook. */
 export interface PixelContextValue {
   state: PixelState
@@ -58,7 +69,7 @@ export interface PixelContextValue {
   toggleEdit: () => void
   /** Persist a batch of edit-mode changes to the sink (Save). Rejects on failure
    *  so the caller can keep the user in edit mode. No-op sink → rejects. */
-  saveEdits: (payload: EditPayload) => Promise<{ id: string }>
+  saveEdits: (payload: EditPayload, opts?: SaveOptions) => Promise<{ id: string }>
   /**
    * Comment mode. Mutually exclusive with recording and edit mode — entering
    * one exits/hides the others.
@@ -69,7 +80,7 @@ export interface PixelContextValue {
   toggleComment: () => void
   /** Persist a batch of comments to the sink (Save). Rejects on failure so the
    *  caller can keep the user in comment mode. No-op sink → rejects. */
-  saveComments: (payload: CommentPayload) => Promise<{ id: string }>
+  saveComments: (payload: CommentPayload, opts?: SaveOptions) => Promise<{ id: string }>
   /** Live interaction mode: true = clicks pass through to the page. */
   passthrough: boolean
   setPassthrough: (v: boolean) => void
@@ -80,7 +91,8 @@ export interface PixelContextValue {
   saveError: string | null
   /** True while a save (or resend) is in flight. */
   saving: boolean
-  /** Re-attempt sending the last recording that failed to save. No-op if none. */
+  /** Re-attempt whichever save last failed — recording, edits, or comments.
+   *  No-op if none. */
   resend: () => void
   /** Recordings the server is tracking (polled). Empty if none or polling is off. */
   tasks: Task[]

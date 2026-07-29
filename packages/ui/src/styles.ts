@@ -64,7 +64,7 @@ const CSS = `
 .pixel-rec {
   position: fixed;
   /* Above selection drag handles (1002/1003) AND the design pane (3002). The
-     pane is a later sibling of the bar inside `.pixel-overlay`, so at equal
+     pane is a later sibling of the bar inside .pixel-overlay, so at equal
      z-index it stole clicks from bar buttons that grew under it (Hide made
      the bar wider). Keep the bar strictly on top so Save / Hide stay usable. */
   z-index: 2147483003;

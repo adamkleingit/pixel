@@ -91,7 +91,10 @@ and on-canvas drag-snap reflect the real design system.
 > **If Pixel isn't installed or isn't configured correctly** (the command fails,
 > the package is missing, or the server won't start), follow the project README to
 > install and set it up first — then come back here, run the server, and continue
-> listening for file changes.
+> listening for file changes. A correct install **must** wrap app content in
+> `<PixelStateRoot>` (Overlay stays outside) so the States pane can remount the
+> tree — see [Time travel remount boundary](#time-travel-remount-boundary-install-must-include-this)
+> below.
 
 ## 2. Find the dropbox
 
@@ -274,19 +277,28 @@ is the most common cause of a task stuck on "Executing".
 **`stop-pixel`** skill: kill the running `watch`, exit the loop, and leave the
 ingest server up (or stop it too if they ask).
 
-## Enabling pixel-react time-travel (when asked)
+## Time travel remount boundary (install must include this)
 
-If the user asks to enable **time travel / state history** (the rewind-clock in
-the bar), the app must route its `react` through **pixel-react**. Two edits,
-**dev only** — full walkthrough in the README ("Time travel — state history"):
+A correct Pixel install wraps **app content** in `<PixelStateRoot>` and keeps
+`<Overlay />` **outside** it. The bundler helpers (`pixel()` / `withPixel`) alias
+`react` → pixel-react in dev; without the remount boundary, the States pane opens
+but clicking a state cannot freeze the UI.
 
-1. **Alias the React import** in the bundler for the app's `src/` **only** (not
-   `node_modules`): `react` → `@getpixel/ui/pixel-react`. Scope by source path,
-   not "exclude node_modules" — Vite's dep pre-bundling leaks a substring
-   exclusion into `@getpixel/ui` and captures Pixel's own UI. See the README's
-   `pixelReactAlias` Vite plugin.
-2. **Wrap the app content** in `<PixelStateRoot enabled={DEV}>…</PixelStateRoot>`,
-   keeping `<Overlay />` outside it. Remove `<React.StrictMode>` around aliased
-   app code (its double-invoke desyncs capture).
+```tsx
+import { PixelProvider, PixelStateRoot, Overlay, httpSink } from '@getpixel/ui'
 
-Client components only; state capture is in-memory (newest 50), session-scoped.
+<PixelProvider isEnabled={DEV} config={{ /* … */ }}>
+  <PixelStateRoot enabled={DEV}>
+    <App />
+  </PixelStateRoot>
+  {DEV && <Overlay />}
+</PixelProvider>
+```
+
+Same pattern for Storybook decorators: wrap `<Story />` in `<PixelStateRoot enabled>`,
+Overlay outside. Do **not** wait for the user to ask — if you install or repair Pixel
+and this wrap is missing, add it. Also remove `<React.StrictMode>` around aliased app
+code (its double-invoke desyncs capture); `withPixel` turns it off in Next.js dev.
+
+Full walkthrough: README ("Time travel — state history"). Client components only;
+state capture is in-memory (newest 50), session-scoped.

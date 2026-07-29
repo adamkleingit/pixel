@@ -82,7 +82,9 @@ async function dragHandle(
   const cx = b.x + b.width / 2
   const cy = b.y + b.height / 2
   for (const m of modifiers) await page.keyboard.down(m)
+  await page.mouse.move(cx - 1, cy - 1)
   await page.mouse.move(cx, cy)
+  await page.waitForTimeout(50)
   await page.mouse.down()
   await page.mouse.move(cx + dx, cy + dy, { steps: 8 })
   await page.mouse.up()
@@ -339,7 +341,16 @@ test('canvas radius: dragging a corner-radius handle sets the corner radius', as
   // longhand. Grab bottom-right and drag toward center (up-left) to grow it.
   await upgrade(page).hover()
   const handle = page.locator('[data-resize-handle="radius"][data-corner="br"]')
-  await dragHandle(page, handle, -16, -16)
+  await expect(handle).toBeVisible()
+  const b = (await handle.boundingBox())!
+  const cx = b.x + b.width / 2
+  const cy = b.y + b.height / 2
+  await page.mouse.move(cx - 1, cy - 1)
+  await page.mouse.move(cx, cy)
+  await page.waitForTimeout(80)
+  await page.mouse.down()
+  await page.mouse.move(cx - 16, cy - 16, { steps: 8 })
+  await page.mouse.up()
   await expect.poll(() => styleOf(upgrade(page), 'border-bottom-right-radius')).not.toBe('')
 })
 

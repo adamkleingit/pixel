@@ -2,6 +2,7 @@
  * Shared hover-reveal + closest-handle tracking for the selection chrome.
  */
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { getViewportScale } from '../canvas/viewport'
 import type { Rect } from '../selection/selection-utils'
 import { isDragging as isResizeOrRotateDragging } from './drag-session'
@@ -75,7 +76,7 @@ export function useClosestHandle(
       if (cs.display === 'none' || cs.display === 'contents') {
         if (activeIdRef.current !== null) {
           activeIdRef.current = null
-          setActiveId(null)
+          flushSync(() => setActiveId(null))
         }
         return
       }
@@ -103,7 +104,8 @@ export function useClosestHandle(
       )
       if (next !== activeIdRef.current) {
         activeIdRef.current = next
-        setActiveId(next)
+        // Flush so pointerdown in the same gesture sees the gated hit target.
+        flushSync(() => setActiveId(next))
       }
     }
     document.addEventListener('pointermove', onMove)

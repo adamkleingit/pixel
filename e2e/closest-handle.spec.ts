@@ -30,8 +30,11 @@ async function shrinkUpgrade(page: Page): Promise<void> {
 }
 
 async function dragFrom(page: Page, x: number, y: number, dx: number, dy: number): Promise<void> {
+  // Nudge then settle so proximity scoring + React flush gate pointer-events
+  // before pointerdown (Playwright can otherwise down on a still-disabled hit).
+  await page.mouse.move(x - 1, y - 1)
   await page.mouse.move(x, y)
-  await page.waitForTimeout(50)
+  await page.waitForTimeout(100)
   await page.mouse.down()
   await page.mouse.move(x + dx, y + dy, { steps: 8 })
   await page.mouse.up()

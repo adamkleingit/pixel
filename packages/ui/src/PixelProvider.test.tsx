@@ -303,3 +303,44 @@ describe('mouse tool toggle', () => {
     expect(screen.queryByRole('button', { name: 'Mouse tool' })).toBeNull()
   })
 })
+
+describe('minimized / hidden bar', () => {
+  it('hides the changelog when minimized, and Hide removes the bar while hotkeys still work', async () => {
+    const sink = {
+      save: async () => ({ id: 'x' }),
+      listTasks: async () => [
+        {
+          id: 't1',
+          status: 'pending' as const,
+          kind: 'recording' as const,
+          createdAt: Date.now(),
+        },
+      ],
+    }
+
+    render(
+      <PixelProvider config={{ bar: { always: true }, onboarding: false, sink, taskPollMs: 100 }}>
+        <Probe />
+        <Overlay />
+      </PixelProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Task log' })).toBeTruthy())
+
+    // Expanded bar already offers Hide next to Minimize.
+    expect(screen.getByRole('button', { name: 'Hide bar' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize' }))
+    expect(screen.queryByRole('button', { name: 'Task log' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Hide bar' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide bar' }))
+    expect(document.querySelector('.pixel-rec')).toBeNull()
+
+    // Double-tap Enter still enters edit mode and re-surfaces the bar.
+    fireEvent.keyDown(document, { code: 'Enter', cancelable: true })
+    fireEvent.keyDown(document, { code: 'Enter', cancelable: true })
+    await waitFor(() => expect(document.querySelector('.pixel-rec.editing')).not.toBeNull())
+  })
+})

@@ -76,9 +76,7 @@ test('closest handle: outer corner resizes; inset point adjusts radius', async (
     .not.toBe(beforeRadius)
 
   const afterRadius = (await upgrade(page).boundingBox())!
-  const box2 = before // size after shrink; re-read
   const shrunk = (await upgrade(page).boundingBox())!
-  // Size should stay near the shrunk box (radius drag, not resize)
   expect(Math.abs(afterRadius.width - shrunk.width)).toBeLessThan(8)
   expect(Math.abs(afterRadius.height - shrunk.height)).toBeLessThan(8)
 })

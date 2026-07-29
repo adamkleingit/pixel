@@ -3,16 +3,20 @@
  * background, plus parse (from computed style) and serialize (to CSS) helpers.
  *
  * The design pane's Background section reads an element into a `BackgroundPaint`,
- * lets the user edit it, and writes it back as inline styles. Three kinds:
- *   - **solid**    → `background-color`
+ * lets the user edit it, and writes it back as inline styles. Four kinds:
+ *   - **solid**    → `background-color` (hex + opacity)
  *   - **gradient** → `background-image: linear|radial-gradient(...)`
  *   - **image**    → `background-image: url(...)` + size / position / repeat
+ *   - **custom**   → authored CSS the hex editor can't represent (`color-mix()`,
+ *                    `color()`, …) — shown as the raw value so we don't lie with
+ *                    black / a flattened rgba
  *
  * Colors are carried as `{ hex, alpha }` (hex = 6 upper-case chars, alpha =
  * 0..100 string) to match the rest of the paint UI; serialization emits `rgba()`.
  */
 
-import { hexAlphaToRgba, rgbStringToHexAlpha } from './color'
+import { hexAlphaToRgba, isSimpleCssColor, rgbStringToHexAlpha } from './color'
+import { readExplicit } from './read-explicit'
 
 export interface GradientStop {
   /** Stable editor identity — lets the UI track a stop across position sorting
@@ -60,7 +64,19 @@ export interface ImagePaint {
   repeat: string
 }
 
-export type BackgroundPaint = SolidPaint | GradientPaint | ImagePaint
+/**
+ * An authored background-color expression the solid editor can't round-trip
+ * (e.g. `color-mix(in srgb, var(--color-primary) 12%, transparent)`).
+ * `css` is what we show and rewrite; `preview` is a resolved color for the swatch.
+ */
+export interface CustomPaint {
+  kind: 'custom'
+  css: string
+  /** CSS color suitable for a swatch `background` (computed when available). */
+  preview: string
+}
+
+export type BackgroundPaint = SolidPaint | GradientPaint | ImagePaint | CustomPaint
 
 // ---------------------------------------------------------------------------
 // Defaults / factories
@@ -92,7 +108,8 @@ export function defaultImage(): ImagePaint {
 
 /** Read an element's background into a paint. `background-image` wins over
  *  `background-color` (a gradient-backed element's color is usually the initial
- *  transparent black). */
+ *  transparent black). Authored expressions the hex editor can't represent
+ *  (`color-mix()`, …) become a `custom` paint so we don't display opaque black. */
 export function readPaint(el: Element): BackgroundPaint {
   const cs = getComputedStyle(el)
   const image = (cs.backgroundImage || '').trim()
@@ -112,8 +129,48 @@ export function readPaint(el: Element): BackgroundPaint {
       }
     }
   }
-  const { hex, alphaPercent } = rgbStringToHexAlpha(cs.backgroundColor)
+  return readSolidOrCustom(el, cs.backgroundColor)
+}
+
+/** Prefer an authored non-simple color as `custom`; otherwise parse computed. */
+function readSolidOrCustom(el: Element, computedColor: string): SolidPaint | CustomPaint {
+  const authored = readAuthoredBackgroundColor(el)
+  if (authored && !isSimpleCssColor(authored)) {
+    return {
+      kind: 'custom',
+      css: authored,
+      preview: computedColor && computedColor !== 'transparent' ? computedColor : authored,
+    }
+  }
+  const { hex, alphaPercent } = rgbStringToHexAlpha(computedColor)
   return { kind: 'solid', hex, alpha: alphaPercent }
+}
+
+/**
+ * Authored background color from inline style or a matching rule. Prefers the
+ * `background-color` longhand; falls back to a `background` shorthand that is
+ * itself a color expression (Chrome stores `background: color-mix(...)` that way).
+ */
+export function readAuthoredBackgroundColor(el: Element): string {
+  const longhand = readExplicit(el, 'background-color').value
+  if (longhand) return longhand
+  const shorthand = readExplicit(el, 'background').value
+  if (!shorthand) return ''
+  // Pure color / color-function shorthands (no url()/gradient()/repeat keywords).
+  if (isColorOnlyBackgroundShorthand(shorthand)) return shorthand
+  return ''
+}
+
+function isColorOnlyBackgroundShorthand(value: string): boolean {
+  const v = value.trim()
+  if (!v) return false
+  // Multi-layer or image/gradient shorthands are not a single color paint.
+  if (/url\(|gradient\(/i.test(v)) return false
+  if (/\b(repeat|no-repeat|space|round|scroll|fixed|local|border-box|padding-box|content-box)\b/i.test(v)) {
+    return false
+  }
+  // Non-simple color expressions (color-mix, color(), light-dark, …).
+  return !isSimpleCssColor(v)
 }
 
 /** Pull the URL out of a computed `url("…")` (possibly layered — first wins). */
@@ -276,6 +333,11 @@ export function paintToStyles(paint: BackgroundPaint): Array<{ property: string;
         { property: 'background-image', value: '' },
         { property: 'background-color', value: paint.hex ? hexAlphaToRgba(paint.hex, paint.alpha) : '' },
       ]
+    case 'custom':
+      return [
+        { property: 'background-image', value: '' },
+        { property: 'background-color', value: paint.css },
+      ]
     case 'gradient':
       return [
         { property: 'background-color', value: '' },
@@ -296,6 +358,7 @@ export function paintToStyles(paint: BackgroundPaint): Array<{ property: string;
 export function paintToPreview(paint: BackgroundPaint): string {
   if (paint.kind === 'solid') return hexAlphaToRgba(paint.hex, paint.alpha)
   if (paint.kind === 'gradient') return gradientToCss(paint)
+  if (paint.kind === 'custom') return paint.preview || paint.css
   return paint.url ? `center / cover no-repeat url("${paint.url}")` : 'transparent'
 }
 
@@ -312,6 +375,7 @@ const BG_PROPS = ['background-image', 'background-size', 'background-position', 
 function isEmptyPaint(p: BackgroundPaint): boolean {
   if (p.kind === 'solid') return !p.hex || p.alpha === '0'
   if (p.kind === 'image') return !p.url
+  if (p.kind === 'custom') return !p.css
   return false
 }
 
@@ -341,8 +405,12 @@ export function readPaints(el: Element): BackgroundPaint[] {
       }
     }
   })
-  const { hex, alphaPercent } = rgbStringToHexAlpha(cs.backgroundColor)
-  if (alphaPercent !== '0') layers.push({ kind: 'solid', hex, alpha: alphaPercent })
+  const colorPaint = readSolidOrCustom(el, cs.backgroundColor)
+  if (colorPaint.kind === 'custom') {
+    layers.push(colorPaint)
+  } else if (colorPaint.alpha !== '0') {
+    layers.push(colorPaint)
+  }
   if (layers.length === 0) layers.push({ kind: 'solid', hex: '', alpha: '0' })
   return layers
 }
@@ -355,15 +423,20 @@ function clearBackgroundStyles(): Array<{ property: string; value: string }> {
 export function paintsToStyles(paints: BackgroundPaint[]): Array<{ property: string; value: string }> {
   const layers = paints.filter((p) => !isEmptyPaint(p))
   if (layers.length === 0) return clearBackgroundStyles()
-  // A lone solid is a plain background-color (cleanest source).
-  if (layers.length === 1 && layers[0].kind === 'solid') return paintToStyles(layers[0])
+  // A lone solid or custom is a plain background-color (cleanest source).
+  if (layers.length === 1 && (layers[0].kind === 'solid' || layers[0].kind === 'custom')) {
+    return paintToStyles(layers[0])
+  }
 
-  // A bottom-most solid becomes background-color; the rest become image layers.
+  // A bottom-most solid/custom becomes background-color; the rest become image layers.
   let color = ''
   let imageLayers = layers
   const last = layers[layers.length - 1]
   if (last.kind === 'solid') {
     color = hexAlphaToRgba(last.hex, last.alpha)
+    imageLayers = layers.slice(0, -1)
+  } else if (last.kind === 'custom') {
+    color = last.css
     imageLayers = layers.slice(0, -1)
   }
 
@@ -376,6 +449,10 @@ export function paintsToStyles(paints: BackgroundPaint[]): Array<{ property: str
       imgs.push(gradientToCss(p)); sizes.push('auto'); positions.push('0% 0%'); repeats.push('no-repeat')
     } else if (p.kind === 'image') {
       imgs.push(`url("${p.url}")`); sizes.push(p.size || 'auto'); positions.push(p.position || '0% 0%'); repeats.push(p.repeat || 'repeat')
+    } else if (p.kind === 'custom') {
+      // Custom color above another layer → opaque gradient stand-in (same as solid).
+      const c = p.preview || p.css
+      imgs.push(`linear-gradient(${c}, ${c})`); sizes.push('auto'); positions.push('0% 0%'); repeats.push('no-repeat')
     } else {
       const c = hexAlphaToRgba(p.hex, p.alpha)
       imgs.push(`linear-gradient(${c}, ${c})`); sizes.push('auto'); positions.push('0% 0%'); repeats.push('no-repeat')

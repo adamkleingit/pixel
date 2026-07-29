@@ -4,6 +4,8 @@ import {
   paintsToStyles,
   paintToStyles,
   parseGradient,
+  readPaint,
+  readPaints,
   splitTopLevel,
   type BackgroundPaint,
   type GradientPaint,
@@ -209,5 +211,65 @@ describe('paintToStyles — gradient (single)', () => {
     expect(styles[0]).toEqual({ property: 'background-color', value: '' })
     expect(styles[1].property).toBe('background-image')
     expect(styles[1].value).toContain('linear-gradient(90deg')
+  })
+})
+
+describe('custom paint', () => {
+  it('serializes the authored CSS as background-color', () => {
+    const css = 'color-mix(in srgb, var(--color-primary) 12%, transparent)'
+    expect(paintToStyles({ kind: 'custom', css, preview: 'color(srgb 0.5 0.2 0.9 / 0.12)' })).toEqual([
+      { property: 'background-image', value: '' },
+      { property: 'background-color', value: css },
+    ])
+  })
+
+  it('a lone custom stack writes the expression (not flattened rgba)', () => {
+    const css = 'color-mix(in srgb, #9333ea 12%, transparent)'
+    expect(paintsToStyles([{ kind: 'custom', css, preview: css }])).toEqual([
+      { property: 'background-image', value: '' },
+      { property: 'background-color', value: css },
+    ])
+  })
+
+  it('reads an authored color-mix shorthand as custom (not opaque black)', () => {
+    document.documentElement.style.setProperty('--color-primary', '#9333ea')
+    const style = document.createElement('style')
+    style.textContent = `.banner { background: color-mix(in srgb, var(--color-primary) 12%, transparent); }`
+    document.head.appendChild(style)
+    const el = document.createElement('div')
+    el.className = 'banner'
+    document.body.appendChild(el)
+
+    const paints = readPaints(el)
+    expect(paints).toHaveLength(1)
+    expect(paints[0].kind).toBe('custom')
+    if (paints[0].kind === 'custom') {
+      expect(paints[0].css).toContain('color-mix')
+      expect(paints[0].preview).toBeTruthy()
+      // Must not collapse to the opaque-black fallback.
+      expect(paints[0].css).not.toMatch(/^#?0{6}$/i)
+    }
+
+    el.remove()
+    style.remove()
+    document.documentElement.style.removeProperty('--color-primary')
+  })
+
+  it('reads an authored background-color color-mix longhand as custom', () => {
+    const style = document.createElement('style')
+    style.textContent = `.x { background-color: color-mix(in srgb, #ff0000 50%, transparent); }`
+    document.head.appendChild(style)
+    const el = document.createElement('div')
+    el.className = 'x'
+    document.body.appendChild(el)
+
+    const paint = readPaint(el)
+    expect(paint.kind).toBe('custom')
+    if (paint.kind === 'custom') {
+      expect(paint.css).toContain('color-mix')
+    }
+
+    el.remove()
+    style.remove()
   })
 })

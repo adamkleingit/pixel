@@ -191,7 +191,7 @@ export function FillSection({ elements = [] }: FillSectionProps = {}) {
                 />
               ) : (
                 <PaintRow
-                  label={p.kind === 'gradient' ? 'Gradient' : 'Image'}
+                  label={p.kind === 'gradient' ? 'Gradient' : p.kind === 'image' ? 'Image' : p.css}
                   swatchColor={preview}
                   swatchBackground={preview}
                   hideAlpha

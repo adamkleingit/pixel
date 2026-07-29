@@ -64,9 +64,12 @@ export function useClosestHandle(
   element: HTMLElement,
   rect: Rect,
   chromeRevealed: boolean,
-): HandleId | null {
-  const [activeId, setActiveId] = useState<HandleId | null>(null)
-  const activeIdRef = useRef<HandleId | null>(null)
+): HandleId | null | undefined {
+  // `undefined` = not yet scored this selection → leave all handles interactive
+  // (avoids a frame where chrome reveals with every hit target disabled).
+  // `null` = scored and nothing is close. `string` = winner.
+  const [activeId, setActiveId] = useState<HandleId | null | undefined>(undefined)
+  const activeIdRef = useRef<HandleId | null | undefined>(undefined)
   activeIdRef.current = activeId
 
   useEffect(() => {
@@ -112,6 +115,13 @@ export function useClosestHandle(
     return () => document.removeEventListener('pointermove', onMove)
   }, [element, rect, chromeRevealed])
 
+  // Newly revealed spacing/radius must not inherit a prior "null/far" gate that
+  // left every hit target non-interactive until the pointer moves again.
+  useEffect(() => {
+    activeIdRef.current = undefined
+    setActiveId(undefined)
+  }, [chromeRevealed, element])
+
   return activeId
 }
 
@@ -119,6 +129,7 @@ export function handlePointerEvents(
   activeHandleId: HandleId | null | undefined,
   myId: HandleId,
 ): 'auto' | 'none' {
+  // undefined → ungated (before first proximity score). null → nothing close.
   if (activeHandleId === undefined) return 'auto'
   return activeHandleId === myId ? 'auto' : 'none'
 }

@@ -29,9 +29,9 @@ yarn add @getpixel/ui @getpixel/server
 bun install @getpixel/ui @getpixel/server
 ```
 
-Then add the provider and overlay to your app:
+Then add the provider, remount boundary, and overlay to your app:
 ```tsx
-import { PixelProvider, Overlay, httpSink } from '@getpixel/ui'
+import { PixelProvider, PixelStateRoot, Overlay, httpSink } from '@getpixel/ui'
 
 // Pixel is a dev-time tool — gate it on your bundler's dev flag. Vite:
 // import.meta.env.DEV. Webpack/CRA/Next: process.env.NODE_ENV !== 'production'.
@@ -43,7 +43,10 @@ export function Root() {
       isEnabled={enabled}
       config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}
     >
-      <YourApp />
+      {/* Remount boundary for time travel (States pane). Keep Overlay outside. */}
+      <PixelStateRoot enabled={enabled}>
+        <YourApp />
+      </PixelStateRoot>
       {enabled && <Overlay />}
     </PixelProvider>
   )
@@ -52,7 +55,9 @@ export function Root() {
 
 `isEnabled={false}` makes the provider completely inert — no styles, no keyboard
 shortcuts, no event capture, and `start()` does nothing. Render `<Overlay />`
-behind the same flag so the floating bar is dev-only too.
+behind the same flag so the floating bar is dev-only too. `<PixelStateRoot>` is
+required for the States pane — without it, clicking a captured state can't remount
+the tree to freeze the UI to that frame.
 
 Then add the bundler plugin, below — **the runtime flag alone does not keep Pixel
 out of your production bundle.**
@@ -90,9 +95,10 @@ const nextConfig: NextConfig = {
 export default withPixel(nextConfig, { rootDir: __dirname, appDir: 'src' })
 ```
 
-Both helpers also wire up [time travel](#time-travel--state-history-pixel-react)
-in development; `withPixel` additionally turns `reactStrictMode` off in dev (see
-[StrictMode](#strictmode), below). Pass `stripInProduction: false` /
+Both helpers also wire up the [time travel](#time-travel--state-history-pixel-react)
+bundler alias in development; you still need `<PixelStateRoot>` around app content
+(see the snippet above). `withPixel` additionally turns `reactStrictMode` off in
+dev (see [StrictMode](#strictmode), below). Pass `stripInProduction: false` /
 use `pixelReactAlias()` alone to opt out of the production swap.
 
 On another bundler, alias the package yourself for production builds:
@@ -114,7 +120,7 @@ from `app/layout.tsx`:
 // app/pixel-root.tsx
 'use client'
 
-import { PixelProvider, Overlay, httpSink } from '@getpixel/ui'
+import { PixelProvider, PixelStateRoot, Overlay, httpSink } from '@getpixel/ui'
 import type { ReactNode } from 'react'
 
 const enabled = process.env.NODE_ENV !== 'production'
@@ -125,7 +131,7 @@ export function PixelRoot({ children }: { children: ReactNode }) {
       isEnabled={enabled}
       config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}
     >
-      {children}
+      <PixelStateRoot enabled={enabled}>{children}</PixelStateRoot>
       {enabled && <Overlay />}
     </PixelProvider>
   )
@@ -277,14 +283,16 @@ PIXEL_PROJECT_DIR=. npx @getpixel/server      # writes ./.pixel/inbox/<id>/, lis
 gate ensures the static `build-storybook` output never ships Pixel:
 
 ```tsx
-import { Overlay, PixelProvider, httpSink } from '@getpixel/ui'
+import { Overlay, PixelProvider, PixelStateRoot, httpSink } from '@getpixel/ui'
 import type { Decorator } from '@storybook/react'
 
 const withPixel: Decorator = (Story) => {
   if (!import.meta.env.DEV) return <Story />
   return (
     <PixelProvider config={{ sink: httpSink('http://localhost:41789'), bar: { always: true } }}>
-      <Story />
+      <PixelStateRoot enabled>
+        <Story />
+      </PixelStateRoot>
       <Overlay />
     </PixelProvider>
   )
@@ -428,8 +436,10 @@ loads in place of `react` in development. It has three modes:
 
 ### Enabling pixel-react in your app (dev only)
 
-Two steps — a bundler alias so the app's hooks route through pixel-react, and a
-boundary component so it can remount the app to apply a frame.
+Install already covers both steps below (the `pixel()` / `withPixel` helpers plus
+`<PixelStateRoot>` in the provider snippet). If an existing install is missing
+either piece, add them — without the remount boundary, the States pane opens but
+clicking a state won't freeze the UI.
 
 **1. Alias `react` → `@getpixel/ui/pixel-react` for your app source only.** This
 is the "mock the React import" step. Scope it to your `src/` — do **not** alias

@@ -63,10 +63,11 @@ const CSS = `
 
 .pixel-rec {
   position: fixed;
-  /* Above .pixel-sel handles (3001) so bar buttons stay clickable when a
-     selection's edge handle overlaps the bar. Ties the design pane (3002);
-     later siblings (the pane) still win genuine overlaps. */
-  z-index: 2147483002;
+  /* Above selection drag handles (1002/1003) AND the design pane (3002). The
+     pane is a later sibling of the bar inside `.pixel-overlay`, so at equal
+     z-index it stole clicks from bar buttons that grew under it (Hide made
+     the bar wider). Keep the bar strictly on top so Save / Hide stay usable. */
+  z-index: 2147483003;
   display: flex;
   align-items: center;
   gap: 4px;

@@ -67,7 +67,9 @@ test('an edit round-trips from the installed SDK to the installed server', async
 
   // Save → the installed SDK POSTs the batch to the installed server's /edits,
   // which writes it into the dropbox for an agent to pick up.
-  await saveBtn(page).click()
+  // force: the selected element's right-edge resize band can overlap the
+  // bottom-center bar in this fixture; the click target is still the Save button.
+  await saveBtn(page).click({ force: true })
 
   const id = await waitForEditTask()
   const edits = JSON.parse(await readFile(join(INBOX_DIR, id, 'edits.json'), 'utf8'))

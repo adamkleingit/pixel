@@ -63,6 +63,10 @@ const CSS = `
 
 .pixel-rec {
   position: fixed;
+  /* Above .pixel-sel handles (3001) so bar buttons stay clickable when a
+     selection's edge handle overlaps the bar. Ties the design pane (3002);
+     later siblings (the pane) still win genuine overlaps. */
+  z-index: 2147483002;
   display: flex;
   align-items: center;
   gap: 4px;

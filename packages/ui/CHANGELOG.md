@@ -1,5 +1,12 @@
 # @getpixel/ui
 
+## 0.5.3
+
+### Patch Changes
+
+- ec23bd4: Pick the closest selection handle under the pointer so size, radius, and spacing stay reachable on small elements.
+- 8402754: Show authored `color-mix()` (and other non-hex) backgrounds as a custom value in the Design pane instead of opaque black. Also parse Chrome's resolved `color(srgb …)` form so computed colors don't fall back to `#000000`.
+
 ## 0.5.2
 
 ### Patch Changes

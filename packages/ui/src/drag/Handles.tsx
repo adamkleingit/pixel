@@ -9,6 +9,12 @@ import {
   type HandleCorner,
   type HandleSide,
 } from './handle-layout'
+import {
+  resizeCornerId,
+  resizeEdgeId,
+  rotateId,
+} from './handle-proximity'
+import { handlePointerEvents } from './use-closest-handle'
 import { resolveAnchor } from './resolve-anchor'
 
 /**
@@ -94,12 +100,15 @@ export function ResizeHandles({
   rect,
   element,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   rect: Rect
   element: Element
   /** Peer elements that should mirror this drag in multi-edit mode. Resolved
    *  at gesture start; empty array → single-edit drag. */
   getMultiEditPeers?: () => HTMLElement[]
+  /** Closest-handle winner; only this id receives pointer events. */
+  activeHandleId?: string | null
 }) {
   if (!(element instanceof HTMLElement)) return null
 
@@ -141,6 +150,7 @@ export function ResizeHandles({
           corner={corner}
           element={element}
           getMultiEditPeers={getMultiEditPeers}
+          activeHandleId={activeHandleId}
         />
       ))}
       {layout.edges.map(side => (
@@ -150,6 +160,7 @@ export function ResizeHandles({
           element={element}
           rotationDeg={rect.rotation}
           getMultiEditPeers={getMultiEditPeers}
+          activeHandleId={activeHandleId}
         />
       ))}
       {layout.corners.map(corner => (
@@ -159,6 +170,7 @@ export function ResizeHandles({
           element={element}
           rotationDeg={rect.rotation}
           getMultiEditPeers={getMultiEditPeers}
+          activeHandleId={activeHandleId}
         />
       ))}
       <RotationDragLabel element={element} />
@@ -223,11 +235,13 @@ function CornerHandle({
   element,
   rotationDeg,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   corner: HandleCorner
   element: HTMLElement
   rotationDeg: number
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
 }) {
   const top = corner === 'tl' || corner === 'tr'
   const left = corner === 'tl' || corner === 'bl'
@@ -251,7 +265,7 @@ function CornerHandle({
         border: `1px solid ${HANDLE_BORDER}`,
         boxSizing: 'border-box',
         cursor,
-        pointerEvents: 'auto',
+        pointerEvents: handlePointerEvents(activeHandleId, resizeCornerId(corner)),
         touchAction: 'none',
       }}
     />
@@ -263,11 +277,13 @@ function EdgeBand({
   element,
   rotationDeg,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   side: HandleSide
   element: HTMLElement
   rotationDeg: number
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
 }) {
   const cursor = CURSOR_BY_SIDE[side]
   const thickness = EDGE_GRAB_THICKNESS
@@ -291,7 +307,7 @@ function EdgeBand({
         ...style,
         background: 'transparent',
         cursor,
-        pointerEvents: 'auto',
+        pointerEvents: handlePointerEvents(activeHandleId, resizeEdgeId(side)),
         touchAction: 'none',
       }}
     />
@@ -302,10 +318,12 @@ function RotateCornerHandle({
   corner,
   element,
   getMultiEditPeers,
+  activeHandleId,
 }: {
   corner: HandleCorner
   element: HTMLElement
   getMultiEditPeers?: () => HTMLElement[]
+  activeHandleId?: string | null
 }) {
   const top = corner === 'tl' || corner === 'tr'
   const left = corner === 'tl' || corner === 'bl'
@@ -331,7 +349,7 @@ function RotateCornerHandle({
         marginLeft: -ROTATE_HIT_SIZE / 2,
         background: 'transparent',
         cursor,
-        pointerEvents: 'auto',
+        pointerEvents: handlePointerEvents(activeHandleId, rotateId(corner)),
         touchAction: 'none',
       }}
     />

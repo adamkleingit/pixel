@@ -348,8 +348,18 @@ test('canvas radius: dragging a corner-radius handle sets the corner radius', as
 test('canvas rotate: dragging the rotate handle rotates the element', async ({ page }) => {
   await enterEdit(page)
   await selectExact(upgrade(page))
-  const handle = page.locator('[data-resize-handle="rotate"]').first()
-  await dragHandle(page, handle, 24, 24)
+  // Grab just outside the resize square (still inside the rotate band) so
+  // closest-handle selection elects rotate rather than the corner resize.
+  const corner = page.locator('[data-resize-handle="rotate"][data-corner="br"]')
+  await expect(corner).toBeVisible()
+  const b = (await corner.boundingBox())!
+  const x = b.x + b.width - 2
+  const y = b.y + b.height - 2
+  await page.mouse.move(x, y)
+  await page.waitForTimeout(40)
+  await page.mouse.down()
+  await page.mouse.move(x + 28, y + 28, { steps: 8 })
+  await page.mouse.up()
   await expect
     .poll(() => upgrade(page).evaluate((el) => (el as HTMLElement).style.transform))
     .toContain('rotate')

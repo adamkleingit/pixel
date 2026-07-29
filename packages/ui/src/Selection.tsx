@@ -8,6 +8,7 @@ import { SpacingHandles } from './drag/SpacingHandles'
 import { CornerRadiusHandles } from './drag/CornerRadiusHandles'
 import { InsertionLine } from './drag/InsertionLine'
 import { SnapGuides } from './drag/SnapGuides'
+import { useChromeReveal, useClosestHandle } from './drag/use-closest-handle'
 import { startRepositionDrag } from './drag/reposition-drag'
 import { BEGIN_INLINE_EDIT_EVENT, resetElementPointerDown } from './drag/handle-inline-edit'
 import { computeKeyboardMove, isArrowKey } from './drag/keyboard-move'
@@ -424,15 +425,38 @@ function SelectionOverlays({ interactive = true }: { interactive?: boolean }) {
 /** Renders Pixel's three handle overlays for the anchor, feeding each the
  *  element's live viewport rect (tracked on rAF + `pixel-drag-frame` so the
  *  handles follow the element as a gesture grows/shrinks it) and the selected
- *  peers (multi-edit fan-out; read at drag start). */
+ *  peers (multi-edit fan-out; read at drag start).
+ *
+ *  Also owns closest-handle selection: after a shared hover-reveal delay,
+ *  only the handle nearest the pointer is interactive so crowded chrome on
+ *  small elements (radius vs resize, padding vs edge, …) stays reachable. */
 function AnchorHandles({ element, peers }: { element: HTMLElement; peers: HTMLElement[] }) {
   const rect = useTrackedRect(element)
   const getMultiEditPeers = () => peers
+  const chromeRevealed = useChromeReveal(element, rect)
+  const activeHandleId = useClosestHandle(element, rect, chromeRevealed)
   return (
     <>
-      <ResizeHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
-      <SpacingHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
-      <CornerRadiusHandles rect={rect} element={element} getMultiEditPeers={getMultiEditPeers} />
+      <ResizeHandles
+        rect={rect}
+        element={element}
+        getMultiEditPeers={getMultiEditPeers}
+        activeHandleId={activeHandleId}
+      />
+      <SpacingHandles
+        rect={rect}
+        element={element}
+        getMultiEditPeers={getMultiEditPeers}
+        activeHandleId={activeHandleId}
+        chromeRevealed={chromeRevealed}
+      />
+      <CornerRadiusHandles
+        rect={rect}
+        element={element}
+        getMultiEditPeers={getMultiEditPeers}
+        activeHandleId={activeHandleId}
+        chromeRevealed={chromeRevealed}
+      />
     </>
   )
 }

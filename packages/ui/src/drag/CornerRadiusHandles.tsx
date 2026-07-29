@@ -7,6 +7,7 @@ import { useTokenMatch } from '../properties-sidebar/useTokenMatch'
 import type { Rect } from '../selection/selection-utils'
 import { isDragging as isResizeOrRotateDragging } from './drag-session'
 import { maybeBeginInlineEditFromHandle } from './handle-inline-edit'
+import { radiusId } from './handle-proximity'
 import {
   getActiveRadiusDrag,
   RADIUS_CORNER_PROPERTIES,
@@ -15,6 +16,7 @@ import {
 } from './radius-drag'
 import { isSpacingDragging } from './spacing-drag'
 import { setSnapTargets } from './token-snap'
+import { handlePointerEvents } from './use-closest-handle'
 
 /**
  * Figma-style corner-radius dots — four white-filled circles inside the
@@ -40,7 +42,6 @@ import { setSnapTargets } from './token-snap'
 const DOT_SIZE = 8
 const HIT_PAD = 5
 const LABEL_GAP = 8
-const HOVER_REVEAL_DELAY_MS = 300
 // Always nudge the radius dot this many screen px further inward along the
 // diagonal so it never lands on the corner resize handle (which sits exactly
 // on the corner). Keeps both the radius dot and the resize handle grabbable
@@ -73,10 +74,16 @@ export function CornerRadiusHandles({
   rect,
   element,
   getMultiEditPeers,
+  activeHandleId,
+  chromeRevealed,
 }: {
   rect: Rect
   element: Element
   getMultiEditPeers?: () => HTMLElement[]
+  /** Closest-handle winner; only this id receives pointer events. */
+  activeHandleId?: string | null
+  /** Shared hover-reveal from AnchorHandles (replaces local dwell timer). */
+  chromeRevealed?: boolean
 }) {
   useDragFrame()
   const radiusMatch = useTokenMatch('border-radius')
@@ -88,36 +95,6 @@ export function CornerRadiusHandles({
       radiusMatch.snapTargets.map(t => ({ value: t.numericValue, token: t.token })),
     )
   }, [radiusMatch.snapTargets])
-  // Mirror `SpacingHandles`' reveal-on-hover gating so the dots don't add
-  // visual noise to every selected element — they appear once the pointer
-  // settles over the selection for a beat.
-  const [hoveringElement, setHoveringElement] = useState(false)
-  const [delayed, setDelayed] = useState(false)
-
-  useEffect(() => {
-    if (!(element instanceof HTMLElement)) return
-    function onMove(e: PointerEvent) {
-      if (isResizeOrRotateDragging() || isSpacingDragging()) {
-        setHoveringElement(false)
-        return
-      }
-      const r = (element as HTMLElement).getBoundingClientRect()
-      const inside =
-        e.clientX >= r.left   - HIT_PAD &&
-        e.clientX <= r.right  + HIT_PAD &&
-        e.clientY >= r.top    - HIT_PAD &&
-        e.clientY <= r.bottom + HIT_PAD
-      setHoveringElement(prev => (prev === inside ? prev : inside))
-    }
-    document.addEventListener('pointermove', onMove)
-    return () => document.removeEventListener('pointermove', onMove)
-  }, [element])
-
-  useEffect(() => {
-    if (!hoveringElement) { setDelayed(false); return }
-    const t = window.setTimeout(() => setDelayed(true), HOVER_REVEAL_DELAY_MS)
-    return () => window.clearTimeout(t)
-  }, [hoveringElement])
 
   if (!(element instanceof HTMLElement)) return null
   // Skip rotated boxes — the dot/inward math assumes an axis-aligned rect.
@@ -126,7 +103,8 @@ export function CornerRadiusHandles({
 
   const drag = getActiveRadiusDrag()
   const dragActive = !!drag && drag.element === element
-  if (!delayed && !dragActive) return null
+  const revealed = chromeRevealed ?? false
+  if (!revealed && !dragActive) return null
 
   const scale = getViewportScale() || 1
   const W = rect.width
@@ -173,6 +151,7 @@ export function CornerRadiusHandles({
           drag={drag}
           getMultiEditPeers={getMultiEditPeers}
           matchToken={radiusMatch.matchToken}
+          activeHandleId={activeHandleId}
         />
       ))}
     </div>
@@ -190,6 +169,7 @@ function Dot({
   drag,
   getMultiEditPeers,
   matchToken,
+  activeHandleId,
 }: {
   corner: RadiusCorner
   element: HTMLElement
@@ -201,6 +181,7 @@ function Dot({
   drag: ReturnType<typeof getActiveRadiusDrag>
   getMultiEditPeers?: () => HTMLElement[]
   matchToken: (value: string) => Token | null
+  activeHandleId?: string | null
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -267,7 +248,7 @@ function Dot({
           marginLeft: -(DOT_SIZE / 2 + HIT_PAD),
           background: 'transparent',
           cursor: CURSOR_BY_CORNER[corner],
-          pointerEvents: 'auto',
+          pointerEvents: handlePointerEvents(activeHandleId, radiusId(corner)),
           touchAction: 'none',
         }}
       />

@@ -8,7 +8,9 @@ import { usePixelContext } from './context'
  * `<html>`; collapse; drag-resize the left edge) so it feels like the design
  * panel. Its body is the pixel-react frame timeline: every captured commit as a
  * timestamp row. Click a row — or the ‹ › chevrons — to freeze the app to that
- * state; "Resume live" closes the pane and returns to the live app.
+ * state; "Resume live" or the header **X** closes the pane and returns to the
+ * live app (same as toggling the bar's state-history icon off). The X stays
+ * visible when the pane is collapsed.
  *
  * Frames only appear when the app routes its `react` through pixel-react (a
  * dev-only bundler alias — see the README). Without it the list stays empty and
@@ -138,6 +140,18 @@ export function StatesPane() {
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="pixel-pane-close"
+          onClick={resumeLive}
+          title="Close state history"
+          aria-label="Close state history"
+        >
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+            <line x1="3" y1="3" x2="9" y2="9" />
+            <line x1="9" y1="3" x2="3" y2="9" />
           </svg>
         </button>
       </div>

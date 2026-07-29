@@ -1,13 +1,13 @@
 ---
 name: build-feature
 description: >
-  Build a feature end-to-end from a spec: make a plan (get it approved, save it to
-  tech-specs/), implement it, add unit + e2e tests, run and fix until everything is
-  green, check the README for updates, open a PR, drive CI to green (push fixes
-  until it passes), and attach screenshots + a screencast GIF committed in the PR
-  branch. Use when the user hands you a feature spec / points you at a spec file and
-  wants it built end-to-end, or says "build-feature" / "build this feature" /
-  "/build-feature".
+  Build a feature end-to-end from a spec: briefly plan (get approval; write
+  tech-specs/ only when non-trivial), implement it, add unit + e2e tests, run
+  and fix until everything is green, check the README for updates, open a PR,
+  drive CI to green (push fixes until it passes), and attach screenshots + a
+  screencast GIF committed in the PR branch. Use when the user hands you a
+  feature spec / points you at a spec file and wants it built end-to-end, or
+  says "build-feature" / "build this feature" / "/build-feature".
 ---
 
 # Build a feature end-to-end
@@ -26,14 +26,18 @@ Use a TodoWrite list to track the steps below so progress is visible.
 
 - Read the spec. If it's genuinely ambiguous on something that changes the build,
   ask 1–3 tight clarifying questions first (don't over-ask).
-- Write an implementation plan to **`tech-specs/<feature-slug>.md`**. Cover: the
-  problem, the current-state/root-cause if it's a fix, the design, the exact files
-  you'll touch, the test plan (unit + e2e), risks, and — if large — a phased
-  breakdown where each phase ships green.
-- **Present the plan and get explicit approval before writing any feature code.**
-  If you're in plan mode, use ExitPlanMode. Otherwise summarize the plan + the
-  saved path and wait for a clear go-ahead. Do not start step 3 until approved.
-- Fold any feedback back into the tech-spec.
+- **Present a short plan and get explicit approval before writing any feature
+  code.** If you're in plan mode, use ExitPlanMode. Otherwise summarize in chat
+  and wait for a clear go-ahead. Do not start step 3 until approved.
+- **Skip `tech-specs/` for short tasks.** A one-control UI tweak, a small bug
+  fix, or a change that fits in ~1–3 obvious files with no architectural
+  trade-offs does **not** need a tech-spec file — chat approval is enough.
+- **Write `tech-specs/<feature-slug>.md` only when the work is non-trivial** —
+  multiple approaches, cross-cutting design, phased delivery, or enough surface
+  area that a durable written plan helps review. Cover: the problem, the
+  current-state/root-cause if it's a fix, the design, the exact files you'll
+  touch, the test plan (unit + e2e), risks, and — if large — a phased breakdown
+  where each phase ships green. Fold feedback back into that file.
 
 ## 2. Branch
 

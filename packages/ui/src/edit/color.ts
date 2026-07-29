@@ -13,8 +13,9 @@
 /**
  * Parse *any* CSS color string into `{ hex, alphaPercent }` for the sidebar's
  * swatch state. Handles `rgb()/rgba()`, `hsl()/hsla()` (all shadcn design tokens
- * are HSL, e.g. `hsl(262 83% 58%)`), `#hex`, and — via a hidden probe element —
- * anything else the browser understands (named colors, `oklch()`, `color()`).
+ * are HSL, e.g. `hsl(262 83% 58%)`), `#hex`, `color(srgb …)` (Chrome's resolved
+ * form of `color-mix()`), and — via a hidden probe element — anything else the
+ * browser understands (named colors, `oklch()`).
  * Returns opaque black only when the value is genuinely unparseable.
  *
  * Getting this right matters beyond display: several sections re-apply the color
@@ -27,11 +28,48 @@ export function rgbStringToHexAlpha(input: string): { hex: string; alphaPercent:
   const trimmed = input.trim()
   if (!trimmed || trimmed === 'transparent') return { hex: '000000', alphaPercent: '0' }
 
-  const rgb = trimmed.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+))?\s*\)/i)
+  const parsed = tryParseCssColor(trimmed)
+  if (parsed) return parsed
+
+  // Last resort: let the browser resolve it (named colors, oklch, …) to a
+  // parseable form, then re-parse. No-op outside a DOM (SSR / some tests).
+  const resolved = resolveViaDom(trimmed)
+  if (resolved && resolved !== trimmed) {
+    const again = tryParseCssColor(resolved)
+    if (again) return again
+  }
+
+  return fallback
+}
+
+/**
+ * True when the Design pane can edit this as hex + opacity without losing the
+ * authored expression. `color-mix()`, `color()`, `light-dark()`, nested calcs,
+ * etc. return false — callers should surface those as a custom/raw value.
+ */
+export function isSimpleCssColor(value: string): boolean {
+  const v = value.trim()
+  if (!v) return true
+  if (/^(transparent|currentcolor|inherit|initial|unset|revert)$/i.test(v)) return true
+  if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return true
+  if (/^rgba?\(/i.test(v) || /^hsla?\(/i.test(v)) return true
+  // Single design-token var — the token picker owns these.
+  if (/^var\(\s*--[\w-]+\s*(?:,[^)]+)?\s*\)$/i.test(v)) return true
+  // Named CSS colors (no spaces / parens).
+  if (/^[a-z]+$/i.test(v)) return true
+  return false
+}
+
+/** Pure parse of common CSS color syntaxes. Returns null when unsupported. */
+function tryParseCssColor(trimmed: string): { hex: string; alphaPercent: string } | null {
+  // Legacy + modern rgb/rgba: `rgb(1, 2, 3)`, `rgba(1 2 3 / 50%)`, …
+  const rgb = trimmed.match(
+    /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)/i,
+  )
   if (rgb) {
     return {
       hex: `${byteHex(clamp255(parseFloat(rgb[1])))}${byteHex(clamp255(parseFloat(rgb[2])))}${byteHex(clamp255(parseFloat(rgb[3])))}`.toUpperCase(),
-      alphaPercent: String(Math.round(clamp01(rgb[4] !== undefined ? parseFloat(rgb[4]) : 1) * 100)),
+      alphaPercent: String(Math.round(clamp01(parseAlpha(rgb[4])) * 100)),
     }
   }
 
@@ -43,16 +81,39 @@ export function rgbStringToHexAlpha(input: string): { hex: string; alphaPercent:
     }
   }
 
+  // Chrome resolves color-mix() / relative colors to `color(srgb r g b / a)`.
+  const srgb = parseColorSrgb(trimmed)
+  if (srgb) {
+    return {
+      hex: `${byteHex(srgb.r)}${byteHex(srgb.g)}${byteHex(srgb.b)}`.toUpperCase(),
+      alphaPercent: String(Math.round(clamp01(srgb.a) * 100)),
+    }
+  }
+
   if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) {
     return { hex: normalizeHex(trimmed), alphaPercent: '100' }
   }
 
-  // Last resort: let the browser resolve it (named colors, oklch, color(), …)
-  // to an rgb() string, then re-parse. No-op outside a DOM (SSR / some tests).
-  const resolved = resolveViaDom(trimmed)
-  if (resolved && resolved !== trimmed) return rgbStringToHexAlpha(resolved)
+  return null
+}
 
-  return fallback
+/** Parse `color(srgb r g b [/ a])` where channels are 0..1 (Chrome computed form). */
+function parseColorSrgb(input: string): { r: number; g: number; b: number; a: number } | null {
+  const m = input.match(
+    /^color\(\s*srgb\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)(?:\s*\/\s*([\d.eE+%-]+))?\s*\)$/i,
+  )
+  if (!m) return null
+  return {
+    r: clamp01(parseFloat(m[1])) * 255,
+    g: clamp01(parseFloat(m[2])) * 255,
+    b: clamp01(parseFloat(m[3])) * 255,
+    a: m[4] !== undefined ? parseAlpha(m[4]) : 1,
+  }
+}
+
+function parseAlpha(raw: string | undefined): number {
+  if (raw === undefined) return 1
+  return raw.endsWith('%') ? parseFloat(raw) / 100 : parseFloat(raw)
 }
 
 /** Parse `hsl(h s% l%)` / `hsl(h, s%, l%, a)` (space- or comma-separated, with an
@@ -81,8 +142,9 @@ function parseHsl(input: string): { r: number; g: number; b: number; a: number }
   return { r: (r + mm) * 255, g: (g + mm) * 255, b: (b + mm) * 255, a }
 }
 
-/** Resolve an arbitrary CSS color to an `rgb(...)` string via a hidden probe.
- *  Returns null when there's no DOM or the browser rejected the value. */
+/** Resolve an arbitrary CSS color via a hidden probe. Returns the computed
+ *  `color` string (`rgb(...)` or `color(srgb ...)`) when the browser accepts
+ *  the value; null when there's no DOM or the value was rejected. */
 function resolveViaDom(input: string): string | null {
   if (typeof document === 'undefined' || !document.body) return null
   try {
@@ -93,7 +155,9 @@ function resolveViaDom(input: string): string | null {
     document.body.appendChild(probe)
     const resolved = getComputedStyle(probe).color
     probe.remove()
-    return resolved && /^rgb/i.test(resolved) ? resolved : null
+    return resolved && (/^rgb/i.test(resolved) || /^color\(\s*srgb/i.test(resolved))
+      ? resolved
+      : null
   } catch {
     return null
   }

@@ -135,6 +135,9 @@ export function PaintRow({
               cursor: 'pointer',
               padding: 0,
               fontFamily: 'inherit',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
             {label}

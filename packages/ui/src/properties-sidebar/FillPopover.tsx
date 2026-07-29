@@ -65,13 +65,28 @@ export function FillPopover({
   const [format, setFormat] = useState('Hex')
 
   // The paint kind is derived from the controlled paint in full mode; solid-only
-  // consumers stay on 'solid'.
-  const kind: PaintKind = fullMode ? paint!.kind : 'solid'
+  // consumers stay on 'solid'. Custom paints open the solid editor so the user
+  // can replace the expression with a plain color / gradient / image.
+  const kind: PaintKind = fullMode
+    ? (paint!.kind === 'custom' ? 'solid' : paint!.kind)
+    : 'solid'
 
   // Effective solid color driving the SV picker (in full mode, only when the
-  // paint is actually solid).
-  const solidHex = fullMode ? (paint!.kind === 'solid' ? paint!.hex : '050505') : hex
-  const solidAlpha = fullMode ? (paint!.kind === 'solid' ? paint!.alpha : '100') : alpha
+  // paint is actually solid — or custom, seeded from its resolved preview).
+  const solidHex = fullMode
+    ? (paint!.kind === 'solid'
+      ? paint!.hex
+      : paint!.kind === 'custom'
+        ? rgbStringToHexAlpha(paint!.preview || paint!.css).hex
+        : '050505')
+    : hex
+  const solidAlpha = fullMode
+    ? (paint!.kind === 'solid'
+      ? paint!.alpha
+      : paint!.kind === 'custom'
+        ? rgbStringToHexAlpha(paint!.preview || paint!.css).alphaPercent
+        : '100')
+    : alpha
 
   const [hsv, setHsv] = useState(() => hexToHsv(solidHex))
   useEffect(() => {

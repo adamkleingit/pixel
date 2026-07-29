@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { rgbStringToHexAlpha } from './color'
+import { isSimpleCssColor, rgbStringToHexAlpha } from './color'
 
 describe('rgbStringToHexAlpha', () => {
   it('parses rgb() and rgba()', () => {
     expect(rgbStringToHexAlpha('rgb(255, 0, 0)')).toEqual({ hex: 'FF0000', alphaPercent: '100' })
     expect(rgbStringToHexAlpha('rgba(0, 128, 255, 0.5)')).toEqual({ hex: '0080FF', alphaPercent: '50' })
+  })
+
+  it('parses modern rgb with slash alpha (including %)', () => {
+    expect(rgbStringToHexAlpha('rgb(255 0 0 / 0.25)')).toEqual({ hex: 'FF0000', alphaPercent: '25' })
+    expect(rgbStringToHexAlpha('rgb(0 128 255 / 50%)')).toEqual({ hex: '0080FF', alphaPercent: '50' })
   })
 
   it('parses hsl() — the format every shadcn design token uses', () => {
@@ -25,8 +30,32 @@ describe('rgbStringToHexAlpha', () => {
     expect(rgbStringToHexAlpha('#7c3aed')).toEqual({ hex: '7C3AED', alphaPercent: '100' })
   })
 
+  it('parses color(srgb …) — Chrome\'s resolved form of color-mix()', () => {
+    // color-mix(in srgb, #9333ea 12%, transparent) ≈ this computed string.
+    const { hex, alphaPercent } = rgbStringToHexAlpha('color(srgb 0.576471 0.2 0.917647 / 0.12)')
+    expect(hex).toBe('9333EA')
+    expect(alphaPercent).toBe('12')
+  })
+
   it('handles transparent and empty', () => {
     expect(rgbStringToHexAlpha('transparent')).toEqual({ hex: '000000', alphaPercent: '0' })
     expect(rgbStringToHexAlpha('')).toEqual({ hex: '000000', alphaPercent: '100' })
+  })
+})
+
+describe('isSimpleCssColor', () => {
+  it('accepts hex / rgb / hsl / named / single var', () => {
+    expect(isSimpleCssColor('#9333ea')).toBe(true)
+    expect(isSimpleCssColor('rgb(1, 2, 3)')).toBe(true)
+    expect(isSimpleCssColor('hsl(262 83% 58%)')).toBe(true)
+    expect(isSimpleCssColor('rebeccapurple')).toBe(true)
+    expect(isSimpleCssColor('var(--color-primary)')).toBe(true)
+    expect(isSimpleCssColor('transparent')).toBe(true)
+  })
+
+  it('rejects color-mix / color() / light-dark — show as custom in the pane', () => {
+    expect(isSimpleCssColor('color-mix(in srgb, var(--color-primary) 12%, transparent)')).toBe(false)
+    expect(isSimpleCssColor('color(srgb 0.5 0.2 0.9 / 0.12)')).toBe(false)
+    expect(isSimpleCssColor('light-dark(white, black)')).toBe(false)
   })
 })

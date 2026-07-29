@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,10 +87,41 @@ export function resolveRealReactPaths(rootDir: string): RealReactPaths {
   }
 }
 
+/**
+ * Root of this package, found by walking up to the nearest `package.json`.
+ *
+ * Not derived from this module's own path: the bundler is free to hoist shared
+ * code into a chunk anywhere under `dist/`, so `../<entry>.js` resolves
+ * differently in the source tree, in `dist/integrations/`, and in a top-level
+ * chunk. Walking up is stable in all three.
+ */
+function packageRoot(fromModuleUrl: string): string {
+  let dir = dirname(fileURLToPath(fromModuleUrl))
+  for (;;) {
+    if (existsSync(join(dir, 'package.json'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error('[pixel] could not locate the @getpixel/ui package root')
+    dir = parent
+  }
+}
+
+/** Absolute path to a built entry of this package, e.g. `pixel-react/index.js`. */
+function resolveDistEntry(entry: string, fromModuleUrl: string): string {
+  return join(packageRoot(fromModuleUrl), 'dist', entry)
+}
+
 /** Absolute path to the built pixel-react entry inside this package. */
 export function resolvePixelReactPath(fromModuleUrl: string = import.meta.url): string {
-  const integrationsDir = dirname(fileURLToPath(fromModuleUrl))
-  return join(integrationsDir, '../pixel-react/index.js')
+  return resolveDistEntry('pixel-react/index.js', fromModuleUrl)
+}
+
+/**
+ * Absolute path to the inert build (`@getpixel/ui/noop`). Production bundles
+ * resolve `@getpixel/ui` here so the SDK leaves the module graph instead of
+ * shipping ~550 KB behind a runtime `isEnabled={false}`.
+ */
+export function resolveNoopPath(fromModuleUrl: string = import.meta.url): string {
+  return resolveDistEntry('noop.js', fromModuleUrl)
 }
 
 export const PIXEL_UI_PACKAGE = '@getpixel/ui'

@@ -124,4 +124,59 @@ describe('token extraction', () => {
     expect(readTokenCache(root)).not.toBeNull()
     expect(join(root, TOKENS_FILE).endsWith('design-tokens.json')).toBe(true)
   })
+
+  it('generic css vars: extracts hand-rolled :root properties as var() tokens', async () => {
+    const project = tmpProject()
+    const root = join(project, '.pixel')
+    writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'plain' }))
+    mkdirSync(join(project, 'src'))
+    writeFileSync(
+      join(project, 'src', 'index.css'),
+      `:root {\n` +
+        `  --color-accent: #4f46e5;\n` +
+        `  --color-surface: var(--color-accent);\n` +
+        `  --sidebar-width: 16rem;\n` +
+        `  --z-modal: 100;\n` +
+        `  --font-family-body: Inter, sans-serif;\n` +
+        `}\n` +
+        `[data-theme="dark"] {\n  --color-accent: #a5b4fc;\n}\n` +
+        `.card { --local-only: 4px; }\n`,
+    )
+
+    const selected = selectAdapter(project)
+    expect(selected?.adapter.id).toBe('css-vars-fallback')
+
+    const cache = await extractAndCacheTokens(project, root)
+    const byName = Object.fromEntries(cache!.tokens.map((t) => [t.name, t]))
+
+    expect(byName['color-accent'].kind).toBe('color')
+    expect(byName['color-accent'].value).toBe('#4f46e5')
+    expect(byName['color-accent'].usage).toEqual({
+      kind: 'css-var',
+      expr: 'var(--color-accent)',
+    })
+    expect(byName['color-accent'].sourcePath).toBe(join('src', 'index.css'))
+    // A dark-scope redeclaration rides along as a note rather than a second token.
+    expect(byName['color-accent'].description).toBe('dark: #a5b4fc')
+    expect(byName['color-surface'].kind).toBe('color')
+
+    // Names classify as colors by default, so the value decides for the rest.
+    expect(byName['sidebar-width'].kind).toBe('spacing')
+    expect(byName['z-modal'].kind).toBe('z-index')
+    expect(byName['font-family-body'].kind).toBe('font-family')
+
+    // Component-scoped properties aren't global tokens.
+    expect(byName['local-only']).toBeUndefined()
+
+    expect(readTokenCache(root)!.watchedPaths).toEqual([join('src', 'index.css')])
+  })
+
+  it('generic css vars: never outranks a library-specific adapter', async () => {
+    const project = tmpProject()
+    writeFileSync(join(project, 'globals.css'), SHADCN_GLOBALS)
+    mkdirSync(join(project, 'src'))
+    writeFileSync(join(project, 'src', 'extra.css'), `:root { --brand: #fff; }\n`)
+
+    expect(selectAdapter(project)?.adapter.id).toBe('shadcn')
+  })
 })

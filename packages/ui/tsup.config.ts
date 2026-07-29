@@ -1,12 +1,15 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  // Two entries: the SDK (`.`) and the app-side React wrapper (`./pixel-react`),
-  // which the app aliases as `react` for state capture / time-travel. Shared
-  // modules (the capture store) split into a common chunk; the store is also
-  // pinned to a `globalThis` singleton so both entries see one instance.
+  // The SDK (`.`), the app-side React wrapper (`./pixel-react`) which the app
+  // aliases as `react` for state capture / time-travel, the inert production
+  // build (`./noop`) the integrations swap in, and the bundler integrations
+  // themselves. Shared modules (the capture store) split into a common chunk;
+  // the store is also pinned to a `globalThis` singleton so both entries see
+  // one instance.
   entry: [
     'src/index.tsx',
+    'src/noop.tsx',
     'src/pixel-react/index.tsx',
     'src/integrations/next.ts',
     'src/integrations/vite.ts',

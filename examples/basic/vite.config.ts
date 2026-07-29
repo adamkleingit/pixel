@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
-import { pixelReactAlias } from '@getpixel/ui/vite'
+import { pixel } from '@getpixel/ui/vite'
 import { defineConfig } from 'vite'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))
@@ -9,7 +9,9 @@ const workspaceRoot = resolve(dir, '../..')
 const appSrc = resolve(dir, 'src')
 
 export default defineConfig({
-  plugins: [pixelReactAlias({ appDir: appSrc }), react()],
+  // pixel() = the dev-only pixel-react alias + the production stub that keeps
+  // the SDK out of `vite build` output.
+  plugins: [pixel({ appDir: appSrc }), react()],
   resolve: {
     // Consume @getpixel/ui as a built (blackbox) package via its package exports —
     // no source alias. Dedupe React so the SDK and app share one copy.

@@ -6,14 +6,10 @@
  *
  * Ported from Pixel (pixel/packages/agent/src/adapters/tailwind-v4.ts).
  */
-import * as fs from 'node:fs'
-import * as path from 'node:path'
 import type { Token, TokenKind, TokenSet } from '../common.js'
+import { listCssFiles } from './css.js'
 import { depMajor, makeToken } from './helpers.js'
 import type { Adapter, DetectContext, ExtractContext } from './types.js'
-
-const SEARCH_DIRS = ['src', 'app', 'styles', 'src/styles', '.']
-const MAX_FILES_TO_SCAN = 200
 
 const DECL_RE = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+?)\s*;/g
 
@@ -31,39 +27,6 @@ const V4_NAMESPACE_TO_KIND: Array<{ prefix: string; kind: TokenKind; utility: st
   { prefix: 'border-width-', kind: 'border-width', utility: 'border-' },
   { prefix: 'opacity-', kind: 'opacity', utility: 'opacity-' },
 ]
-
-function listCssFiles(projectDir: string): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const dir of SEARCH_DIRS) {
-    const abs = path.join(projectDir, dir)
-    if (!fs.existsSync(abs)) continue
-    walk(abs, projectDir, out, seen)
-    if (out.length >= MAX_FILES_TO_SCAN) break
-  }
-  return out
-}
-
-function walk(abs: string, projectDir: string, out: string[], seen: Set<string>): void {
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(abs, { withFileTypes: true })
-  } catch {
-    return
-  }
-  for (const entry of entries) {
-    if (out.length >= MAX_FILES_TO_SCAN) return
-    if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
-    const full = path.join(abs, entry.name)
-    if (seen.has(full)) continue
-    seen.add(full)
-    if (entry.isDirectory()) {
-      walk(full, projectDir, out, seen)
-    } else if (entry.isFile() && entry.name.endsWith('.css')) {
-      out.push(path.relative(projectDir, full))
-    }
-  }
-}
 
 function extractThemeBlocks(css: string): string[] {
   const out: string[] = []

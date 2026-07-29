@@ -391,6 +391,9 @@ function EditControls() {
   const { saveEdits, exitEdit, saving } = usePixelContext()
   const [confirmOpen, setConfirmOpen] = useState(false)
 
+  // Lets the failure toast's Resend re-run this same flow (see below).
+  const saveRef = useRef<() => void>(() => {})
+
   const save = useCallback(async () => {
     // Fold any in-flight (debounced) edit into the batch so a change made just
     // before hitting Save is still sent — and can't fire a stray late commit
@@ -405,7 +408,10 @@ function EditControls() {
       return
     }
     try {
-      await saveEdits(buildEditPayload(batch))
+      // Resend runs the whole flow again rather than just re-posting, so a
+      // recovered save exits edit mode and clears history exactly as a
+      // first-try Save would.
+      await saveEdits(buildEditPayload(batch), { retry: () => saveRef.current() })
       // Reset undo/redo: the batch has gone to the agent, so these edits must
       // not be undoable in a later session (we'd be reverting work already sent).
       // The edits stay applied in the live DOM; the agent rewrites source.
@@ -415,6 +421,7 @@ function EditControls() {
       /* stay in edit mode — the provider already surfaced the error */
     }
   }, [history, saveEdits, exitEdit])
+  saveRef.current = () => void save()
 
   const discardAndExit = useCallback(() => {
     history.discard() // revert the live DOM, then exit
@@ -534,6 +541,9 @@ function CommentControls() {
   const draftsRef = useRef(drafts)
   draftsRef.current = drafts
 
+  // Lets the failure toast's Resend re-run this same flow (see below).
+  const saveRef = useRef<() => void>(() => {})
+
   const save = useCallback(async () => {
     const comments = draftsToPayload(draftsRef.current)
     if (comments.length === 0) {
@@ -541,17 +551,23 @@ function CommentControls() {
       return
     }
     try {
-      await saveComments({
-        url: typeof location !== 'undefined' ? location.href : '',
-        createdAt: Date.now(),
-        comments,
-      })
+      // Resend re-runs the whole flow, so a recovered save also drops the pins
+      // and leaves comment mode the way a first-try Save would.
+      await saveComments(
+        {
+          url: typeof location !== 'undefined' ? location.href : '',
+          createdAt: Date.now(),
+          comments,
+        },
+        { retry: () => saveRef.current() },
+      )
       setDrafts([])
       exitComment()
     } catch {
       /* stay in comment mode — provider surfaced the error */
     }
   }, [saveComments, exitComment])
+  saveRef.current = () => void save()
 
   const discardAndExit = useCallback(() => {
     setDrafts([])
@@ -1175,7 +1191,13 @@ export function Overlay({ className }: OverlayProps) {
     designTokens,
   } = usePixelContext()
 
-  if (typeof document === 'undefined') return null
+  // The overlay portals into `document.body`, which has no server-rendered
+  // counterpart, so rendering it on the first client pass would diverge from the
+  // server HTML and trip hydration. Waiting for an effect keeps the first client
+  // render identical to the server's (nothing) and mounts the overlay after.
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
+  if (!hydrated) return null
 
   const active = state === 'recording' || state === 'paused'
   // Surface the bar (and its indicator) whenever there's status worth showing,

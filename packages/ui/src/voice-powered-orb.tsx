@@ -369,15 +369,12 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
 
       const resize = () => {
         if (!container || !rendererInstance || !glContext) return
-        const dpr = window.devicePixelRatio || 1
         const width = container.clientWidth
         const height = container.clientHeight
         if (width === 0 || height === 0) return
 
-        rendererInstance.setSize(width * dpr, height * dpr)
-        const c = glContext.canvas
-        c.style.width = width + 'px'
-        c.style.height = height + 'px'
+        // ogl's setSize already multiplies by renderer.dpr — pass CSS pixels.
+        rendererInstance.setSize(width, height)
 
         if (program) {
           program.uniforms.iResolution.value.set(
@@ -420,10 +417,12 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
             maxHoverRef.current,
           )
         } else {
-          // Slow idle spin so the glyph stays alive without grabbing the mic.
+          // Slow idle spin + a light shimmer so the glyph reads as the 21st orb
+          // even before the mic is on (and when the bar is at rest opacity).
           currentRot += dt * baseRotationSpeed
-          program.uniforms.hover.value = 0
-          program.uniforms.hoverIntensity.value = 0
+          const breathe = 0.22 + 0.08 * Math.sin(t * 0.0015)
+          program.uniforms.hover.value = breathe
+          program.uniforms.hoverIntensity.value = 0.45
           onVoiceRef.current?.(false)
         }
 

@@ -136,12 +136,13 @@ const CSS = `
 }
 .pixel-rec .pixel-rec-orb {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   pointer-events: none;
   border-radius: 50%;
   overflow: hidden;
+  background: radial-gradient(circle, #080510 0%, #160b28 62%, transparent 100%);
 }
 .pixel-rec .pixel-rec-dot {
   width: 7px;

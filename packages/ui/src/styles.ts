@@ -118,13 +118,30 @@ const CSS = `
 .pixel-rec .pixel-rec-record {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: none;
   background: transparent;
   color: #f3e8ff;
   font: 600 11px ui-sans-serif, system-ui;
   cursor: pointer;
   padding: 1px 3px;
+}
+.pixel-voice-orb {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.pixel-voice-orb canvas {
+  display: block;
+}
+.pixel-rec .pixel-rec-orb {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  overflow: hidden;
 }
 .pixel-rec .pixel-rec-dot {
   width: 7px;
@@ -138,13 +155,8 @@ const CSS = `
   animation: none;
   opacity: 0.5;
 }
-/* Stop button's red square pulses while actively recording (like the old dot),
-   and goes steady + dimmed when paused. */
-.pixel-rec .pixel-rec-stop-ind {
-  animation: pixel-pulse 1.2s ease-in-out infinite;
-}
-.pixel-rec.paused .pixel-rec-stop-ind {
-  animation: none;
+/* While paused, dim the live orb so the bar still reads as not-recording. */
+.pixel-rec.paused .pixel-rec-orb {
   opacity: 0.6;
 }
 /* Edit-mode indicator: a steady (non-pulsing) blue dot, distinct from the

@@ -58,6 +58,19 @@ test.beforeEach(async () => {
   await rm(PIXEL_DIR, { recursive: true, force: true })
 })
 
+test('the Rec button shows the voice-powered orb instead of the red-dot glyph', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const rec = page.locator('.pixel-rec [data-pixel-tour="record"]')
+  await expect(rec).toBeVisible()
+  await expect(rec.locator('.pixel-rec-orb')).toBeVisible()
+  await expect(rec.locator('[data-pixel-orb]')).toBeVisible()
+  // ogl paints a WebGL canvas into the host — Chromium has WebGL, jsdom does not.
+  await expect(rec.locator('canvas')).toBeVisible()
+  await expect(rec.locator('svg')).toHaveCount(0)
+})
+
 test('the M shortcut toggles the mouse tool while recording', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Start recording' }).click()

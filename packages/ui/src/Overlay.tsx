@@ -33,10 +33,20 @@ import {
 } from './comments/CommentLayer'
 import { setCommentActionHandlers } from './comments/comment-actions'
 import type { BarPosition, Task, TaskStatus } from './types'
+import { VoicePoweredOrb } from './voice-powered-orb'
 
 export interface OverlayProps {
   /** Extra class applied to the overlay root. */
   className?: string
+}
+
+/** Decorative WebGL orb that replaces the old red-dot Rec glyph. */
+function RecordOrb({ live }: { live: boolean }) {
+  return (
+    <span className="pixel-rec-orb" aria-hidden>
+      <VoicePoweredOrb enableVoiceControl={live} />
+    </span>
+  )
 }
 
 function formatElapsed(ms: number): string {
@@ -47,7 +57,6 @@ function formatElapsed(ms: number): string {
 }
 
 const ICONS = {
-  record: 'M12 7a5 5 0 100 10 5 5 0 000-10z',
   pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
   resume: 'M7 5l12 7-12 7z',
   stop: 'M6 6h12v12H6z',
@@ -1078,9 +1087,7 @@ function RecBar() {
               onClick={() => start()}
               data-pixel-tour="record"
             >
-              <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
-                <path d={ICONS.record} fill="#ef4444" />
-              </svg>
+              <RecordOrb live={false} />
               Rec
             </button>
           ) : (
@@ -1095,9 +1102,7 @@ function RecBar() {
                 onClick={() => void stop()}
                 data-pixel-tour="stop"
               >
-                <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" className="pixel-rec-stop-ind">
-                  <rect x="6" y="6" width="12" height="12" rx="2" fill="#ef4444" />
-                </svg>
+                <RecordOrb live={recording} />
                 <span className="pixel-rec-time">
                   {recording ? 'REC' : 'PAUSED'} {formatElapsed(elapsed)}
                 </span>
